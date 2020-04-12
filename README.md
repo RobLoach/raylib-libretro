@@ -7,7 +7,7 @@
 ## Usage
 
 ```
-raylib-libretro <code> [content]
+raylib-libretro <core> [game]
 ```
 
 ## Compile
@@ -19,6 +19,7 @@ git submodule update --init
 mkdir build
 cd build
 cmake ..
+make
 ```
 
 ## License
