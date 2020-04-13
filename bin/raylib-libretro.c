@@ -40,46 +40,35 @@ int main(int argc, char* argv[]) {
     InitWindow(800, 600, "raylib-libretro");
     InitAudioDevice();
 
-    // Load the given core.
-    if (!LibretroLoadCore(argv[1], false)) {
-        TraceLog(LOG_FATAL, "Failed to load given core: %s", argv[1]);
+    // Initialize the given core.
+    if (!InitLibretro(argv[1])) {
         CloseWindow();
         return 1;
     }
 
     // Load the given game.
     const char* gameFile = (argc > 2) ? argv[2] : NULL;
-    if (!LibretroLoadGame(gameFile)) {
-        TraceLog(LOG_FATAL, "Failed to load game. %s", gameFile);
+    if (!LoadLibretroGame(gameFile)) {
         CloseWindow();
         return 1;
     }
 
-    // Initialize the systems.
-    LibretroInit();
-
-    while (!WindowShouldClose())
-    {
+    while (!WindowShouldClose() && !LibretroShouldClose()) {
         // Run a frame of the core.
-        LibretroUpdate();
-
-        // See if we should close the game.
-        if (LibretroShouldClose()) {
-            break;
-        }
+        UpdateLibretro();
 
         // Render the libretro core.
         BeginDrawing();
         {
-            ClearBackground(BLACK);
-            LibretroDraw();
+            ClearBackground(RAYWHITE);
+            DrawLibretro();
         }
         EndDrawing();
     }
 
     // Unload the game and close the core.
-    LibretroUnloadGame();
-    LibretroClose();
+    UnloadLibretroGame();
+    CloseLibretro();
 
     CloseAudioDevice();
     CloseWindow();

@@ -266,21 +266,21 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_F4:
             return KEY_F4;
         case RETROK_F5:
-            return KEY_APOSTROPHE;
+            return KEY_F5;
         case RETROK_F6:
-            return KEY_APOSTROPHE;
+            return KEY_F6;
         case RETROK_F7:
-            return KEY_APOSTROPHE;
+            return KEY_F7;
         case RETROK_F8:
-            return KEY_APOSTROPHE;
+            return KEY_F8;
         case RETROK_F9:
-            return KEY_APOSTROPHE;
+            return KEY_F9;
         case RETROK_F10:
-            return KEY_APOSTROPHE;
+            return KEY_F10;
         case RETROK_F11:
-            return KEY_APOSTROPHE;
+            return KEY_F11;
         case RETROK_F12:
-            return KEY_APOSTROPHE;
+            return KEY_F12;
         case RETROK_F13:
             return KEY_APOSTROPHE;
         case RETROK_F14:

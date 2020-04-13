@@ -53,7 +53,7 @@
    function_t func = dylib_proc(LibretroCore.handle, #S); \
    memcpy(&V, &func, sizeof(func)); \
    if (!func) \
-      TraceLog(LOG_ERROR, "Failed to load symbol '" #S "'"); \
+      TraceLog(LOG_ERROR, "LIBRETRO: Failed to load symbol '" #S "'"); \
    } while (0)
 
 /**
@@ -125,11 +125,12 @@ static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
     vsnprintf(buffer, sizeof(buffer), fmt, va);
     va_end(va);
 
-    TraceLog(type, "[rLibretro] %s", buffer);
+    TraceLog(type, "LIBRETRO: %s", buffer);
 }
 
 static void LibretroInitVideo() {
     // Make sure the window size is appropriate.
+    // TODO: Remove window manipulation from rLibretro.
     SetWindowSize(LibretroCore.width * LibretroCore.windowScale, LibretroCore.height * LibretroCore.windowScale);
 
     // Unload the existing texture if it exists already.
@@ -153,7 +154,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
         {
             if (data == NULL) {
-                TraceLog(LOG_ERROR, "RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO no data provided.");
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO no data provided.");
                 return false;
             }
             const struct retro_system_av_info av = *(const struct retro_system_av_info *)data;
@@ -161,45 +162,50 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             LibretroCore.height = av.geometry.max_height;
             LibretroCore.fps = av.timing.fps;
             LibretroCore.sampleRate = av.timing.sample_rate;
-            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO");
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO %ix%i @ %i FPS %i",
+                LibretroCore.width,
+                LibretroCore.height,
+                LibretroCore.fps,
+                LibretroCore.sampleRate
+            );
         }
         break;
         case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL:
         {
             if (data == NULL) {
-                TraceLog(LOG_ERROR, "RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL no data provided.");
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL no data provided.");
                 return false;
             }
             LibretroCore.performanceLevel = *(const unsigned *)data;
-            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL(%i)", LibretroCore.performanceLevel);
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL(%i)", LibretroCore.performanceLevel);
         }
         break;
         case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
         {
             if (data == NULL) {
-                TraceLog(LOG_WARNING, "RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME no data provided.");
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME no data provided.");
                 return false;
             }
             LibretroCore.supportNoGame = *(bool*)data;
-            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: %s", LibretroCore.supportNoGame ? "true" : "false");
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: %s", LibretroCore.supportNoGame ? "true" : "false");
         }
         break;
         case RETRO_ENVIRONMENT_SET_VARIABLES:
         {
             // Sets the given variable.
             // TODO: RETRO_ENVIRONMENT_SET_VARIABLES
-            TraceLog(LOG_WARNING, "RETRO_ENVIRONMENT_SET_VARIABLES not implemented.");
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_VARIABLES not implemented.");
         }
         break;
         case RETRO_ENVIRONMENT_GET_VARIABLE:
         {
             if (data == NULL) {
-                TraceLog(LOG_WARNING, "RETRO_ENVIRONMENT_GET_VARIABLE no data provided.");
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VARIABLE no data provided.");
                 return false;
             }
             // TODO: Retrieve varables with RETRO_ENVIRONMENT_GET_VARIABLE.
             struct retro_variable* variableData = (struct retro_variable *)data;
-            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_GET_VARIABLE(%s)", variableData->key);
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_GET_VARIABLE: %s", variableData->key);
             // variableData->value = "";
         }
         break;
@@ -214,33 +220,37 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         {
             // TODO: RETRO_ENVIRONMENT_SET_MESSAGE Display a message on the screen.
             if (data == NULL) {
-                TraceLog(LOG_ERROR, "RETRO_ENVIRONMENT_SET_MESSAGE no data provided.");
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE no data provided.");
                 return false;
             }
             const struct retro_message message = *(const struct retro_message *)data;
             if (message.msg == NULL) {
-                TraceLog(LOG_WARNING, "RETRO_ENVIRONMENT_SET_MESSAGE: No message");
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE: No message");
                 return false;
             }
-            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SET_MESSAGE: %s (%i)", message.msg, message.frames);
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE: %s (%i frames)", message.msg, message.frames);
         }
         break;
         case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
         {
             const enum retro_pixel_format* pixelFormat = (const enum retro_pixel_format *)data;
-            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: %i", *pixelFormat);
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: %i", *pixelFormat);
             LibretroCore.pixelFormat = *pixelFormat;
         }
         break;
         case RETRO_ENVIRONMENT_SHUTDOWN:
         {
-            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SHUTDOWN");
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SHUTDOWN");
             LibretroCore.shutdown = true;
         }
         break;
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
         {
-            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_GET_LOG_INTERFACE");
+            if (data == NULL) {
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_GET_LOG_INTERFACE no data provided.");
+                return false;
+            }
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_GET_LOG_INTERFACE");
             struct retro_log_callback *callback = (struct retro_log_callback*)data;
             if (callback != NULL) {
                 callback->log = LibretroLogger;
@@ -250,17 +260,18 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
         {
             // TODO: RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS
-            TraceLog(LOG_WARNING, "TODO: RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS");
+            TraceLog(LOG_WARNING, "LIBRETRO: TODO: RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS");
         }
         break;
         default:
         {
             // TODO: Add more environment sets.
-            TraceLog(LOG_WARNING, "Undefined environment call: %i", cmd);
+            TraceLog(LOG_WARNING, "LIBRETRO: Undefined environment call: %i", cmd);
             return false;
         }
         break;
     }
+
     return true;
 }
 
@@ -282,7 +293,7 @@ static bool LibretroGetAudioVideo() {
 /**
  * Runs an interation of the libretro core.
  */
-static void LibretroUpdate() {
+static void UpdateLibretro() {
     if (LibretroCore.initialized) {
         LibretroCore.retro_run();
     }
@@ -301,7 +312,7 @@ static bool LibretroShouldClose() {
 static void LibretroVideoRefresh(const void *data, unsigned width, unsigned height, size_t pitch) {
     // Only act when there is usable pixel data.
     if (!data) {
-        TraceLog(LOG_WARNING, "VideoRefresh provided no pixel data.");
+        TraceLog(LOG_WARNING, "LIBRETRO: VideoRefresh provided no pixel data.");
         return;
     }
 
@@ -329,7 +340,7 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         default:
         {
             // TODO: Port RETRO_PIXEL_FORMAT_0RGB1555 to UNCOMPRESSED_R5G5B5A1;
-            TraceLog(LOG_WARNING, "Pixelformat: RETRO_PIXEL_FORMAT_0RGB1555 to UNCOMPRESSED_R5G5B5A1 not implemented");
+            TraceLog(LOG_WARNING, "LIBRETRO: Pixelformat: RETRO_PIXEL_FORMAT_0RGB1555 to UNCOMPRESSED_R5G5B5A1 not implemented");
         }
     }
 
@@ -389,63 +400,8 @@ static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames) {
     return LibretroAudioWrite(data, frames);
 }
 
-static bool LibretroLoadGame(const char* gameFile) {
-    // Load empty game.
-    if (gameFile == NULL) {
-        if (LibretroCore.retro_load_game(NULL)) {
-            TraceLog(LOG_INFO, "Loaded without content");
-            return LibretroGetAudioVideo();
-        }
-        else {
-            TraceLog(LOG_ERROR, "failed to load without content");
-            return false;
-        }
-    }
-
-    // Ensure the game exists.
-    if (!FileExists(gameFile)) {
-        TraceLog(LOG_ERROR, "Given content does not exist: %s", gameFile);
-        return false;
-    }
-
-    // See if we just need the full path.
-    if (LibretroCore.needFullpath) {
-        struct retro_game_info info;
-        info.data = NULL;
-        info.size = 0;
-        info.path = gameFile;
-        if (LibretroCore.retro_load_game(&info)) {
-            TraceLog(LOG_INFO, "Loaded content with full path");
-            return LibretroGetAudioVideo();
-        }
-        else {
-            TraceLog(LOG_INFO, "Failed to load full path");
-            return false;
-        }
-    }
-
-    // Load the game data.
-    unsigned int size;
-    unsigned char * gameData = LoadFileData(gameFile, &size);
-    if (size == 0) {
-        TraceLog(LOG_ERROR, "Failed to load game data.");
-        return false;
-    }
-    struct retro_game_info info;
-    info.path = gameFile;
-    info.data = gameData;
-    info.size = size;
-    info.meta = "";
-    if (!LibretroCore.retro_load_game(&info)) {
-        TraceLog(LOG_ERROR, "Failed to load game with retro_load_game()");
-        free(gameData);
-        return false;
-    }
-    free(gameData);
-    return LibretroGetAudioVideo();
-}
-
-static void LibretroInitAudio() {
+static void LibretroInitAudio()
+{
     // Ensure the audio stream is closed.
     StopAudioStream(LibretroCore.audioStream);
     CloseAudioStream(LibretroCore.audioStream);
@@ -456,17 +412,89 @@ static void LibretroInitAudio() {
     return;
 }
 
-static bool LibretroLoadCore(const char* core, bool peek) {
+static bool LibretroInitAudioVideo() {
+    LibretroGetAudioVideo();
+    LibretroInitVideo();
+    LibretroInitAudio();
+
+    // TODO: Support frametime perforance counter instead of static FPS.
+    if (LibretroCore.fps > 0) {
+        SetTargetFPS(LibretroCore.fps);
+    }
+
+    return true;
+}
+
+static bool LoadLibretroGame(const char* gameFile) {
+    // Load empty game.
+    if (gameFile == NULL) {
+        if (LibretroCore.retro_load_game(NULL)) {
+            TraceLog(LOG_INFO, "LIBRETRO: Loaded without content");
+            return LibretroInitAudioVideo();
+        }
+        else {
+            TraceLog(LOG_ERROR, "LIBRETRO: Failed to load core without content");
+            return false;
+        }
+    }
+
+    // Ensure the game exists.
+    if (!FileExists(gameFile)) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Given content does not exist: %s", gameFile);
+        return false;
+    }
+
+    // See if we just need the full path.
+    if (LibretroCore.needFullpath) {
+        struct retro_game_info info;
+        info.data = NULL;
+        info.size = 0;
+        info.path = gameFile;
+        if (LibretroCore.retro_load_game(&info)) {
+            TraceLog(LOG_INFO, "LIBRETRO: Loaded content with full path");
+            return LibretroInitAudioVideo();
+        }
+        else {
+            TraceLog(LOG_INFO, "LIBRETRO: Failed to load full path");
+            return false;
+        }
+    }
+
+    // Load the game data.
+    unsigned int size;
+    unsigned char * gameData = LoadFileData(gameFile, &size);
+    if (size == 0 || gameData == NULL) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with LoadFileData()");
+        return false;
+    }
+    struct retro_game_info info;
+    info.path = gameFile;
+    info.data = gameData;
+    info.size = size;
+    info.meta = "";
+    if (!LibretroCore.retro_load_game(&info)) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with retro_load_game()");
+        free(gameData);
+        return false;
+    }
+    free(gameData);
+    return LibretroInitAudioVideo();
+}
+
+static bool InitLibretro(const char* core) {
     // Ensure the core exists.
     if (!FileExists(core)) {
-        TraceLog(LOG_ERROR, "Given core doesn't exist: %s", core);
+        TraceLog(LOG_ERROR, "LIBRETRO: Given core doesn't exist: %s", core);
         return false;
     }
     LibretroCore.initialized = false;
 
+    if (LibretroCore.handle != NULL) {
+        dylib_close(LibretroCore.handle);
+    }
     LibretroCore.handle = dylib_load(core);
     if (!LibretroCore.handle) {
-        TraceLog(LOG_ERROR, "Failed to load library.");
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to provided library");
         return false;
     }
 
@@ -498,7 +526,11 @@ static bool LibretroLoadCore(const char* core, bool peek) {
 
     // Find the libretro API version.
     LibretroCore.apiVersion = LibretroCore.retro_api_version();
-    TraceLog(LOG_INFO, "Libretro API: %i", LibretroCore.apiVersion);
+    TraceLog(LOG_INFO, "LIBRETRO: API version: %i", LibretroCore.apiVersion);
+    if (LibretroCore.apiVersion != 1) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Incompatible API version");
+        return false;
+    }
 
     // Retrieve the libretro core system information.
     struct retro_system_info systemInfo;
@@ -508,11 +540,18 @@ static bool LibretroLoadCore(const char* core, bool peek) {
     strlcpy(LibretroCore.validExtensions, systemInfo.valid_extensions, sizeof(LibretroCore.validExtensions));
     LibretroCore.needFullpath = systemInfo.need_fullpath;
     LibretroCore.blockExtract = systemInfo.block_extract;
+    TraceLog(LOG_INFO, "LIBRETRO: Core loaded successfully");
+    TraceLog(LOG_INFO, "    > Name:         %s", LibretroCore.libraryName);
+    TraceLog(LOG_INFO, "    > Version:      %s", LibretroCore.libraryVersion);
+    TraceLog(LOG_INFO, "    > Extensions:   %s", LibretroCore.validExtensions);
 
-    // If we are to just peek insde, now is the time to exit.
+    // TODO: Add ability to peek inside the core to grab data.
+    /*
     if (peek) {
+        CloseLibretro();
         return true;
     }
+    */
 
     // Initialize the core.
     LibretroCore.shutdown = false;
@@ -532,31 +571,45 @@ static bool LibretroLoadCore(const char* core, bool peek) {
     return true;
 }
 
-static void LibretroInit() {
-    LibretroInitVideo();
-    LibretroInitAudio();
-
-    // TODO: Support frametime perforance counter instead of static FPS.
-    if (LibretroCore.fps > 0) {
-        SetTargetFPS(LibretroCore.fps);
-    }
-}
-
-static void LibretroDraw() {
+static void DrawLibretro() {
     Vector2 position = {0, 0};
     DrawTextureEx(LibretroCore.texture, position, 0, LibretroCore.windowScale, RAYWHITE);
 }
 
-static void LibretroUnloadGame() {
-    LibretroCore.retro_unload_game();
+static void DrawLibretroTexture(int posX, int posY, Color tint) {
+    DrawTexture(LibretroCore.texture, posX, posY, tint);
 }
 
-static void LibretroClose() {
-    LibretroCore.retro_deinit();
-    LibretroCore.initialized = false;
-    UnloadTexture(LibretroCore.texture);
+static void DrawLibretroV(Vector2 position, Color tint) {
+    DrawTextureV(LibretroCore.texture, position, tint);
+}
+
+static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint) {
+    DrawTextureEx(LibretroCore.texture, position, rotation, scale, tint);
+}
+
+static Texture2D GetLibretroTexture() {
+    return LibretroCore.texture;
+}
+
+static void UnloadLibretroGame() {
+    if (LibretroCore.initialized) {
+        LibretroCore.retro_unload_game();
+    }
+}
+
+static void CloseLibretro() {
     StopAudioStream(LibretroCore.audioStream);
+    UnloadLibretroGame();
+    if (LibretroCore.initialized) {
+        LibretroCore.retro_deinit();
+    }
+    UnloadTexture(LibretroCore.texture);
     CloseAudioStream(LibretroCore.audioStream);
+    if (LibretroCore.handle != NULL) {
+        dylib_close(LibretroCore.handle);
+    }
+    LibretroCore.initialized = false;
     LibretroCore.audioStream = (AudioStream){0};
     LibretroCore.texture = (Texture){0};
 }

@@ -10,6 +10,15 @@
 raylib-libretro <core> [game]
 ```
 
+For the controls, use the arrow keys, and ZXAS.
+
+## Features
+
+- [x] Video
+- [ ] Graphical User Interface
+- [ ] Smooth Audio
+- [ ] Shaders
+
 ## Compile
 
 ``` sh
