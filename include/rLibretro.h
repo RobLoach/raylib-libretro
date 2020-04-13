@@ -40,7 +40,7 @@
    function_t func = dylib_proc(LibretroCore.handle, #S); \
    memcpy(&V, &func, sizeof(func)); \
    if (!func) \
-      TraceLog(LOG_ERROR, "Failed to load symbol '" #S "'"); \
+	  TraceLog(LOG_ERROR, "Failed to load symbol '" #S "'"); \
    } while (0)
 
 /**
@@ -90,9 +90,11 @@ typedef struct rLibretro {
 	bool supportNoGame;
 	unsigned apiVersion;
 	enum retro_pixel_format pixelFormat;
+	unsigned performanceLevel;
 
 	// The texture used to render on the screen.
 	Texture texture;
+	AudioStream audioStream;
 } rLibretro;
 
 /**
@@ -135,11 +137,38 @@ static void LibretroInitVideo() {
 
 static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 	switch (cmd) {
+		case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
+		{
+			if (data == NULL) {
+				TraceLog(LOG_ERROR, "RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO no data provided.");
+				return false;
+			}
+			const struct retro_system_av_info av = *(const struct retro_system_av_info *)data;
+			LibretroCore.width = av.geometry.max_width;
+			LibretroCore.height = av.geometry.max_height;
+			LibretroCore.fps = av.timing.fps;
+			LibretroCore.sampleRate = av.timing.sample_rate;
+			TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO");
+		}
+		break;
+		case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL:
+		{
+			if (data == NULL) {
+				TraceLog(LOG_ERROR, "RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL no data provided.");
+				return false;
+			}
+			LibretroCore.performanceLevel = *(const unsigned *)data;
+			TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL(%i)", LibretroCore.performanceLevel);
+		}
+		break;
 		case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
 		{
-			bool supportNoGame = *(bool*)data;
-			TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: %s", supportNoGame ? "true" : "false");
+			if (data == NULL) {
+				TraceLog(LOG_WARNING, "RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME no data provided.");
+				return false;
+			}
 			LibretroCore.supportNoGame = *(bool*)data;
+			TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: %s", LibretroCore.supportNoGame ? "true" : "false");
 		}
 		break;
 		case RETRO_ENVIRONMENT_SET_VARIABLES:
@@ -151,9 +180,14 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 		break;
 		case RETRO_ENVIRONMENT_GET_VARIABLE:
 		{
-			// Retrieves the given variable.
-			// TODO: RETRO_ENVIRONMENT_GET_VARIABLE
-			TraceLog(LOG_WARNING, "RETRO_ENVIRONMENT_GET_VARIABLE not implemented.");
+			if (data == NULL) {
+				TraceLog(LOG_WARNING, "RETRO_ENVIRONMENT_GET_VARIABLE no data provided.");
+				return false;
+			}
+			// TODO: Retrieve varables with RETRO_ENVIRONMENT_GET_VARIABLE.
+			struct retro_variable* variableData = (struct retro_variable *)data;
+			TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_GET_VARIABLE(%s)", variableData->key);
+			// variableData->value = "";
 		}
 		break;
 		case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
@@ -166,13 +200,16 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 		case RETRO_ENVIRONMENT_SET_MESSAGE:
 		{
 			// TODO: RETRO_ENVIRONMENT_SET_MESSAGE Display a message on the screen.
-			const struct retro_message * message = (const struct retro_message *)data;
-			if (message != NULL && message->msg != NULL) {
-				TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SET_MESSAGE: %s (%i)", message->msg, message->frames);
+			if (data == NULL) {
+				TraceLog(LOG_ERROR, "RETRO_ENVIRONMENT_SET_MESSAGE no data provided.");
+				return false;
 			}
-			else {
+			const struct retro_message message = *(const struct retro_message *)data;
+			if (message.msg == NULL) {
 				TraceLog(LOG_WARNING, "RETRO_ENVIRONMENT_SET_MESSAGE: No message");
+				return false;
 			}
+			TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_SET_MESSAGE: %s (%i)", message.msg, message.frames);
 		}
 		break;
 		case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
@@ -320,8 +357,11 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
 }
 
 static size_t LibretroAudioWrite(const int16_t *data, size_t frames) {
-	// TODO: Implement AudioWrite.
-	// UpdateAudioStream(LibretroCore.audioStream, data, frames);
+	// TODO: Fix Audio being choppy since it doesn't append to the buffer.
+	if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
+		UpdateAudioStream(LibretroCore.audioStream, data, sizeof(*data) * frames);
+	}
+
 	return frames;
 }
 
@@ -391,8 +431,13 @@ static bool LibretroLoadGame(const char* gameFile) {
 }
 
 static void LibretroInitAudio() {
-	// TODO: Implement LibretroInitAudio().
-	TraceLog(LOG_WARNING, "LibretroInitAudio() not implemented");
+	// Ensure the audio stream is closed.
+	StopAudioStream(LibretroCore.audioStream);
+	CloseAudioStream(LibretroCore.audioStream);
+
+	// Create a new audio stream.
+	LibretroCore.audioStream = InitAudioStream(LibretroCore.sampleRate, 16, 2);
+	PlayAudioStream(LibretroCore.audioStream);
 	return;
 }
 
@@ -493,10 +538,12 @@ static void LibretroUnloadGame() {
 
 static void LibretroClose() {
 	LibretroCore.retro_deinit();
-	UnloadTexture(LibretroCore.texture);
-	LibretroCore.texture = (Texture){0};
 	LibretroCore.initialized = false;
-	// TODO: Close AudioStream
+	UnloadTexture(LibretroCore.texture);
+	StopAudioStream(LibretroCore.audioStream);
+	CloseAudioStream(LibretroCore.audioStream);
+	LibretroCore.audioStream = (AudioStream){0};
+	LibretroCore.texture = (Texture){0};
 }
 
 #endif

@@ -23,8 +23,9 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	// Create the window.
+	// Create the window and audio.
 	InitWindow(800, 600, "raylib-libretro");
+	InitAudioDevice();
 
 	// Load the given core.
 	if (!LibretroLoadCore(argv[1], false)) {
@@ -67,6 +68,7 @@ int main(int argc, char* argv[]) {
 	LibretroUnloadGame();
 	LibretroClose();
 
+	CloseAudioDevice();
 	CloseWindow();
 
 	return 0;
