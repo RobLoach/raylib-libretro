@@ -1,15 +1,28 @@
-/*******************************************************************************************
+/**********************************************************************************************
 *
-*   raylib-libretro v0.0.1 - A libretro frontend for raylib.
+*   raylib-libretro - A libretro frontend using raylib.
 *
-*   DESCRIPTION:
+*   LICENSE: zlib/libpng
 *
-*   raylib-libretro [core] <game>
+*   raylib-libretro is licensed under an unmodified zlib/libpng license, which is an OSI-certified,
+*   BSD-like license that allows static linking with closed source software:
 *
-*   CONTRIBUTORS:
-*       Rob Loach:          Initial implementation
+*   Copyright (c) 2020 Rob Loach (@RobLoach)
 *
-*   LICENSE: GPL-3.0
+*   This software is provided "as-is", without any express or implied warranty. In no event
+*   will the authors be held liable for any damages arising from the use of this software.
+*
+*   Permission is granted to anyone to use this software for any purpose, including commercial
+*   applications, and to alter it and redistribute it freely, subject to the following restrictions:
+*
+*     1. The origin of this software must not be misrepresented; you must not claim that you
+*     wrote the original software. If you use this software in a product, an acknowledgment
+*     in the product documentation would be appreciated but is not required.
+*
+*     2. Altered source versions must be plainly marked as such, and must not be misrepresented
+*     as being the original software.
+*
+*     3. This notice may not be removed or altered from any source distribution.
 *
 **********************************************************************************************/
 
@@ -17,59 +30,59 @@
 #include "../include/rLibretro.h"
 
 int main(int argc, char* argv[]) {
-	// Ensure proper amount of arguments.
-	if (argc <= 1) {
-		TraceLog(LOG_ERROR, "Usage: %s <core> [game]", argv[0]);
-		return 1;
-	}
+    // Ensure proper amount of arguments.
+    if (argc <= 1) {
+        TraceLog(LOG_ERROR, "Usage: %s <core> [game]", argv[0]);
+        return 1;
+    }
 
-	// Create the window and audio.
-	InitWindow(800, 600, "raylib-libretro");
-	InitAudioDevice();
+    // Create the window and audio.
+    InitWindow(800, 600, "raylib-libretro");
+    InitAudioDevice();
 
-	// Load the given core.
-	if (!LibretroLoadCore(argv[1], false)) {
-		TraceLog(LOG_FATAL, "Failed to load given core: %s", argv[1]);
-		CloseWindow();
-		return 1;
-	}
+    // Load the given core.
+    if (!LibretroLoadCore(argv[1], false)) {
+        TraceLog(LOG_FATAL, "Failed to load given core: %s", argv[1]);
+        CloseWindow();
+        return 1;
+    }
 
-	// Load the given game.
-	const char* gameFile = (argc > 2) ? argv[2] : NULL;
-	if (!LibretroLoadGame(gameFile)) {
-		TraceLog(LOG_FATAL, "Failed to load game. %s", gameFile);
-		CloseWindow();
-		return 1;
-	}
+    // Load the given game.
+    const char* gameFile = (argc > 2) ? argv[2] : NULL;
+    if (!LibretroLoadGame(gameFile)) {
+        TraceLog(LOG_FATAL, "Failed to load game. %s", gameFile);
+        CloseWindow();
+        return 1;
+    }
 
-	// Initialize the systems.
-	LibretroInit();
+    // Initialize the systems.
+    LibretroInit();
 
-	while (!WindowShouldClose())
-	{
-		// Run a frame of the core.
-		LibretroUpdate();
+    while (!WindowShouldClose())
+    {
+        // Run a frame of the core.
+        LibretroUpdate();
 
-		// See if we should close the game.
-		if (LibretroShouldClose()) {
-			break;
-		}
+        // See if we should close the game.
+        if (LibretroShouldClose()) {
+            break;
+        }
 
-		// Render the libretro core.
-		BeginDrawing();
-		{
-			ClearBackground(BLACK);
-			LibretroDraw();
-		}
-		EndDrawing();
-	}
+        // Render the libretro core.
+        BeginDrawing();
+        {
+            ClearBackground(BLACK);
+            LibretroDraw();
+        }
+        EndDrawing();
+    }
 
-	// Unload the game and close the core.
-	LibretroUnloadGame();
-	LibretroClose();
+    // Unload the game and close the core.
+    LibretroUnloadGame();
+    LibretroClose();
 
-	CloseAudioDevice();
-	CloseWindow();
+    CloseAudioDevice();
+    CloseWindow();
 
-	return 0;
+    return 0;
 }

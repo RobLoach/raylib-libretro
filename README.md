@@ -24,4 +24,4 @@ make
 
 ## License
 
-[GPL-3.0](LICENSE)
+[zlib/libpng](LICENSE)
