@@ -1,4 +1,4 @@
-# raylib-libretro
+# raylib-libretro ![Tests](https://github.com/RobLoach/raylib-libretro/workflows/Tests/badge.svg)
 
 [libretro](https://www.libretro.com/) frontend using [raylib](https://www.raylib.com). *Still in early development.*
 
