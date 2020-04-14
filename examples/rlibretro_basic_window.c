@@ -1,6 +1,6 @@
 /**********************************************************************************************
 *
-*   raylib-libretro - A libretro frontend using raylib.
+*   rlibretro_basic_window - A basic example of using rlibretro.h with Raylib.
 *
 *   LICENSE: zlib/libpng
 *
@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Create the window and audio.
-    InitWindow(800, 600, "raylib-libretro");
+    InitWindow(800, 600, "rlibretro - basic window");
     InitAudioDevice();
 
     // Initialize the given core.
@@ -60,7 +60,7 @@ int main(int argc, char* argv[]) {
         // Render the libretro core.
         BeginDrawing();
         {
-            ClearBackground(RAYWHITE);
+            ClearBackground(BLACK);
             DrawLibretro();
         }
         EndDrawing();

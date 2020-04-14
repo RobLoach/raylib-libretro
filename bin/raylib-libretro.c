@@ -37,7 +37,9 @@ int main(int argc, char* argv[]) {
     }
 
     // Create the window and audio.
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(800, 600, "raylib-libretro");
+    SetWindowMinSize(400, 300);
     InitAudioDevice();
 
     // Initialize the given core.
@@ -53,6 +55,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Resize the window to match the game size and update the title.
+    SetWindowTitle(TextFormat("raylib-libretro | %s", GetLibretroName()));
+    SetWindowSize(GetLibretroWidth() * 3, GetLibretroHeight() * 3);
+
     while (!WindowShouldClose() && !LibretroShouldClose()) {
         // Run a frame of the core.
         UpdateLibretro();
@@ -60,7 +66,7 @@ int main(int argc, char* argv[]) {
         // Render the libretro core.
         BeginDrawing();
         {
-            ClearBackground(RAYWHITE);
+            ClearBackground(BLACK);
             DrawLibretro();
         }
         EndDrawing();

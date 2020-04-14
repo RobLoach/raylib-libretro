@@ -7,7 +7,6 @@
 *            - dl
 *            - libretro-common
 *              - dynamic/dylib
-*              - compat/strl
 *              - libretro.h
 *
 *   LICENSE: zlib/libpng

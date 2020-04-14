@@ -7,7 +7,6 @@
 *            - dl
 *            - libretro-common
 *              - dynamic/dylib
-*              - compat/strl
 *              - libretro.h
 *
 *   LICENSE: zlib/libpng
@@ -44,7 +43,6 @@
 #include <stdlib.h>
 
 // libretro-common
-#include <compat/strl.h>
 #include <dynamic/dylib.h>
 #include "libretro.h"
 
@@ -66,10 +64,14 @@ static bool InitLibretro(const char* core);              // Initialize the given
 static bool LoadLibretroGame(const char* gameFile);      // Load the provided content.
 static void UpdateLibretro();                            // Run an iteration of the core.
 static bool LibretroShouldClose();                       // Check whether or not the core has requested to shutdown.
-static void DrawLibretro();                              // Draw the libretro state across the whole screen.
+static void DrawLibretro();                              // Draw the libretro state on the screen.
+static void DrawLibretroTint(Color tint);                // Draw the libretro state on the screen with a tint.
 static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint);
 static void DrawLibretroV(Vector2 position, Color tint);
 static void DrawLibretroTexture(int posX, int posY, Color tint);
+static void DrawLibretroPro(Rectangle destRec, Color tint);
+static unsigned GetLibretroWidth();                      // Get the desired width of the libretro core.
+static unsigned GetLibretroHeight();                     // Get the desired height of the libretro core.
 static Texture2D GetLibretroTexture();                   // Retrieve the texture used to render the libretro state.
 static void UnloadLibretroGame();                        // Unload the game that's currently loaded.
 static void CloseLibretro();                             // Close the initialized libretro core.
@@ -78,7 +80,7 @@ static void CloseLibretro();                             // Close the initialize
    function_t func = dylib_proc(LibretroCore.handle, #S); \
    memcpy(&V, &func, sizeof(func)); \
    if (!func) \
-      TraceLog(LOG_ERROR, "LIBRETRO: Failed to load symbol '" #S "'"); \
+      TraceLog(LOG_ERROR, "LIBRETRO: Failed to load symbol '" #S "' - ", dylib_error()); \
    } while (0)
 
 #define load_retro_sym(S) load_sym(LibretroCore.S, S)
@@ -115,8 +117,8 @@ typedef struct rLibretro {
     // System Information.
     bool initialized;
     bool shutdown;
-    float windowScale;
-    int width, height, fps, sampleRate;
+    unsigned width, height, fps, sampleRate;
+    float aspectRatio;
     char libraryName[200];
     char libraryVersion[200];
     char validExtensions[200];
@@ -151,10 +153,6 @@ static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
 }
 
 static void LibretroInitVideo() {
-    // Make sure the window size is appropriate.
-    // TODO: Remove window manipulation from rLibretro.
-    SetWindowSize(LibretroCore.width * LibretroCore.windowScale, LibretroCore.height * LibretroCore.windowScale);
-
     // Unload the existing texture if it exists already.
     UnloadTexture(LibretroCore.texture);
 
@@ -176,14 +174,15 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
         {
             if (data == NULL) {
-                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO no data provided.");
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO no data provided");
                 return false;
             }
             const struct retro_system_av_info av = *(const struct retro_system_av_info *)data;
-            LibretroCore.width = av.geometry.max_width;
-            LibretroCore.height = av.geometry.max_height;
+            LibretroCore.width = av.geometry.base_width;
+            LibretroCore.height = av.geometry.base_height;
             LibretroCore.fps = av.timing.fps;
             LibretroCore.sampleRate = av.timing.sample_rate;
+            LibretroCore.aspectRatio = av.geometry.aspect_ratio;
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO %ix%i @ %i FPS %i",
                 LibretroCore.width,
                 LibretroCore.height,
@@ -195,7 +194,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL:
         {
             if (data == NULL) {
-                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL no data provided.");
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL no data provided");
                 return false;
             }
             LibretroCore.performanceLevel = *(const unsigned *)data;
@@ -205,7 +204,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
         {
             if (data == NULL) {
-                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME no data provided.");
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME no data provided");
                 return false;
             }
             LibretroCore.supportNoGame = *(bool*)data;
@@ -216,19 +215,19 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         {
             // Sets the given variable.
             // TODO: RETRO_ENVIRONMENT_SET_VARIABLES
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_VARIABLES not implemented.");
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_VARIABLES not implemented");
         }
         break;
         case RETRO_ENVIRONMENT_GET_VARIABLE:
         {
             if (data == NULL) {
-                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VARIABLE no data provided.");
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VARIABLE no data provided");
                 return false;
             }
             // TODO: Retrieve varables with RETRO_ENVIRONMENT_GET_VARIABLE.
             struct retro_variable* variableData = (struct retro_variable *)data;
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_GET_VARIABLE: %s", variableData->key);
-            // variableData->value = "";
+            variableData->value = "";
         }
         break;
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
@@ -242,7 +241,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         {
             // TODO: RETRO_ENVIRONMENT_SET_MESSAGE Display a message on the screen.
             if (data == NULL) {
-                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE no data provided.");
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE no data provided");
                 return false;
             }
             const struct retro_message message = *(const struct retro_message *)data;
@@ -255,9 +254,27 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         break;
         case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
         {
+            if (data == NULL) {
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT no data set");
+                return false;
+            }
             const enum retro_pixel_format* pixelFormat = (const enum retro_pixel_format *)data;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: %i", *pixelFormat);
             LibretroCore.pixelFormat = *pixelFormat;
+
+            switch (LibretroCore.pixelFormat) {
+            case RETRO_PIXEL_FORMAT_0RGB1555:
+                TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT 0RGB1555");
+                break;
+            case RETRO_PIXEL_FORMAT_XRGB8888:
+                TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT XRGB8888");
+                break;
+            case RETRO_PIXEL_FORMAT_RGB565:
+                TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT RGB565");
+                break;
+            default:
+                TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT UNKNOWN");
+                break;
+            }
         }
         break;
         case RETRO_ENVIRONMENT_SHUTDOWN:
@@ -269,7 +286,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
         {
             if (data == NULL) {
-                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_GET_LOG_INTERFACE no data provided.");
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_GET_LOG_INTERFACE no data provided");
                 return false;
             }
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_GET_LOG_INTERFACE");
@@ -303,11 +320,15 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 static bool LibretroGetAudioVideo() {
     struct retro_system_av_info av = {0};
     LibretroCore.retro_get_system_av_info(&av);
-
-    LibretroCore.width = av.geometry.max_width;
-    LibretroCore.height = av.geometry.max_height;
+    LibretroCore.width = av.geometry.base_width;
+    LibretroCore.height = av.geometry.base_height;
     LibretroCore.fps = av.timing.fps;
     LibretroCore.sampleRate = av.timing.sample_rate;
+    LibretroCore.aspectRatio = av.geometry.aspect_ratio;
+    TraceLog(LOG_INFO, "LIBRETRO: Video and Audio information");
+    TraceLog(LOG_INFO, "    > Display size: %i x %i", LibretroCore.width, LibretroCore.height);
+    TraceLog(LOG_INFO, "    > Target FPS:   %i", LibretroCore.fps);
+    TraceLog(LOG_INFO, "    > Sample rate:  %i Hz", LibretroCore.sampleRate);
 
     return true;
 }
@@ -334,7 +355,7 @@ static bool LibretroShouldClose() {
 static void LibretroVideoRefresh(const void *data, unsigned width, unsigned height, size_t pitch) {
     // Only act when there is usable pixel data.
     if (!data) {
-        TraceLog(LOG_WARNING, "LIBRETRO: VideoRefresh provided no pixel data.");
+        TraceLog(LOG_WARNING, "LIBRETRO: VideoRefresh provided no pixel data");
         return;
     }
 
@@ -349,7 +370,7 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
     switch (LibretroCore.pixelFormat) {
         case RETRO_PIXEL_FORMAT_XRGB8888:
         {
-            // Port to UNCOMPRESSED_R8G8B8A8;
+            // Port RETRO_PIXEL_FORMAT_XRGB8888 to UNCOMPRESSED_R8G8B8A8.
             LibretroMapPixelFormatARGB8888ToABGR8888((void*)data, data, width, height, width << 2, width << 2);
         }
         break;
@@ -361,8 +382,8 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         case RETRO_PIXEL_FORMAT_0RGB1555:
         default:
         {
-            // TODO: Port RETRO_PIXEL_FORMAT_0RGB1555 to UNCOMPRESSED_R5G5B5A1;
-            TraceLog(LOG_WARNING, "LIBRETRO: Pixelformat: RETRO_PIXEL_FORMAT_0RGB1555 to UNCOMPRESSED_R5G5B5A1 not implemented");
+            // Port RETRO_PIXEL_FORMAT_0RGB1555 to UNCOMPRESSED_R5G6B5
+            LibretroMapPixelFormatARGB1555ToRGB565((void*)data, data, width, height, width << 2, width << 2);
         }
     }
 
@@ -503,6 +524,10 @@ static bool LoadLibretroGame(const char* gameFile) {
     return LibretroInitAudioVideo();
 }
 
+static const char* GetLibretroName() {
+    return LibretroCore.libraryName;
+}
+
 static bool InitLibretro(const char* core) {
     // Ensure the core exists.
     if (!FileExists(core)) {
@@ -520,16 +545,38 @@ static bool InitLibretro(const char* core) {
         return false;
     }
 
+    // Find the libretro API version.
+    load_retro_sym(retro_api_version);
+    LibretroCore.apiVersion = LibretroCore.retro_api_version();
+    TraceLog(LOG_INFO, "LIBRETRO: API version: %i", LibretroCore.apiVersion);
+    if (LibretroCore.apiVersion != 1) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Incompatible API version");
+        return false;
+    }
+
+    // Retrieve the libretro core system information.
+    load_retro_sym(retro_get_system_info);
+    struct retro_system_info systemInfo;
+    LibretroCore.retro_get_system_info(&systemInfo);
+    TextCopy(LibretroCore.libraryName, systemInfo.library_name);
+    TextCopy(LibretroCore.libraryVersion, systemInfo.library_version);
+    TextCopy(LibretroCore.validExtensions, systemInfo.valid_extensions);
+    LibretroCore.needFullpath = systemInfo.need_fullpath;
+    LibretroCore.blockExtract = systemInfo.block_extract;
+    TraceLog(LOG_INFO, "LIBRETRO: Core loaded successfully");
+    TraceLog(LOG_INFO, "    > Name:         %s", LibretroCore.libraryName);
+    TraceLog(LOG_INFO, "    > Version:      %s", LibretroCore.libraryVersion);
+    TraceLog(LOG_INFO, "    > Extensions:   %s", LibretroCore.validExtensions);
+
+    // Load all other libretro methods.
     load_retro_sym(retro_init);
     load_retro_sym(retro_deinit);
-    load_retro_sym(retro_api_version);
     load_retro_sym(retro_set_environment);
     load_retro_sym(retro_set_video_refresh);
     load_retro_sym(retro_set_audio_sample);
     load_retro_sym(retro_set_audio_sample_batch);
     load_retro_sym(retro_set_input_poll);
     load_retro_sym(retro_set_input_state);
-    load_retro_sym(retro_get_system_info);
     load_retro_sym(retro_get_system_av_info);
     load_retro_sym(retro_set_controller_port_device);
     load_retro_sym(retro_reset);
@@ -545,28 +592,6 @@ static bool InitLibretro(const char* core) {
     load_retro_sym(retro_get_region);
     load_retro_sym(retro_get_memory_data);
     load_retro_sym(retro_get_memory_size);
-
-    // Find the libretro API version.
-    LibretroCore.apiVersion = LibretroCore.retro_api_version();
-    TraceLog(LOG_INFO, "LIBRETRO: API version: %i", LibretroCore.apiVersion);
-    if (LibretroCore.apiVersion != 1) {
-        TraceLog(LOG_ERROR, "LIBRETRO: Incompatible API version");
-        return false;
-    }
-
-    // Retrieve the libretro core system information.
-    struct retro_system_info systemInfo;
-    LibretroCore.retro_get_system_info(&systemInfo);
-    strlcpy(LibretroCore.libraryName, systemInfo.library_name, sizeof(LibretroCore.libraryName));
-    strlcpy(LibretroCore.libraryVersion, systemInfo.library_version, sizeof(LibretroCore.libraryVersion));
-    strlcpy(LibretroCore.validExtensions, systemInfo.valid_extensions, sizeof(LibretroCore.validExtensions));
-    LibretroCore.needFullpath = systemInfo.need_fullpath;
-    LibretroCore.blockExtract = systemInfo.block_extract;
-    TraceLog(LOG_INFO, "LIBRETRO: Core loaded successfully");
-    TraceLog(LOG_INFO, "    > Name:         %s", LibretroCore.libraryName);
-    TraceLog(LOG_INFO, "    > Version:      %s", LibretroCore.libraryVersion);
-    TraceLog(LOG_INFO, "    > Extensions:   %s", LibretroCore.validExtensions);
-
     // TODO: Add ability to peek inside the core to grab data.
     /*
     if (peek) {
@@ -577,7 +602,6 @@ static bool InitLibretro(const char* core) {
 
     // Initialize the core.
     LibretroCore.shutdown = false;
-    LibretroCore.windowScale = 3;
 
     // Set up the callbacks.
     LibretroCore.retro_set_video_refresh(LibretroVideoRefresh);
@@ -593,11 +617,6 @@ static bool InitLibretro(const char* core) {
     return true;
 }
 
-static void DrawLibretro() {
-    Vector2 position = {0, 0};
-    DrawTextureEx(LibretroCore.texture, position, 0, LibretroCore.windowScale, RAYWHITE);
-}
-
 static void DrawLibretroTexture(int posX, int posY, Color tint) {
     DrawTexture(LibretroCore.texture, posX, posY, tint);
 }
@@ -608,6 +627,45 @@ static void DrawLibretroV(Vector2 position, Color tint) {
 
 static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint) {
     DrawTextureEx(LibretroCore.texture, position, rotation, scale, tint);
+}
+
+static void DrawLibretroPro(Rectangle destRec, Color tint) {
+    Rectangle source = {0, 0, LibretroCore.width, LibretroCore.height};
+    Vector2 origin = {0, 0};
+    DrawTexturePro(LibretroCore.texture, source, destRec, origin, 0, tint);
+}
+
+static void DrawLibretroTint(Color tint) {
+    // Find the aspect ratio.
+    float aspect = LibretroCore.aspectRatio;
+    if (aspect <= 0) {
+        aspect = (float)LibretroCore.width / (float)LibretroCore.height;
+    }
+
+    // Calculate the optimal width/height to display in the screen size.
+    int height = GetScreenHeight();
+    int width = height * aspect;
+    if (width > GetScreenWidth()) {
+        height = (float)GetScreenWidth() / aspect;
+        width = GetScreenWidth();
+    }
+
+    // Draw the texture in the middle of the window.
+    int x = (GetScreenWidth() - width) / 2;
+    int y = (GetScreenHeight() - height) / 2;
+    Rectangle destRect = {x,y, width, height};
+    DrawLibretroPro(destRect, tint);
+}
+
+static void DrawLibretro() {
+    DrawLibretroTint(WHITE);
+}
+
+static unsigned GetLibretroWidth() {
+    return LibretroCore.width;
+}
+static unsigned GetLibretroHeight() {
+    return LibretroCore.height;
 }
 
 static Texture2D GetLibretroTexture() {

@@ -434,15 +434,15 @@ static int LibretroMapRetroJoypadButtonToGamepadButton(int button) {
 static int LibretroMapRetroPixelFormatToPixelFormat(int pixelFormat) {
     switch (pixelFormat) {
         case RETRO_PIXEL_FORMAT_0RGB1555:
-            return UNCOMPRESSED_R5G5B5A1;
+            return UNCOMPRESSED_R5G6B5;
         case RETRO_PIXEL_FORMAT_XRGB8888:
             return UNCOMPRESSED_R8G8B8A8;
         case RETRO_PIXEL_FORMAT_RGB565:
             return UNCOMPRESSED_R5G6B5;
     }
 
-    // By default, assume 5551.
-    return UNCOMPRESSED_R5G5B5A1;
+    // By default, assume RETRO_PIXEL_FORMAT_0RGB1555.
+    return UNCOMPRESSED_R5G6B5;
 }
 
 /**
@@ -463,6 +463,30 @@ static void LibretroMapPixelFormatARGB8888ToABGR8888(void *output_, const void *
             output[w] = ((col << 16) & 0xff0000) |
                 ((col >> 16) & 0xff) |
                 (col & 0xff00ff00);
+        }
+    }
+}
+
+// TODO: Verify that this function is working.
+void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
+        int width, int height,
+        int out_stride, int in_stride) {
+    int h;
+    const uint16_t *input = (const uint16_t*)input_;
+    uint16_t *output = (uint16_t*)output_;
+
+    for (h = 0; h < height;
+            h++,
+            output += out_stride >> 1,
+            input += in_stride >> 1) {
+        int w = 0;
+
+        for (; w < width; w++) {
+            uint16_t col  = input[w];
+            uint16_t rg   = (col << 1) & ((0x1f << 11) | (0x1f << 6));
+            uint16_t b    = col & 0x1f;
+            uint16_t glow = (col >> 4) & (1 << 5);
+            output[w]     = rg | b | glow;
         }
     }
 }

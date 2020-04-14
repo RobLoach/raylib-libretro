@@ -15,14 +15,11 @@ if (NOT raylib_FOUND)
     add_subdirectory(vendor/raylib)
 endif()
 
-# rlibretro
+# rlibretro static library
 add_library(rlibretro STATIC
     include/rlibretro.h
     include/rlibretro-map.h
     lib/rlibretro.c
-    vendor/libretro-common/compat/compat_strl.c
-    vendor/libretro-common/compat/compat_posix_string.c
-    vendor/libretro-common/encodings/encoding_utf.c
     vendor/libretro-common/dynamic/dylib.c
 )
 target_link_libraries(rlibretro PUBLIC
@@ -37,7 +34,7 @@ target_compile_definitions(rlibretro PUBLIC
     HAVE_DYNAMIC=1
 )
 
-# raylib-libretro
+# raylib-libretro binary
 add_executable(raylib-libretro
     bin/raylib-libretro.c
 )
