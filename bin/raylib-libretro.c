@@ -31,13 +31,14 @@
 
 int main(int argc, char* argv[]) {
     // Ensure proper amount of arguments.
+    SetTraceLogExit(LOG_FATAL);
     if (argc <= 1) {
         TraceLog(LOG_ERROR, "Usage: %s <core> [game]", argv[0]);
         return 1;
     }
 
     // Create the window and audio.
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(800, 600, "raylib-libretro");
     SetWindowMinSize(400, 300);
     InitAudioDevice();

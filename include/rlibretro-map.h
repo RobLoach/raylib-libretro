@@ -58,6 +58,7 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level) {
  * Map a libretro retro_key to a raylib KeyboardKey.
  */
 static int LibretroMapRetroKeyToKeyboardKey(int key) {
+    // TODO: Fix key mappings usings KEY_APOSTROPHE.
     switch (key){
         case RETROK_BACKSPACE:
             return KEY_BACKSPACE;
@@ -441,14 +442,14 @@ static int LibretroMapRetroPixelFormatToPixelFormat(int pixelFormat) {
             return UNCOMPRESSED_R5G6B5;
     }
 
-    // By default, assume RETRO_PIXEL_FORMAT_0RGB1555.
+    // By default, libretro uses RETRO_PIXEL_FORMAT_0RGB1555.
     return UNCOMPRESSED_R5G6B5;
 }
 
 /**
  * Ports pixel data of ARGB8888 pixel format to ABGR8888.
  *
- * TODO: Compile as part of pixconv.c in libretro-common
+ * TODO: Compile directly from pixconv.c in libretro-common.
  */
 static void LibretroMapPixelFormatARGB8888ToABGR8888(void *output_, const void *input_,
         int width, int height,
@@ -470,7 +471,7 @@ static void LibretroMapPixelFormatARGB8888ToABGR8888(void *output_, const void *
 /**
  * Convert a pixel format from 1555 to 565.
  *
- * TODO: Verify that LibretroMapPixelFormatARGB1555ToRGB565 is working. What core uses this?
+ * TODO: Verify that LibretroMapPixelFormatARGB1555ToRGB565 is working. SNES9x uses it.
  */
 void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,

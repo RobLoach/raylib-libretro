@@ -61,7 +61,7 @@ extern "C" {            // Prevents name mangling of functions
 //------------------------------------------------------------------------------------
 
 static bool InitLibretro(const char* core);              // Initialize the given libretro core.
-static bool LoadLibretroGame(const char* gameFile);      // Load the provided content.
+static bool LoadLibretroGame(const char* gameFile);      // Load the provided content. Provide NULL to load the core without content.
 static void UpdateLibretro();                            // Run an iteration of the core.
 static bool LibretroShouldClose();                       // Check whether or not the core has requested to shutdown.
 static void DrawLibretro();                              // Draw the libretro state on the screen.
@@ -77,16 +77,16 @@ static Texture2D GetLibretroTexture();                   // Retrieve the texture
 static void UnloadLibretroGame();                        // Unload the game that's currently loaded.
 static void CloseLibretro();                             // Close the initialized libretro core.
 
-#define load_sym(V, S) do {\
+// Dynamic loading methods.
+#define LoadLibretroMethodHandle(V, S) do {\
     function_t func = dylib_proc(LibretroCore.handle, #S); \
     memcpy(&V, &func, sizeof(func)); \
     if (!func) { \
-        TraceLog(LOG_WARNING, "LIBRETRO: Failed to load symbol '" #S "' ", dylib_error()); \
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load symbol '" #S "' ", dylib_error()); \
         return false; \
     }\
 } while (0)
-
-#define load_retro_sym(S) load_sym(LibretroCore.S, S)
+#define LoadLibretroMethod(S) LoadLibretroMethodHandle(LibretroCore.S, S)
 
 typedef struct rLibretro {
     // Dynamic library symbols.
@@ -486,15 +486,13 @@ static bool LoadLibretroGame(const char* gameFile) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded without content");
             return LibretroInitAudioVideo();
         }
-        else {
-            TraceLog(LOG_WARNING, "LIBRETRO: Failed to load core without content");
-            return false;
-        }
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load core without content");
+        return false;
     }
 
     // Ensure the game exists.
     if (!FileExists(gameFile)) {
-        TraceLog(LOG_WARNING, "LIBRETRO: Given content does not exist: %s", gameFile);
+        TraceLog(LOG_ERROR, "LIBRETRO: Given content does not exist: %s", gameFile);
         return false;
     }
 
@@ -509,7 +507,7 @@ static bool LoadLibretroGame(const char* gameFile) {
             return LibretroInitAudioVideo();
         }
         else {
-            TraceLog(LOG_INFO, "LIBRETRO: Failed to load full path");
+            TraceLog(LOG_ERROR, "LIBRETRO: Failed to load full path");
             return false;
         }
     }
@@ -518,7 +516,7 @@ static bool LoadLibretroGame(const char* gameFile) {
     unsigned int size;
     unsigned char * gameData = LoadFileData(gameFile, &size);
     if (size == 0 || gameData == NULL) {
-        TraceLog(LOG_WARNING, "LIBRETRO: Failed to load game data with LoadFileData()");
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with LoadFileData()");
         return false;
     }
 
@@ -529,8 +527,8 @@ static bool LoadLibretroGame(const char* gameFile) {
     info.size = size;
     info.meta = "";
     if (!LibretroCore.retro_load_game(&info)) {
-        TraceLog(LOG_WARNING, "LIBRETRO: Failed to load game data with retro_load_game()");
         free(gameData);
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with retro_load_game()");
         return false;
     }
     free(gameData);
@@ -544,7 +542,7 @@ static const char* GetLibretroName() {
 static bool InitLibretro(const char* core) {
     // Ensure the core exists.
     if (!FileExists(core)) {
-        TraceLog(LOG_WARNING, "LIBRETRO: Given core doesn't exist: %s", core);
+        TraceLog(LOG_ERROR, "LIBRETRO: Given core doesn't exist: %s", core);
         return false;
     }
 
@@ -556,22 +554,22 @@ static bool InitLibretro(const char* core) {
     // Open the dynamic library.
     LibretroCore.handle = dylib_load(core);
     if (!LibretroCore.handle) {
-        TraceLog(LOG_WARNING, "LIBRETRO: Failed to provided library");
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load provided library");
         return false;
     }
 
     // Find the libretro API version.
-    load_retro_sym(retro_api_version);
+    LoadLibretroMethod(retro_api_version);
     LibretroCore.apiVersion = LibretroCore.retro_api_version();
     TraceLog(LOG_INFO, "LIBRETRO: API version: %i", LibretroCore.apiVersion);
     if (LibretroCore.apiVersion != 1) {
-        TraceLog(LOG_WARNING, "LIBRETRO: Incompatible API version");
         CloseLibretro();
+        TraceLog(LOG_ERROR, "LIBRETRO: Incompatible API version");
         return false;
     }
 
     // Retrieve the libretro core system information.
-    load_retro_sym(retro_get_system_info);
+    LoadLibretroMethod(retro_get_system_info);
     struct retro_system_info systemInfo;
     LibretroCore.retro_get_system_info(&systemInfo);
     TextCopy(LibretroCore.libraryName, systemInfo.library_name);
@@ -586,30 +584,6 @@ static bool InitLibretro(const char* core) {
         TraceLog(LOG_INFO, "    > Extensions:   %s", LibretroCore.validExtensions);
     }
 
-    // Load all other libretro methods.
-    load_retro_sym(retro_init);
-    load_retro_sym(retro_deinit);
-    load_retro_sym(retro_set_environment);
-    load_retro_sym(retro_set_video_refresh);
-    load_retro_sym(retro_set_audio_sample);
-    load_retro_sym(retro_set_audio_sample_batch);
-    load_retro_sym(retro_set_input_poll);
-    load_retro_sym(retro_set_input_state);
-    load_retro_sym(retro_get_system_av_info);
-    load_retro_sym(retro_set_controller_port_device);
-    load_retro_sym(retro_reset);
-    load_retro_sym(retro_run);
-    load_retro_sym(retro_serialize_size);
-    load_retro_sym(retro_serialize);
-    load_retro_sym(retro_unserialize);
-    load_retro_sym(retro_cheat_reset);
-    load_retro_sym(retro_cheat_set);
-    load_retro_sym(retro_load_game);
-    load_retro_sym(retro_load_game_special);
-    load_retro_sym(retro_unload_game);
-    load_retro_sym(retro_get_region);
-    load_retro_sym(retro_get_memory_data);
-    load_retro_sym(retro_get_memory_size);
     // TODO: Add ability to peek inside the core to grab data.
     /*
     if (peek) {
@@ -617,6 +591,31 @@ static bool InitLibretro(const char* core) {
         return true;
     }
     */
+
+    // Load all other libretro methods.
+    LoadLibretroMethod(retro_init);
+    LoadLibretroMethod(retro_deinit);
+    LoadLibretroMethod(retro_set_environment);
+    LoadLibretroMethod(retro_set_video_refresh);
+    LoadLibretroMethod(retro_set_audio_sample);
+    LoadLibretroMethod(retro_set_audio_sample_batch);
+    LoadLibretroMethod(retro_set_input_poll);
+    LoadLibretroMethod(retro_set_input_state);
+    LoadLibretroMethod(retro_get_system_av_info);
+    LoadLibretroMethod(retro_set_controller_port_device);
+    LoadLibretroMethod(retro_reset);
+    LoadLibretroMethod(retro_run);
+    LoadLibretroMethod(retro_serialize_size);
+    LoadLibretroMethod(retro_serialize);
+    LoadLibretroMethod(retro_unserialize);
+    LoadLibretroMethod(retro_cheat_reset);
+    LoadLibretroMethod(retro_cheat_set);
+    LoadLibretroMethod(retro_load_game);
+    LoadLibretroMethod(retro_load_game_special);
+    LoadLibretroMethod(retro_unload_game);
+    LoadLibretroMethod(retro_get_region);
+    LoadLibretroMethod(retro_get_memory_data);
+    LoadLibretroMethod(retro_get_memory_size);
 
     // Initialize the core.
     LibretroCore.shutdown = false;
@@ -667,10 +666,10 @@ static void DrawLibretroTint(Color tint) {
         width = GetScreenWidth();
     }
 
-    // Draw the texture in the middle of the window.
+    // Draw the texture in the middle of the screen.
     int x = (GetScreenWidth() - width) / 2;
     int y = (GetScreenHeight() - height) / 2;
-    Rectangle destRect = {x,y, width, height};
+    Rectangle destRect = {x, y, width, height};
     DrawLibretroPro(destRect, tint);
 }
 
@@ -695,13 +694,21 @@ static void UnloadLibretroGame() {
     }
 }
 
+/**
+ * Close the libretro core.
+ */
 static void CloseLibretro() {
-    StopAudioStream(LibretroCore.audioStream);
+    // Call retro_deinit() to deinitialize the core.
     if (LibretroCore.retro_deinit) {
         LibretroCore.retro_deinit();
     }
-    UnloadTexture(LibretroCore.texture);
+
+    // Stop, close and unload all raylib objects.
+    StopAudioStream(LibretroCore.audioStream);
     CloseAudioStream(LibretroCore.audioStream);
+    UnloadTexture(LibretroCore.texture);
+
+    // Close the dynamically loaded handle.
     if (LibretroCore.handle != NULL) {
         dylib_close(LibretroCore.handle);
     }

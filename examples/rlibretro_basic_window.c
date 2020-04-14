@@ -41,20 +41,11 @@ int main(int argc, char* argv[]) {
     InitAudioDevice();
 
     // Initialize the given core.
-    if (!InitLibretro(argv[1])) {
-        CloseWindow();
-        return 1;
-    }
+    InitLibretro(argv[1]);
 
     // Load the given game.
     const char* gameFile = (argc > 2) ? argv[2] : NULL;
-    if (!LoadLibretroGame(gameFile)) {
-        CloseLibretro();
-        CloseWindow();
-        return 1;
-    }
-
-    SetWindowSize(GetLibretroWidth() * 3, GetLibretroHeight() * 3);
+    LoadLibretroGame(gameFile);
 
     while (!WindowShouldClose()) {
         // Run a frame of the core.
