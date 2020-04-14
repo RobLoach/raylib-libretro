@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    while (!WindowShouldClose() && !LibretroShouldClose()) {
+    while (!WindowShouldClose()) {
         // Run a frame of the core.
         UpdateLibretro();
 

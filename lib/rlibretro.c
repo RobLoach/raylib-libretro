@@ -1,10 +1,18 @@
 /**********************************************************************************************
 *
-*   raylib-libretro - A libretro frontend using raylib.
+*   rlibretro - Raylib extension to interact with libretro cores, static build.
+*
+*   DEPENDENCIES:
+*            - raylib
+*            - dl
+*            - libretro-common
+*              - dynamic/dylib
+*              - compat/strl
+*              - libretro.h
 *
 *   LICENSE: zlib/libpng
 *
-*   raylib-libretro is licensed under an unmodified zlib/libpng license, which is an OSI-certified,
+*   rLibretro is licensed under an unmodified zlib/libpng license, which is an OSI-certified,
 *   BSD-like license that allows static linking with closed source software:
 *
 *   Copyright (c) 2020 Rob Loach (@RobLoach)
@@ -26,52 +34,4 @@
 *
 **********************************************************************************************/
 
-#include "raylib.h"
 #include "../include/rlibretro.h"
-
-int main(int argc, char* argv[]) {
-    // Ensure proper amount of arguments.
-    if (argc <= 1) {
-        TraceLog(LOG_ERROR, "Usage: %s <core> [game]", argv[0]);
-        return 1;
-    }
-
-    // Create the window and audio.
-    InitWindow(800, 600, "raylib-libretro");
-    InitAudioDevice();
-
-    // Initialize the given core.
-    if (!InitLibretro(argv[1])) {
-        CloseWindow();
-        return 1;
-    }
-
-    // Load the given game.
-    const char* gameFile = (argc > 2) ? argv[2] : NULL;
-    if (!LoadLibretroGame(gameFile)) {
-        CloseWindow();
-        return 1;
-    }
-
-    while (!WindowShouldClose() && !LibretroShouldClose()) {
-        // Run a frame of the core.
-        UpdateLibretro();
-
-        // Render the libretro core.
-        BeginDrawing();
-        {
-            ClearBackground(RAYWHITE);
-            DrawLibretro();
-        }
-        EndDrawing();
-    }
-
-    // Unload the game and close the core.
-    UnloadLibretroGame();
-    CloseLibretro();
-
-    CloseAudioDevice();
-    CloseWindow();
-
-    return 0;
-}

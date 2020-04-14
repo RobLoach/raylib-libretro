@@ -15,21 +15,41 @@ if (NOT raylib_FOUND)
     add_subdirectory(vendor/raylib)
 endif()
 
-# raylib-libretro
-add_executable(raylib-libretro
-    bin/raylib-libretro.c
+# rlibretro
+add_library(rlibretro STATIC
+    lib/rlibretro.c
     vendor/libretro-common/compat/compat_strl.c
     vendor/libretro-common/compat/compat_posix_string.c
     vendor/libretro-common/encodings/encoding_utf.c
     vendor/libretro-common/dynamic/dylib.c
 )
-target_link_libraries(raylib-libretro PUBLIC
+target_link_libraries(rlibretro PUBLIC
     raylib
     ${CMAKE_DL_LIBS}
 )
-target_include_directories(raylib-libretro PUBLIC
+target_include_directories(rlibretro PUBLIC
     vendor/libretro-common/include
+    include
 )
-target_compile_definitions(raylib-libretro PRIVATE
+target_compile_definitions(rlibretro PUBLIC
     HAVE_DYNAMIC=1
 )
+
+# raylib-libretro
+add_executable(raylib-libretro
+    bin/raylib-libretro.c
+)
+target_link_libraries(raylib-libretro PUBLIC
+    rlibretro
+)
+
+# Examples
+option(BUILD_RLIBRETRO_EXAMPLES "rlibretro Examples" ON)
+if (BUILD_RLIBRETRO_EXAMPLES)
+    add_executable(rlibretro_basic_window
+        examples/rlibretro_basic_window.c
+    )
+    target_link_libraries(rlibretro_basic_window PUBLIC
+        rlibretro
+    )
+endif()

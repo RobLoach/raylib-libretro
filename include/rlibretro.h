@@ -1,6 +1,14 @@
 /**********************************************************************************************
 *
-*   rLibretro - Integrates the libretro API with raylib.
+*   rlibretro - Raylib extension to interact with libretro cores.
+*
+*   DEPENDENCIES:
+*            - raylib
+*            - dl
+*            - libretro-common
+*              - dynamic/dylib
+*              - compat/strl
+*              - libretro.h
 *
 *   LICENSE: zlib/libpng
 *
@@ -26,8 +34,8 @@
 *
 **********************************************************************************************/
 
-#ifndef RAYLIB_LIBRETRO_RLIBRETRO_HPP
-#define RAYLIB_LIBRETRO_RLIBRETRO_HPP
+#ifndef RAYLIB_LIBRETRO_RLIBRETRO_H
+#define RAYLIB_LIBRETRO_RLIBRETRO_H
 
 // System dependencies
 #include <string.h>
@@ -44,11 +52,28 @@
 #include "raylib.h"
 
 // raylib-libretro includes
-#include "rLibretroMap.h"
+#include "rlibretro-map.h"
 
-/**
- * Load a symbol using the given names in LibretroCore.
- */
+#if defined(__cplusplus)
+extern "C" {            // Prevents name mangling of functions
+#endif
+
+//------------------------------------------------------------------------------------
+// Libretro Raylib Integration (Module: rlibretro)
+//------------------------------------------------------------------------------------
+
+static bool InitLibretro(const char* core);              // Initialize the given libretro core.
+static bool LoadLibretroGame(const char* gameFile);      // Load the provided content.
+static void UpdateLibretro();                            // Run an iteration of the core.
+static bool LibretroShouldClose();                       // Check whether or not the core has requested to shutdown.
+static void DrawLibretro();                              // Draw the libretro state across the whole screen.
+static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint);
+static void DrawLibretroV(Vector2 position, Color tint);
+static void DrawLibretroTexture(int posX, int posY, Color tint);
+static Texture2D GetLibretroTexture();                   // Retrieve the texture used to render the libretro state.
+static void UnloadLibretroGame();                        // Unload the game that's currently loaded.
+static void CloseLibretro();                             // Close the initialized libretro core.
+
 #define load_sym(V, S) do {\
    function_t func = dylib_proc(LibretroCore.handle, #S); \
    memcpy(&V, &func, sizeof(func)); \
@@ -56,14 +81,11 @@
       TraceLog(LOG_ERROR, "LIBRETRO: Failed to load symbol '" #S "'"); \
    } while (0)
 
-/**
- * Load the given symbol into LibretroCore.
- */
 #define load_retro_sym(S) load_sym(LibretroCore.S, S)
 
 typedef struct rLibretro {
+    // Dynamic library symbols.
     void *handle;
-
     void (*retro_init)(void);
     void (*retro_deinit)(void);
     unsigned (*retro_api_version)(void);
@@ -105,7 +127,7 @@ typedef struct rLibretro {
     enum retro_pixel_format pixelFormat;
     unsigned performanceLevel;
 
-    // The texture used to render on the screen.
+    // Raylib objects used to play the libretro core.
     Texture texture;
     AudioStream audioStream;
 } rLibretro;
@@ -614,4 +636,8 @@ static void CloseLibretro() {
     LibretroCore.texture = (Texture){0};
 }
 
-#endif // RAYLIB_LIBRETRO_RLIBRETRO_HPP
+#if defined(__cplusplus)
+}
+#endif
+
+#endif // RAYLIB_LIBRETRO_RLIBRETRO_H

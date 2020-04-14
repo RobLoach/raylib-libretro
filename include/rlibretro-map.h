@@ -1,6 +1,6 @@
 /**********************************************************************************************
 *
-*   rLibretroMap - Provides enumeration mappings between libretro and raylib.
+*   rlibretro-map - Provides enumeration and constant mappings between libretro and raylib.
 *
 *   LICENSE: zlib/libpng
 *
@@ -26,11 +26,15 @@
 *
 **********************************************************************************************/
 
-#ifndef RAYLIB_LIBRETRO_RLIBRETROMAP_H
-#define RAYLIB_LIBRETRO_RLIBRETROMAP_H
+#ifndef RAYLIB_LIBRETRO_RLIBRETRO_MAP_H
+#define RAYLIB_LIBRETRO_RLIBRETRO_MAP_H
 
 #include "raylib.h"
 #include "libretro.h"
+
+#if defined(__cplusplus)
+extern "C" {            // Prevents name mangling of functions
+#endif
 
 /**
  * Map a libretro retro_log_level to a raylib TraceLogType.
@@ -90,15 +94,15 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_PLUS:
             return KEY_APOSTROPHE;
         case RETROK_COMMA:
-            return KEY_APOSTROPHE;
+            return KEY_COMMA;
         case RETROK_MINUS:
-            return KEY_APOSTROPHE;
+            return KEY_MINUS;
         case RETROK_PERIOD:
-            return KEY_APOSTROPHE;
+            return KEY_PERIOD;
         case RETROK_SLASH:
-            return KEY_APOSTROPHE;
+            return KEY_SLASH;
         case RETROK_0:
-            return KEY_APOSTROPHE;
+            return KEY_ZERO;
         case RETROK_1:
             return KEY_ONE;
         case RETROK_2:
@@ -226,19 +230,19 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_KP9:
             return KEY_KP_9;
         case RETROK_KP_PERIOD:
-            return KEY_PERIOD;
+            return KEY_KP_DECIMAL;
         case RETROK_KP_DIVIDE:
-            return KEY_APOSTROPHE;
+            return KEY_KP_DIVIDE;
         case RETROK_KP_MULTIPLY:
-            return KEY_APOSTROPHE;
+            return KEY_KP_MULTIPLY;
         case RETROK_KP_MINUS:
-            return KEY_APOSTROPHE;
+            return KEY_KP_SUBTRACT;
         case RETROK_KP_PLUS:
-            return KEY_APOSTROPHE;
+            return KEY_KP_ADD;
         case RETROK_KP_ENTER:
-            return KEY_APOSTROPHE;
+            return KEY_KP_ENTER;
         case RETROK_KP_EQUALS:
-            return KEY_APOSTROPHE;
+            return KEY_KP_EQUAL;
         case RETROK_UP:
             return KEY_UP;
         case RETROK_DOWN:
@@ -254,9 +258,9 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_END:
             return KEY_END;
         case RETROK_PAGEUP:
-            return KEY_APOSTROPHE;
+            return KEY_PAGE_UP;
         case RETROK_PAGEDOWN:
-            return KEY_APOSTROPHE;
+            return KEY_PAGE_DOWN;
         case RETROK_F1:
             return KEY_F1;
         case RETROK_F2:
@@ -337,7 +341,7 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
             return KEY_APOSTROPHE;
     }
 
-    return KEY_KB_MENU;
+    return 0;
 }
 
 /**
@@ -463,4 +467,8 @@ static void LibretroMapPixelFormatARGB8888ToABGR8888(void *output_, const void *
     }
 }
 
-#endif // RAYLIB_LIBRETRO_RLIBRETROMAP_H
+#if defined(__cplusplus)
+}
+#endif
+
+#endif // RAYLIB_LIBRETRO_RLIBRETRO_MAP_H
