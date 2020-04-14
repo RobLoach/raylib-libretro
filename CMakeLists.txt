@@ -20,6 +20,9 @@ add_library(rlibretro STATIC
     include/rlibretro.h
     include/rlibretro-map.h
     lib/rlibretro.c
+    vendor/libretro-common/compat/compat_strl.c
+    vendor/libretro-common/compat/compat_posix_string.c
+    vendor/libretro-common/encodings/encoding_utf.c
     vendor/libretro-common/dynamic/dylib.c
 )
 target_link_libraries(rlibretro PUBLIC
