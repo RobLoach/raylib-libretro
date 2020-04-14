@@ -467,7 +467,11 @@ static void LibretroMapPixelFormatARGB8888ToABGR8888(void *output_, const void *
     }
 }
 
-// TODO: Verify that this function is working.
+/**
+ * Convert a pixel format from 1555 to 565.
+ *
+ * TODO: Verify that LibretroMapPixelFormatARGB1555ToRGB565 is working. What core uses this?
+ */
 void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
         int out_stride, int in_stride) {

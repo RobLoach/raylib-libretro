@@ -1,6 +1,6 @@
 /**********************************************************************************************
 *
-*   rlibretro - Raylib extension to interact with libretro cores, static build.
+*   rlibretro - Raylib extension to interact with libretro cores, in a static build.
 *
 *   DEPENDENCIES:
 *            - raylib

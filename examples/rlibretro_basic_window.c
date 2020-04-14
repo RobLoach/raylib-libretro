@@ -49,9 +49,12 @@ int main(int argc, char* argv[]) {
     // Load the given game.
     const char* gameFile = (argc > 2) ? argv[2] : NULL;
     if (!LoadLibretroGame(gameFile)) {
+        CloseLibretro();
         CloseWindow();
         return 1;
     }
+
+    SetWindowSize(GetLibretroWidth() * 3, GetLibretroHeight() * 3);
 
     while (!WindowShouldClose()) {
         // Run a frame of the core.

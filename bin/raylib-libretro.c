@@ -51,11 +51,12 @@ int main(int argc, char* argv[]) {
     // Load the given game.
     const char* gameFile = (argc > 2) ? argv[2] : NULL;
     if (!LoadLibretroGame(gameFile)) {
+        CloseLibretro();
         CloseWindow();
         return 1;
     }
 
-    // Resize the window to match the game size and update the title.
+    // Update the window title and resize the window to match the game.
     SetWindowTitle(TextFormat("raylib-libretro | %s", GetLibretroName()));
     SetWindowSize(GetLibretroWidth() * 3, GetLibretroHeight() * 3);
 
