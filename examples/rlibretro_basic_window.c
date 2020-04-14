@@ -1,6 +1,6 @@
 /**********************************************************************************************
 *
-*   raylib-libretro - A libretro frontend using raylib.
+*   rlibretro_basic_window - A basic example of using rlibretro.h with Raylib.
 *
 *   LICENSE: zlib/libpng
 *
@@ -37,9 +37,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Create the window and audio.
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(800, 600, "raylib-libretro");
-    SetWindowMinSize(400, 300);
+    InitWindow(800, 600, "rlibretro - basic window");
     InitAudioDevice();
 
     // Initialize the given core.
@@ -56,11 +54,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Update the window title and resize the window to match the game.
-    SetWindowTitle(TextFormat("raylib-libretro | %s", GetLibretroName()));
     SetWindowSize(GetLibretroWidth() * 3, GetLibretroHeight() * 3);
 
-    while (!WindowShouldClose() && !LibretroShouldClose()) {
+    while (!WindowShouldClose()) {
         // Run a frame of the core.
         UpdateLibretro();
 
