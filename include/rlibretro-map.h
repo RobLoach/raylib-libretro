@@ -133,7 +133,7 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_GREATER:
             return KEY_APOSTROPHE;
         case RETROK_QUESTION:
-            return KEY_APOSTROPHE;
+            return KEY_SLASH;
         case RETROK_AT:
             return KEY_APOSTROPHE;
         case RETROK_LEFTBRACKET:
@@ -145,7 +145,7 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_CARET:
             return KEY_APOSTROPHE;
         case RETROK_UNDERSCORE:
-            return KEY_APOSTROPHE;
+            return KEY_MINUS;
         case RETROK_BACKQUOTE:
             return KEY_APOSTROPHE;
         case RETROK_a:
@@ -197,7 +197,7 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_x:
             return KEY_X;
         case RETROK_y:
-            return KEY_X;
+            return KEY_Y;
         case RETROK_z:
             return KEY_Z;
         case RETROK_LEFTBRACE:
@@ -207,7 +207,7 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_RIGHTBRACE:
             return KEY_APOSTROPHE;
         case RETROK_TILDE:
-            return KEY_APOSTROPHE;
+            return KEY_GRAVE;
         case RETROK_DELETE:
             return KEY_DELETE;
         case RETROK_KP0:
@@ -325,7 +325,7 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_HELP:
             return KEY_APOSTROPHE;
         case RETROK_PRINT:
-            return KEY_APOSTROPHE;
+            return KEY_PRINT_SCREEN;
         case RETROK_SYSREQ:
             return KEY_APOSTROPHE;
         case RETROK_BREAK:
