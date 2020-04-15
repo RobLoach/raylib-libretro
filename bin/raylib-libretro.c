@@ -62,6 +62,11 @@ int main(int argc, char* argv[]) {
     SetWindowSize(GetLibretroWidth() * 3, GetLibretroHeight() * 3);
 
     while (!WindowShouldClose() && !LibretroShouldClose()) {
+        // Fullscreen
+        if (IsKeyReleased(KEY_F11)) {
+            ToggleFullscreen();
+        }
+
         // Run a frame of the core.
         UpdateLibretro();
 

@@ -16,6 +16,7 @@ raylib-libretro <core> [game]
 | Buttons  | ZXAS        |
 | Start    | Enter       |
 | Select   | Right Shift |
+| F11      | Fullscreen  |
 
 ## Wishlist
 
