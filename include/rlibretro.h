@@ -88,6 +88,8 @@ static void CloseLibretro();                             // Close the initialize
 } while (0)
 #define LoadLibretroMethod(S) LoadLibretroMethodHandle(LibretroCore.S, S)
 
+#define RLIBRETRO_MAX_SAMPLES 32000
+
 typedef struct rLibretro {
     // Dynamic library symbols.
     void *handle;
@@ -138,6 +140,10 @@ typedef struct rLibretro {
     // Raylib objects used to play the libretro core.
     Texture texture;
     AudioStream audioStream;
+
+    int writeCursor;
+    int16_t audioData[RLIBRETRO_MAX_SAMPLES];
+    int16_t audioWriteBuffer[RLIBRETRO_MAX_SAMPLES];
 } rLibretro;
 
 /**
@@ -503,8 +509,33 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
 
 static size_t LibretroAudioWrite(const int16_t *data, size_t frames) {
     // TODO: Fix Audio being choppy since it doesn't append to the buffer.
+    //if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
+    //    UpdateAudioStream(LibretroCore.audioStream, data, sizeof(*data) * frames);
+    //}
+
+    if (data == NULL) {
+        return 0;
+    }
+
+    // Write the data to the write buffer. Size of the data, in stereo, and number of frames.
+    int i;
+    for (i = 0; i < frames * 2; i++) {
+        if (LibretroCore.writeCursor >= RLIBRETRO_MAX_SAMPLES) {
+            TraceLog(LOG_INFO, "Ran out of sample space.");
+            LibretroCore.writeCursor = 0;
+            return 0;
+        }
+        LibretroCore.audioWriteBuffer[LibretroCore.writeCursor++] = *(data + i);
+    }
+
     if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
-        UpdateAudioStream(LibretroCore.audioStream, data, sizeof(*data) * frames);
+        TraceLog(LOG_INFO, "Reset at %i", LibretroCore.writeCursor);
+        for (i = 0; i < LibretroCore.writeCursor; i++) {
+            LibretroCore.audioData[i] = LibretroCore.audioWriteBuffer[i];
+        }
+
+        UpdateAudioStream(LibretroCore.audioStream, &LibretroCore.audioData, LibretroCore.writeCursor);
+        LibretroCore.writeCursor = 0;
     }
 
     return frames;
@@ -528,6 +559,9 @@ static void LibretroInitAudio()
     // Create a new audio stream.
     LibretroCore.audioStream = InitAudioStream(LibretroCore.sampleRate, 16, 2);
     PlayAudioStream(LibretroCore.audioStream);
+
+    // Buffer for the single cycle waveform we are synthesizing
+    LibretroCore.writeCursor = 0;
     return;
 }
 
