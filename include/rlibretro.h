@@ -131,6 +131,10 @@ typedef struct rLibretro {
     enum retro_pixel_format pixelFormat;
     unsigned performanceLevel;
 
+    // Game data.
+    Vector2 inputLastMousePosition;
+    Vector2 inputMousePosition;
+
     // Raylib objects used to play the libretro core.
     Texture texture;
     AudioStream audioStream;
@@ -185,7 +189,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             LibretroCore.fps = av.timing.fps;
             LibretroCore.sampleRate = av.timing.sample_rate;
             LibretroCore.aspectRatio = av.geometry.aspect_ratio;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO %ix%i @ %i FPS %i",
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO %i x %i @ %i FPS %i Hz",
                 LibretroCore.width,
                 LibretroCore.height,
                 LibretroCore.fps,
@@ -246,6 +250,33 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             // Whether or not the frontend variables have been changed.
             // TODO: RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE
             return false;
+        }
+        break;
+        case RETRO_ENVIRONMENT_SET_GEOMETRY:
+        {
+            if (!data) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_GEOMETRY no data provided");
+                return false;
+            }
+            const struct retro_game_geometry *geom = (const struct retro_game_geometry *)data;
+            LibretroCore.width = geom->base_width;
+            LibretroCore.height = geom->base_height;
+            LibretroCore.aspectRatio = geom->aspect_ratio;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_GEOMETRY %i x %i @ %i FPS %i Hz",
+                LibretroCore.width,
+                LibretroCore.height,
+                LibretroCore.aspectRatio
+            );
+        }
+        break;
+        case RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES:
+        {
+            uint64_t *capabilities = (uint64_t*)data;
+            *capabilities = (1 << RETRO_DEVICE_JOYPAD) |
+                (1 << RETRO_DEVICE_MOUSE) |
+                (1 << RETRO_DEVICE_KEYBOARD) |
+                (1 << RETRO_DEVICE_POINTER);
+            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES");
         }
         break;
         case RETRO_ENVIRONMENT_SET_MESSAGE:
@@ -403,19 +434,22 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
 }
 
 static void LibretroInputPoll() {
-    // TODO: LibretroInputPoll().
+    // Mouse
+    LibretroCore.inputLastMousePosition = LibretroCore.inputMousePosition;
+    LibretroCore.inputMousePosition = GetMousePosition();
 }
 
 static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index, unsigned id) {
-    // TODO: Add multiplayer support.
-    if (port > 0) {
-        return 0;
-    }
-    if (device == RETRO_DEVICE_JOYPAD) {
+    // Force player 1 to use the keyboard.
+    if (device == RETRO_DEVICE_JOYPAD && port == 0) {
         device = RETRO_DEVICE_KEYBOARD;
         id = LibretroMapRetroJoypadButtonToRetroKey(id);
+        if (id == RETROK_UNKNOWN) {
+            return 0;
+        }
     }
 
+    // Keyboard
     if (device == RETRO_DEVICE_KEYBOARD) {
         id = LibretroMapRetroKeyToKeyboardKey(id);
         if (id > 0) {
@@ -423,15 +457,46 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
         }
     }
 
-    // TODO: Add Gamepad support.
+    // Gamepad
+    // TODO: Have gamepads not offset by player 1 on the keyboard.
     if (device == RETRO_DEVICE_JOYPAD) {
         id = LibretroMapRetroJoypadButtonToGamepadButton(id);
-        if (id >= 0) {
-            return (int)IsGamepadButtonDown(port, id);
+        return (int)IsGamepadButtonDown(port - 1, id);
+    }
+
+    // Mouse
+    if (device == RETRO_DEVICE_MOUSE) {
+        switch (id) {
+            case RETRO_DEVICE_ID_MOUSE_LEFT:
+                return IsMouseButtonDown(MOUSE_LEFT_BUTTON);
+            case RETRO_DEVICE_ID_MOUSE_RIGHT:
+                return IsMouseButtonDown(MOUSE_RIGHT_BUTTON);
+            case RETRO_DEVICE_ID_MOUSE_MIDDLE:
+                return IsMouseButtonDown(MOUSE_MIDDLE_BUTTON);
+            case RETRO_DEVICE_ID_MOUSE_X:
+                return LibretroCore.inputMousePosition.x - LibretroCore.inputLastMousePosition.x;
+            case RETRO_DEVICE_ID_MOUSE_Y:
+                return LibretroCore.inputMousePosition.y - LibretroCore.inputLastMousePosition.y;
+            case RETRO_DEVICE_ID_MOUSE_WHEELUP:
+                return GetMouseWheelMove() > 0;
+            case RETRO_DEVICE_ID_MOUSE_WHEELDOWN:
+                return GetMouseWheelMove() < 0;
+            break;
         }
     }
 
-    // TODO: Add Mouse support.
+    // Pointer
+    if (device == RETRO_DEVICE_POINTER) {
+        float max = 0x7fff;
+        switch (id) {
+            case RETRO_DEVICE_ID_POINTER_X:
+                return (float)(GetMouseX() + GetScreenWidth()) / (GetScreenWidth() * 2.0f) * (float)GetScreenWidth();
+            case RETRO_DEVICE_ID_POINTER_Y:
+                return (float)(GetMouseY() + GetScreenHeight()) / (GetScreenHeight() * 2.0f) * (float)GetScreenHeight();
+            case RETRO_DEVICE_ID_POINTER_PRESSED:
+                return IsMouseButtonDown(MOUSE_LEFT_BUTTON);
+        }
+    }
 
     return 0;
 }
