@@ -786,6 +786,15 @@ static bool IsLibretroGameReady() {
     return LibretroCore.loaded;
 }
 
+/**
+ * Retrieve whether or not the game has been loaded.
+ */
+static void ResetLibretro() {
+    if (IsLibretroReady() && LibretroCore.retro_reset) {
+        LibretroCore.retro_reset();
+    }
+}
+
 static void UnloadLibretroGame() {
     if (LibretroCore.retro_unload_game != NULL) {
         LibretroCore.retro_unload_game();

@@ -38,9 +38,12 @@ int main(int argc, char* argv[]) {
     // Create the window and audio.
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(800, 600, "raylib-libretro");
-    SetWindowMinSize(525, 300);
+    SetWindowMinSize(575, 450);
     InitAudioDevice();
-    menuActive = true;
+
+    // Load the menu and shaders.
+    InitMenu();
+    LoadShaders();
 
     // Parse the command line arguments.
     if (argc > 1) {
@@ -49,14 +52,10 @@ int main(int argc, char* argv[]) {
             // Load the given game.
             const char* gameFile = (argc > 2) ? argv[2] : NULL;
             if (LoadLibretroGame(gameFile)) {
-                menuActive = false;
+                SetMenuActive(false);
             }
         }
     }
-
-    // Update the window and load the shaders.
-    LoadShaders();
-    InitMenu();
 
     while (!WindowShouldClose() && !LibretroShouldClose()) {
         // Fullscreen
@@ -91,10 +90,10 @@ int main(int argc, char* argv[]) {
     }
 
     // Unload the game and close the core.
-    UnloadShaders();
     UnloadLibretroGame();
     CloseLibretro();
 
+    UnloadShaders();
     CloseAudioDevice();
     CloseWindow();
 
