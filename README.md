@@ -16,7 +16,8 @@ raylib-libretro <core> [game]
 | Buttons       | ZXAS        |
 | Start         | Enter       |
 | Select        | Right Shift |
-| Switch Shader | F10         |
+| Swich Shader  | F10         |
+| Fullscreen    | F11         |
 
 ## Wishlist
 

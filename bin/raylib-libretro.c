@@ -59,6 +59,11 @@ int main(int argc, char* argv[]) {
     InitMenu();
 
     while (!WindowShouldClose() && !LibretroShouldClose()) {
+        // Fullscreen
+        if (IsKeyReleased(KEY_F11)) {
+            ToggleFullscreen();
+        }
+
         // Update the shaders.
         UpdateShaders();
 
