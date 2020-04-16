@@ -29,39 +29,34 @@
 #include "raylib.h"
 #include "../include/rlibretro.h"
 #include "../src/shaders.h"
+#include "../src/menu.h"
 
 int main(int argc, char* argv[]) {
     // Ensure proper amount of arguments.
     SetTraceLogExit(LOG_FATAL);
-    if (argc <= 1) {
-        TraceLog(LOG_ERROR, "Usage: %s <core> [game]", argv[0]);
-        return 1;
-    }
 
     // Create the window and audio.
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(800, 600, "raylib-libretro");
-    SetWindowMinSize(400, 300);
+    SetWindowMinSize(525, 300);
     InitAudioDevice();
+    menuActive = true;
 
-    // Initialize the given core.
-    if (!InitLibretro(argv[1])) {
-        CloseWindow();
-        return 1;
-    }
-
-    // Load the given game.
-    const char* gameFile = (argc > 2) ? argv[2] : NULL;
-    if (!LoadLibretroGame(gameFile)) {
-        CloseLibretro();
-        CloseWindow();
-        return 1;
+    // Parse the command line arguments.
+    if (argc > 1) {
+        // Initialize the given core.
+        if (InitLibretro(argv[1])) {
+            // Load the given game.
+            const char* gameFile = (argc > 2) ? argv[2] : NULL;
+            if (LoadLibretroGame(gameFile)) {
+                menuActive = false;
+            }
+        }
     }
 
     // Update the window and load the shaders.
-    SetWindowTitle(TextFormat("raylib-libretro | %s", GetLibretroName()));
-    SetWindowSize(GetLibretroWidth() * 3, GetLibretroHeight() * 3);
     LoadShaders();
+    InitMenu();
 
     while (!WindowShouldClose() && !LibretroShouldClose()) {
         // Update the shaders.
@@ -84,6 +79,8 @@ int main(int argc, char* argv[]) {
             if (currentShader > 0) {
                 EndShaderMode();
             }
+
+            UpdateMenu();
         }
         EndDrawing();
     }

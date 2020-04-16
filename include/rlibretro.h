@@ -130,6 +130,7 @@ typedef struct rLibretro {
     unsigned apiVersion;
     enum retro_pixel_format pixelFormat;
     unsigned performanceLevel;
+    bool loaded;
 
     // Game data.
     Vector2 inputLastMousePosition;
@@ -379,9 +380,16 @@ static bool LibretroGetAudioVideo() {
  * Runs an interation of the libretro core.
  */
 static void UpdateLibretro() {
-    if (LibretroCore.retro_run) {
+    if (LibretroCore.loaded && LibretroCore.retro_run != NULL) {
         LibretroCore.retro_run();
     }
+}
+
+/**
+ * Retrieve whether or no the core has been loaded.
+ */
+static bool IsLibretroReady() {
+    return LibretroCore.handle != NULL;
 }
 
 /**
@@ -541,6 +549,8 @@ static bool LibretroInitAudioVideo() {
         SetTargetFPS(LibretroCore.fps);
     }
 
+    LibretroCore.loaded = true;
+
     return true;
 }
 
@@ -602,6 +612,10 @@ static bool LoadLibretroGame(const char* gameFile) {
 
 static const char* GetLibretroName() {
     return LibretroCore.libraryName;
+}
+
+static const char* GetLibretroVersion() {
+    return LibretroCore.libraryVersion;
 }
 
 static bool InitLibretro(const char* core) {
@@ -711,9 +725,11 @@ static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color 
 }
 
 static void DrawLibretroPro(Rectangle destRec, Color tint) {
-    Rectangle source = {0, 0, LibretroCore.width, LibretroCore.height};
-    Vector2 origin = {0, 0};
-    DrawTexturePro(LibretroCore.texture, source, destRec, origin, 0, tint);
+    if (LibretroCore.texture.width > 0){
+        Rectangle source = {0, 0, LibretroCore.width, LibretroCore.height};
+        Vector2 origin = {0, 0};
+        DrawTexturePro(LibretroCore.texture, source, destRec, origin, 0, tint);
+    }
 }
 
 static void DrawLibretroTint(Color tint) {
@@ -753,10 +769,18 @@ static Texture2D GetLibretroTexture() {
     return LibretroCore.texture;
 }
 
+/**
+ * Retrieve whether or not the game has been loaded.
+ */
+static bool IsLibretroGameReady() {
+    return LibretroCore.loaded;
+}
+
 static void UnloadLibretroGame() {
-    if (LibretroCore.retro_unload_game) {
+    if (LibretroCore.retro_unload_game != NULL) {
         LibretroCore.retro_unload_game();
     }
+    LibretroCore.loaded = false;
 }
 
 /**
@@ -776,6 +800,7 @@ static void CloseLibretro() {
     // Close the dynamically loaded handle.
     if (LibretroCore.handle != NULL) {
         dylib_close(LibretroCore.handle);
+        LibretroCore.handle = NULL;
     }
     LibretroCore = (rLibretro){0};
 }

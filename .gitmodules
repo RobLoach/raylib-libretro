@@ -6,3 +6,6 @@
     path = vendor/raylib
     url = https://github.com/raysan5/raylib.git
     ignore = dirty
+[submodule "vendor/raygui"]
+	path = vendor/raygui
+	url = https://github.com/raysan5/raygui.git
