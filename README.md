@@ -10,12 +10,13 @@
 raylib-libretro <core> [game]
 ```
 
-| Control  | Keyboard    |
-| ---      | ---         |
-| D-Pad    | Arrow Keys  |
-| Buttons  | ZXAS        |
-| Start    | Enter       |
-| Select   | Right Shift |
+| Control       | Keyboard    |
+| ---           | ---         |
+| D-Pad         | Arrow Keys  |
+| Buttons       | ZXAS        |
+| Start         | Enter       |
+| Select        | Right Shift |
+| Switch Shader | F10         |
 
 ## Wishlist
 
