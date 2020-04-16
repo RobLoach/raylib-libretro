@@ -22,7 +22,7 @@ raylib-libretro <core> [game]
 
 - [x] Video
 - [x] Resizable Window
-- [ ] Graphical User Interface
+- [x] Graphical User Interface
 - [ ] [`rlibretro.h`](include/rlibretro.h) documentation
 - [ ] Cleaned Audio
 - [ ] Fullscreen
@@ -31,7 +31,7 @@ raylib-libretro <core> [game]
 - [ ] Project Templates (VS2017, etc)
 - [ ] Mouse Support
 - [ ] Zip Loading
-- [ ] Shaders
+- [x] Shaders
 - [ ] Core Options
 - [ ] Binary Releases
 - [ ] OpenGL Cores
