@@ -28,6 +28,7 @@
 
 #include "raylib.h"
 #include "../include/rlibretro.h"
+#include "../src/shaders.h"
 
 int main(int argc, char* argv[]) {
     // Ensure proper amount of arguments.
@@ -57,15 +58,19 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Update the window title and resize the window to match the game.
+    // Update the window and load the shaders.
     SetWindowTitle(TextFormat("raylib-libretro | %s", GetLibretroName()));
     SetWindowSize(GetLibretroWidth() * 3, GetLibretroHeight() * 3);
+    LoadShaders();
 
     while (!WindowShouldClose() && !LibretroShouldClose()) {
         // Fullscreen
         if (IsKeyReleased(KEY_F11)) {
             ToggleFullscreen();
         }
+
+        // Update the shaders.
+        UpdateShaders();
 
         // Run a frame of the core.
         UpdateLibretro();
@@ -74,12 +79,22 @@ int main(int argc, char* argv[]) {
         BeginDrawing();
         {
             ClearBackground(BLACK);
+
+            if (currentShader > 0) {
+                BeginShaderMode(shaders[currentShader - 1]);
+            }
+
             DrawLibretro();
+
+            if (currentShader > 0) {
+                EndShaderMode();
+            }
         }
         EndDrawing();
     }
 
     // Unload the game and close the core.
+    UnloadShaders();
     UnloadLibretroGame();
     CloseLibretro();
 
