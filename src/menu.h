@@ -14,10 +14,9 @@
 bool menuActive;
 GuiFileDialogState openFileDialog;
 int openFileType = 0;
+char* menuMessage;
 
 void InitMenu() {
-    //GuiSetStyle(DEFAULT, TEXT_SIZE, 18);
-
     openFileDialog = InitGuiFileDialog(GetScreenWidth() * 0.8f, GetScreenHeight() * 0.8f, GetWorkingDirectory(), false);
     TextCopy(openFileDialog.dirPathText, GetWorkingDirectory());
     GuiFade(0.9f);
@@ -31,17 +30,21 @@ void UpdateMenu() {
     if (!menuActive) {
         return;
     }
-    int buttonWidth = 150;
+    int buttonWidth = 160;
     int buttonHeight = 50;
     int padding = 50;
     int smallPadding = 25;
 
-    GuiPanel((Rectangle){0,0, GetScreenWidth(), GetScreenHeight()});
+    // Background
+    GuiPanel((Rectangle){0, 0, GetScreenWidth(), GetScreenHeight()});
 
     if (!openFileDialog.fileDialogActive) {
+        // On the main menu, have a large font.
+        GuiSetStyle(DEFAULT, TEXT_SIZE, 20);
+
         // Close Menu
         if (IsLibretroGameReady()) {
-            if (GuiButton((Rectangle){GetScreenWidth() - buttonWidth - padding, padding, buttonWidth, buttonHeight}, GuiIconText(RICON_CROSS, "Close Menu"))) {
+            if (GuiButton((Rectangle){GetScreenWidth() - buttonHeight - padding, padding, buttonHeight, buttonHeight}, GuiIconText(RICON_CROSS, ""))) {
                 menuActive = false;
                 return;
             }
@@ -53,36 +56,46 @@ void UpdateMenu() {
             openFileDialog.fileDialogActive = true;
             openFileType = 0;
         }
-        GuiLabel((Rectangle){ padding + buttonWidth + smallPadding, padding, buttonWidth, buttonHeight }, TextFormat("%s %s", GetLibretroName(), GetLibretroVersion()));
+        GuiLabel((Rectangle){ padding + buttonWidth + smallPadding, padding, buttonWidth, buttonHeight }, GetLibretroName());
 
+        // Core Actions.
         if (IsLibretroReady()) {
             // Open Game
-            if (GuiButton((Rectangle){ padding, buttonHeight + padding + smallPadding, buttonWidth, buttonHeight }, GuiIconText(RICON_FILETYPE_IMAGE, "Open Content")))
-            {
+            if (GuiButton((Rectangle){ padding, buttonHeight + padding + smallPadding, buttonWidth, buttonHeight }, GuiIconText(RICON_FILETYPE_IMAGE, "Open Content"))) {
                 openFileDialog.fileDialogActive = true;
                 openFileType = 1;
+            }
+
+            // Run Game
+            if (GuiButton((Rectangle){ padding, buttonHeight * 2 + padding + smallPadding * 2, buttonWidth, buttonHeight }, GuiIconText(RICON_ARROW_RIGHT_FILL, "Run"))) {
+                if (LoadLibretroGame(NULL)) {
+                    menuActive = false;
+                }
+            }
+        }
+    }
+    else {
+        // When the dialog is displayed, use a smaller font.
+        GuiSetStyle(DEFAULT, TEXT_SIZE, 10);
+        // Select a file.
+        GuiFileDialog(&openFileDialog);
+        if (openFileDialog.SelectFilePressed) {
+            openFileDialog.SelectFilePressed = false;
+            switch (openFileType) {
+                case 0:
+                    TraceLog(LOG_INFO, "Open Core %s/%s", openFileDialog.dirPathText, openFileDialog.fileNameText);
+                    InitLibretro(TextFormat("%s/%s", openFileDialog.dirPathText, openFileDialog.fileNameText));
+                break;
+                case 1:
+                    TraceLog(LOG_INFO, "Open Content %s/%s", openFileDialog.dirPathText, openFileDialog.fileNameText);
+                    if (LoadLibretroGame(TextFormat("%s/%s", openFileDialog.dirPathText, openFileDialog.fileNameText))) {
+                        menuActive = false;
+                    }
+                break;
             }
         }
     }
 
-    // Select a file.
-    GuiFileDialog(&openFileDialog);
-    if (openFileDialog.SelectFilePressed) {
-        switch (openFileType) {
-            case 0:
-                TraceLog(LOG_INFO, "Open Core %s/%s", openFileDialog.dirPathText, openFileDialog.fileNameText);
-                openFileDialog.SelectFilePressed = false;
-                InitLibretro(TextFormat("%s/%s", openFileDialog.dirPathText, openFileDialog.fileNameText));
-            break;
-            case 1:
-                TraceLog(LOG_INFO, "Open Content %s/%s", openFileDialog.dirPathText, openFileDialog.fileNameText);
-                openFileDialog.SelectFilePressed = false;
-                if (LoadLibretroGame(TextFormat("%s/%s", openFileDialog.dirPathText, openFileDialog.fileNameText))) {
-                    menuActive = false;
-                }
-            break;
-        }
-    }
 }
 
 #endif

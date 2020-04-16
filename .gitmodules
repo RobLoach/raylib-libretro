@@ -9,6 +9,8 @@
 [submodule "vendor/raygui"]
 	path = vendor/raygui
 	url = https://github.com/raysan5/raygui.git
+    ignore = dirty
 [submodule "vendor/robloach-raygui"]
 	path = vendor/robloach-raygui
 	url = https://github.com/RobLoach/raygui.git
+    ignore = dirty

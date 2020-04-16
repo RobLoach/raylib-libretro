@@ -62,6 +62,8 @@ extern "C" {            // Prevents name mangling of functions
 
 static bool InitLibretro(const char* core);              // Initialize the given libretro core.
 static bool LoadLibretroGame(const char* gameFile);      // Load the provided content. Provide NULL to load the core without content.
+static bool IsLibretroReady();                           // Whether or not the core was successfully loaded.
+static bool IsLibretroGameReady();                       // Whether or not the game has been loaded.
 static void UpdateLibretro();                            // Run an iteration of the core.
 static bool LibretroShouldClose();                       // Check whether or not the core has requested to shutdown.
 static void DrawLibretro();                              // Draw the libretro state on the screen.
