@@ -2,12 +2,12 @@
 
 [libretro](https://www.libretro.com/) frontend using [raylib](https://www.raylib.com), along with the [`rlibretro.h`](include/rlibretro.h) raylib extension to integrate any raylib application with the libretro API. *Still in early development.*
 
-![Screenshot of raylib-libretro](examples/rlibretro_basic_window.png)
+![Screenshot of raylib-libretro](src/screenshot.png)
 
 ## Usage
 
 ``` sh
-raylib-libretro <core> [game]
+raylib-libretro [core] [game]
 ```
 
 | Control       | Keyboard    |
@@ -16,6 +16,7 @@ raylib-libretro <core> [game]
 | Buttons       | ZXAS        |
 | Start         | Enter       |
 | Select        | Right Shift |
+| Menu          | F1          |
 | Swich Shader  | F10         |
 | Fullscreen    | F11         |
 
@@ -23,17 +24,17 @@ raylib-libretro <core> [game]
 
 - [x] Video
 - [x] Resizable Window
-- [ ] Graphical User Interface
-- [ ] [`rlibretro.h`](include/rlibretro.h) documentation
+- [x] Graphical User Interface
+- [x] Shaders
+- [x] Mouse Support
+- [x] Fullscreen
 - [ ] Cleaned Audio
-- [ ] Fullscreen
+- [ ] Core Options
+- [ ] [`rlibretro.h`](include/rlibretro.h) documentation
 - [ ] Rebindable Inputs
 - [ ] Gamepad Support
 - [ ] Project Templates (VS2017, etc)
-- [ ] Mouse Support
 - [ ] Zip Loading
-- [ ] Shaders
-- [ ] Core Options
 - [ ] Binary Releases
 - [ ] OpenGL Cores
 
