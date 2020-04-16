@@ -47,7 +47,7 @@ target_link_libraries(raylib-libretro PUBLIC
     rlibretro
 )
 target_include_directories(raylib-libretro PUBLIC
-    vendor/raygui/src
+    vendor/robloach-raygui/src
 )
 
 # Examples
