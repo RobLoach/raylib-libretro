@@ -18,27 +18,34 @@ int openFileType = 0;
 char* menuMessage;
 
 void InitMenu() {
-    // TODO: Apply a raygui style? The following is Ashes.
-    // GuiSetStyle(0, 0, 0xf0f0f0ff);
-    // GuiSetStyle(0, 1, 0x868686ff);
-    // GuiSetStyle(0, 2, 0xe6e6e6ff);
-    // GuiSetStyle(0, 3, 0x929999ff);
-    // GuiSetStyle(0, 4, 0xeaeaeaff);
-    // GuiSetStyle(0, 5, 0x98a1a8ff);
-    // GuiSetStyle(0, 6, 0x3f3f3fff);
-    // GuiSetStyle(0, 7, 0xf6f6f6ff);
-    // GuiSetStyle(0, 8, 0x414141ff);
-    // GuiSetStyle(0, 9, 0x8b8b8bff);
-    // GuiSetStyle(0, 10, 0x777777ff);
-    // GuiSetStyle(0, 11, 0x959595ff);
-    // GuiSetStyle(0, 16, 0x00000010);
-    // GuiSetStyle(0, 17, 0x00000001);
-    // GuiSetStyle(0, 18, 0x9dadb1ff);
-    // GuiSetStyle(0, 19, 0x6b6b6bff);
-
-    GuiFade(0.9f);
+    // Set up the file dialog.
     openFileDialog = InitGuiFileDialog(GetScreenWidth() * 0.8f, GetScreenHeight() * 0.8f, GetWorkingDirectory(), false);
     TextCopy(openFileDialog.dirPathText, GetWorkingDirectory());
+
+    // Configure the GUI styles.
+    GuiLoadStyleDefault();
+
+    // Cyber Style
+    GuiSetStyle(0, 0, 0x2f7486ff);
+    GuiSetStyle(0, 1, 0x024658ff);
+    GuiSetStyle(0, 2, 0x51bfd3ff);
+    GuiSetStyle(0, 3, 0x82cde0ff);
+    GuiSetStyle(0, 4, 0x3299b4ff);
+    GuiSetStyle(0, 5, 0xb6e1eaff);
+    GuiSetStyle(0, 6, 0xeb7630ff);
+    GuiSetStyle(0, 7, 0xffbc51ff);
+    GuiSetStyle(0, 8, 0xd86f36ff);
+    GuiSetStyle(0, 9, 0x134b5aff);
+    GuiSetStyle(0, 10, 0x02313dff);
+    GuiSetStyle(0, 11, 0x17505fff);
+    GuiSetStyle(0, 16, 0x0000000e);
+    GuiSetStyle(0, 17, 0x00000000);
+    GuiSetStyle(0, 18, 0x81c0d0ff);
+    GuiSetStyle(0, 19, 0x00222bff);
+
+    // Default style settings.
+    GuiFade(0.9f);
+    GuiSetStyle(DEFAULT, TEXT_SPACING, 3);
 }
 
 void SetMenuActive(bool enabled) {
@@ -70,9 +77,17 @@ void UpdateMenu() {
     // Background
     GuiPanel((Rectangle){0, 0, GetScreenWidth(), GetScreenHeight()});
 
+    // On the main menu, have a large font.
+    GuiSetStyle(DEFAULT, TEXT_SIZE, 20);
+
+    // Status bar
+    if (IsLibretroReady()) {
+        const char* statusText = TextFormat("%s %s", GetLibretroName(), GetLibretroVersion());
+        Rectangle statusBarRect = (Rectangle){0, GetScreenHeight() - 28, GetScreenWidth(), 28};
+        GuiStatusBar(statusBarRect, statusText);
+    }
+
     if (!openFileDialog.fileDialogActive) {
-        // On the main menu, have a large font.
-        GuiSetStyle(DEFAULT, TEXT_SIZE, 20);
 
         // Close Menu
         GuiSetTooltip("Close Menu");
@@ -99,7 +114,6 @@ void UpdateMenu() {
             openFileDialog.fileDialogActive = true;
             openFileType = 0;
         }
-        GuiLabel((Rectangle){ padding + buttonWidth + smallPadding, padding, buttonWidth, buttonHeight }, GetLibretroName());
 
         // Core Actions.
         if (IsLibretroReady()) {

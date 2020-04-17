@@ -85,10 +85,16 @@ Shader LoadShaderCRT() {
 }
 
 void UpdateShaders() {
+    // Check to see if we are to change the shader.
     if (IsKeyPressed(KEY_F10)) {
         if (++currentShader > MAX_SHADERS) {
             currentShader = 0;
         }
+    }
+
+    // Update resolution of CRT shader.
+    if (IsWindowResized()) {
+        SetShaderValue(shaders[0], GetShaderLocation(shaders[0], "resolution"), &((Vector2){GetScreenWidth(), GetScreenHeight()}), 1);
     }
 }
 
