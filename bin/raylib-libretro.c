@@ -72,6 +72,7 @@ int main(int argc, char* argv[]) {
         // Check if the core asks to be shutdown.
         if (LibretroShouldClose()) {
             UnloadLibretroGame();
+            CloseLibretro();
         }
 
         // Render the libretro core.
