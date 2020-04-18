@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    while (!WindowShouldClose() && !LibretroShouldClose()) {
+    while (!WindowShouldClose()) {
         // Fullscreen
         if (IsKeyReleased(KEY_F11)) {
             ToggleFullscreen();
@@ -68,6 +68,12 @@ int main(int argc, char* argv[]) {
 
         // Run a frame of the core.
         UpdateLibretro();
+
+        // Check if the core asks to be shutdown.
+        if (LibretroShouldClose()) {
+            UnloadLibretroGame();
+            CloseLibretro();
+        }
 
         // Render the libretro core.
         BeginDrawing();

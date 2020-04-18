@@ -280,12 +280,12 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         break;
         case RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES:
         {
+            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES");
             uint64_t *capabilities = (uint64_t*)data;
             *capabilities = (1 << RETRO_DEVICE_JOYPAD) |
                 (1 << RETRO_DEVICE_MOUSE) |
                 (1 << RETRO_DEVICE_KEYBOARD) |
                 (1 << RETRO_DEVICE_POINTER);
-            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES");
             return true;
         }
         break;
@@ -325,7 +325,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT RGB565");
                 break;
             default:
-                TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT UNKNOWN");
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT UNKNOWN");
                 return false;
             }
             return true;
@@ -498,7 +498,6 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                 return GetMouseWheelMove() > 0;
             case RETRO_DEVICE_ID_MOUSE_WHEELDOWN:
                 return GetMouseWheelMove() < 0;
-            break;
         }
     }
 
