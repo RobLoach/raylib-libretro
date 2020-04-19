@@ -10,3 +10,7 @@
 	path = vendor/raygui
 	url = https://github.com/raysan5/raygui.git
     ignore = dirty
+[submodule "vendor/incbin"]
+	path = vendor/incbin
+	url = https://github.com/graphitemaster/incbin.git
+    ignore = dirty

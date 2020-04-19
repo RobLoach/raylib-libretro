@@ -1,11 +1,26 @@
 #ifndef RAYLIB_LIBRETRO_SHADERS
 #define RAYLIB_LIBRETRO_SHADERS
 #include "raylib.h"
+#include "../vendor/incbin/incbin.h"
 
 #if defined(PLATFORM_DESKTOP)
     #define GLSL_VERSION            330
 #else   // PLATFORM_RPI, PLATFORM_ANDROID, PLATFORM_WEB
     #define GLSL_VERSION            100
+#endif
+
+#if GLSL_VERSION == 330
+INCBIN(ShaderCrt, "../src/shaders/crt/resources/shaders/glsl330/crt.fs");
+INCBIN(ShaderScanlines, "../vendor/raylib/examples/shaders/resources/shaders/glsl330/scanlines.fs");
+#elif GLSL_VERSION == 100
+INCBIN(ShaderCrt, "../src/shaders/crt/resources/shaders/glsl100/crt.fs");
+INCBIN(ShaderScanlines, "../vendor/raylib/examples/shaders/resources/shaders/glsl100/scanlines.fs");
+#elif GLSL_VERSION == 120
+const unsigned char gShaderCrtData[0];
+INCBIN(ShaderScanlines, "../vendor/raylib/examples/shaders/resources/shaders/glsl120/scanlines.fs");
+#else
+const unsigned char gShaderCrtData[0];
+const unsigned char gShaderScanlinesData[0];
 #endif
 
 typedef struct ShaderCRT {
@@ -23,42 +38,11 @@ Shader shaders[MAX_SHADERS];
 ShaderCRT shaderCRT;
 int currentShader = 0;
 
-/**
- * Loads the scanline shader code at compile time.
- */
-const char* GetShaderCodeScanLines() {
-    const char* code =
-#if GLSL_VERSION == 100
-#include "shaders/scanlines-glsl100.txt"
-#elif GLSL_VERSION == 120
-#include "shaders/scanlines-glsl120.txt"
-#elif GLSL_VERSION == 330
-#include "shaders/scanlines-glsl330.txt"
-#else
-    ""
-#endif
-;
-    return code;
-}
-
-/**
- * Loads the CRT shader code at compile time.
- */
-const char* GetShaderCodeCRT() {
-    const char* code =
-#if GLSL_VERSION == 100
-#include "shaders/crt-glsl100.txt"
-#elif GLSL_VERSION == 330
-#include "shaders/crt-glsl330.txt"
-#else
-    ""
-#endif
-;
-    return code;
-}
 
 Shader LoadShaderCRT() {
-    Shader shader = LoadShaderCode(NULL, GetShaderCodeCRT());
+    const char* code = TextFormat("%s", gShaderCrtData);
+    //TraceLog(LOG_INFO, code);
+    Shader shader = LoadShaderCode(NULL, code);
     float brightnessLoc = GetShaderLocation(shader, "Brightness");
     float ScanlineIntensityLoc = GetShaderLocation(shader, "ScanlineIntensity");
     float curvatureRadiusLoc = GetShaderLocation(shader, "CurvatureRadius");
@@ -100,7 +84,7 @@ void UpdateShaders() {
 
 void LoadShaders() {
     shaders[0] = LoadShaderCRT();
-    shaders[1] = LoadShaderCode(NULL, GetShaderCodeScanLines());
+    shaders[1] = LoadShaderCode(NULL, gShaderScanlinesData);
 }
 
 void UnloadShaders() {
