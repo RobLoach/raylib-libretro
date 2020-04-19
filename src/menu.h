@@ -52,7 +52,50 @@ void SetMenuActive(bool enabled) {
     menuActive = enabled;
 }
 
+/**
+ * Handle any dropped files.
+ */
+void ManageDroppedFiles() {
+    if (!IsFileDropped()) {
+        return;
+    }
+
+    // Retrieve the list of dropped files.
+    int filesCount;
+    char **droppedFiles = GetDroppedFiles(&filesCount);
+    {
+        // Load any dropped cores first.
+        for (int i = 0; i < filesCount; i++) {
+            if (IsFileExtension(droppedFiles[i], ".so") ||
+                    IsFileExtension(droppedFiles[i], ".dll") ||
+                    IsFileExtension(droppedFiles[i], ".3dsx") ||
+                    IsFileExtension(droppedFiles[i], ".cia")) {
+                UnloadLibretroGame();
+                CloseLibretro();
+                // If it loaded successfully, stop trying to load any other cores.
+                if (InitLibretro(droppedFiles[i])) {
+                    break;
+                }
+            }
+        }
+
+        // Finally, load the found content.
+        for (int i = 0; i < filesCount; i++) {
+            if (!IsFileExtension(droppedFiles[i], ".so") && !IsFileExtension(droppedFiles[i], ".dll")) {
+                // If loading worked, stop trying to load any other content.
+                if (LoadLibretroGame(droppedFiles[i])) {
+                    menuActive = false;
+                    break;
+                }
+            }
+        }
+    }
+    ClearDroppedFiles();
+}
+
 void UpdateMenu() {
+    ManageDroppedFiles();
+
     // Toggle the menu.
     if (IsKeyReleased(KEY_F1) || IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE)) {
         menuActive = !menuActive;
