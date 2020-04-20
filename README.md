@@ -1,43 +1,46 @@
-# raylib-libretro :space_invader: ![Tests](https://github.com/RobLoach/raylib-libretro/workflows/Tests/badge.svg)
+# raylib-libretro :space_invader: [![Tests](https://github.com/RobLoach/raylib-libretro/workflows/Tests/badge.svg)](https://github.com/RobLoach/raylib-libretro/actions)
 
-[libretro](https://www.libretro.com/) frontend using [raylib](https://www.raylib.com), along with the [`rlibretro.h`](include/rlibretro.h) raylib extension to integrate any raylib application with the libretro API. *Still in early development.*
+[libretro](https://www.libretro.com/) frontend to play emulators, game engines and media players, using [raylib](https://www.raylib.com). The [rlibretro](include/rlibretro.h) raylib extension allows integrating any raylib application with the libretro API. *Still in early development.*
 
-![Screenshot of raylib-libretro](examples/rlibretro_basic_window.png)
+![Screenshot of raylib-libretro](src/screenshot.png)
 
 ## Usage
 
 ``` sh
-raylib-libretro <core> [game]
+raylib-libretro [core] [game]
 ```
 
-| Control  | Keyboard    |
-| ---      | ---         |
-| D-Pad    | Arrow Keys  |
-| Buttons  | ZXAS        |
-| Start    | Enter       |
-| Select   | Right Shift |
+| Control       | Keyboard    |
+| ---           | ---         |
+| D-Pad         | Arrow Keys  |
+| Buttons       | ZX AS QW    |
+| Start         | Enter       |
+| Select        | Right Shift |
+| Menu          | F1          |
+| Switch Shader | F10         |
+| Fullscreen    | F11         |
 
 ## Wishlist
 
 - [x] Video
 - [x] Resizable Window
-- [ ] Graphical User Interface
+- [x] Graphical User Interface
+- [x] Shaders
+- [x] Mouse Support
+- [x] Fullscreen
+- [ ] Audio
+- [ ] Core Options
 - [ ] [`rlibretro.h`](include/rlibretro.h) documentation
-- [ ] Cleaned Audio
-- [ ] Fullscreen
 - [ ] Rebindable Inputs
 - [ ] Gamepad Support
 - [ ] Project Templates (VS2017, etc)
-- [ ] Mouse Support
 - [ ] Zip Loading
-- [ ] Shaders
-- [ ] Core Options
 - [ ] Binary Releases
 - [ ] OpenGL Cores
 
 ## Compile
 
-[CMake](https://cmake.org/) is used to build raylib-libretro. Looking to add more project templates to help the build process!
+[CMake](https://cmake.org) is used to build raylib-libretro. Looking to add more project templates to help the build process!
 
 ``` sh
 git clone http://github.com/robloach/raylib-libretro.git

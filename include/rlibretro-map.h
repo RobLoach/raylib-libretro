@@ -125,7 +125,7 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_COLON:
             return KEY_APOSTROPHE;
         case RETROK_SEMICOLON:
-            return KEY_APOSTROPHE;
+            return KEY_SEMICOLON;
         case RETROK_LESS:
             return KEY_APOSTROPHE;
         case RETROK_EQUALS:
@@ -293,11 +293,11 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_F15:
             return KEY_APOSTROPHE;
         case RETROK_NUMLOCK:
-            return KEY_APOSTROPHE;
+            return KEY_NUM_LOCK;
         case RETROK_CAPSLOCK:
-            return KEY_APOSTROPHE;
+            return KEY_CAPS_LOCK;
         case RETROK_SCROLLOCK:
-            return KEY_APOSTROPHE;
+            return KEY_SCROLL_LOCK;
         case RETROK_RSHIFT:
             return KEY_RIGHT_SHIFT;
         case RETROK_LSHIFT:

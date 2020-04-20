@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
     const char* gameFile = (argc > 2) ? argv[2] : NULL;
     LoadLibretroGame(gameFile);
 
-    while (!WindowShouldClose()) {
+    while (!WindowShouldClose() && !LibretroShouldClose()) {
         // Run a frame of the core.
         UpdateLibretro();
 

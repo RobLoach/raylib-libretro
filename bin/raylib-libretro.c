@@ -28,48 +28,71 @@
 
 #include "raylib.h"
 #include "../include/rlibretro.h"
+#include "../src/shaders.h"
+#include "../src/menu.h"
 
 int main(int argc, char* argv[]) {
     // Ensure proper amount of arguments.
     SetTraceLogExit(LOG_FATAL);
-    if (argc <= 1) {
-        TraceLog(LOG_ERROR, "Usage: %s <core> [game]", argv[0]);
-        return 1;
-    }
 
     // Create the window and audio.
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(800, 600, "raylib-libretro");
-    SetWindowMinSize(400, 300);
+    SetWindowMinSize(575, 450);
     InitAudioDevice();
 
-    // Initialize the given core.
-    if (!InitLibretro(argv[1])) {
-        CloseWindow();
-        return 1;
+    // Load the shaders and the menu.
+    LoadShaders();
+    InitMenu();
+
+    // Parse the command line arguments.
+    if (argc > 1) {
+        // Initialize the given core.
+        if (InitLibretro(argv[1])) {
+            // Load the given game.
+            const char* gameFile = (argc > 2) ? argv[2] : NULL;
+            if (LoadLibretroGame(gameFile)) {
+                SetMenuActive(false);
+            }
+        }
     }
 
-    // Load the given game.
-    const char* gameFile = (argc > 2) ? argv[2] : NULL;
-    if (!LoadLibretroGame(gameFile)) {
-        CloseLibretro();
-        CloseWindow();
-        return 1;
-    }
+    while (!WindowShouldClose()) {
+        // Fullscreen
+        if (IsKeyReleased(KEY_F11)) {
+            ToggleFullscreen();
+        }
 
-    // Update the window title and resize the window to match the game.
-    SetWindowTitle(TextFormat("raylib-libretro | %s", GetLibretroName()));
-    SetWindowSize(GetLibretroWidth() * 3, GetLibretroHeight() * 3);
+        // Update the shaders.
+        UpdateShaders();
 
-    while (!WindowShouldClose() && !LibretroShouldClose()) {
-        // Run a frame of the core.
-        UpdateLibretro();
+        if (!IsMenuActive()) {
+            // Run a frame of the core.
+            UpdateLibretro();
+        }
+
+        // Check if the core asks to be shutdown.
+        if (LibretroShouldClose()) {
+            UnloadLibretroGame();
+            CloseLibretro();
+        }
 
         // Render the libretro core.
         BeginDrawing();
         {
             ClearBackground(BLACK);
+
+            if (currentShader > 0) {
+                BeginShaderMode(shaders[currentShader - 1]);
+            }
+
             DrawLibretro();
+
+            if (currentShader > 0) {
+                EndShaderMode();
+            }
+
+            UpdateMenu();
         }
         EndDrawing();
     }
@@ -78,6 +101,7 @@ int main(int argc, char* argv[]) {
     UnloadLibretroGame();
     CloseLibretro();
 
+    UnloadShaders();
     CloseAudioDevice();
     CloseWindow();
 
