@@ -41,9 +41,9 @@ int main(int argc, char* argv[]) {
     SetWindowMinSize(575, 450);
     InitAudioDevice();
 
-    // Load the menu and shaders.
-    InitMenu();
+    // Load the shaders and the menu.
     LoadShaders();
+    InitMenu();
 
     // Parse the command line arguments.
     if (argc > 1) {
@@ -66,8 +66,10 @@ int main(int argc, char* argv[]) {
         // Update the shaders.
         UpdateShaders();
 
-        // Run a frame of the core.
-        UpdateLibretro();
+        if (!IsMenuActive()) {
+            // Run a frame of the core.
+            UpdateLibretro();
+        }
 
         // Check if the core asks to be shutdown.
         if (LibretroShouldClose()) {

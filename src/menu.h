@@ -52,6 +52,10 @@ void SetMenuActive(bool enabled) {
     menuActive = enabled;
 }
 
+bool IsMenuActive() {
+    return menuActive;
+}
+
 /**
  * Handle any dropped files.
  */

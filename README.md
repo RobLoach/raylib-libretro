@@ -28,7 +28,7 @@ raylib-libretro [core] [game]
 - [x] Shaders
 - [x] Mouse Support
 - [x] Fullscreen
-- [ ] Cleaned Audio
+- [ ] Audio
 - [ ] Core Options
 - [ ] [`rlibretro.h`](include/rlibretro.h) documentation
 - [ ] Rebindable Inputs
