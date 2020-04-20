@@ -20,7 +20,8 @@ jobs:
     - name: Build
       run: cmake --build build
 
-    - name: Build project # This would actually build your project, using zip for an example artifact
+    - name: Zip Project
+      uses: montudor/action-zip@v0.1.0
       run: |
         zip --junk-paths raylib-libretro-linux build/raylib-libretro README.md LICENSE
 
@@ -58,9 +59,10 @@ jobs:
     - name: Build
       run: cmake --build build
 
-    - name: Build project # This would actually build your project, using zip for an example artifact
+    - name: Zip Project
+      uses: montudor/action-zip@v0.1.0
       run: |
-        zip --junk-paths raylib-libretro-windows build/raylib-libretro.exe README.md LICENSE
+        zip --junk-paths raylib-libretro-windows build/Release/raylib-libretro.exe README.md LICENSE
 
     - name: Create Release
       id: create_release
