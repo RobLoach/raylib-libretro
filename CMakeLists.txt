@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.11)
 project(raylib-libretro
     DESCRIPTION "raylib-libretro: libretro frontend using raylib."
     HOMEPAGE_URL "https://github.com/robloach/raylib-libretro"
-    VERSION 0.0.1
+    VERSION 0.0.3
     LANGUAGES C
 )
 
@@ -38,6 +38,9 @@ target_include_directories(rlibretro PUBLIC
 target_compile_definitions(rlibretro PUBLIC
     HAVE_DYNAMIC=1
 )
+install(TARGETS rlibretro DESTINATION lib)
+install(FILES include/rlibretro.h DESTINATION include)
+install(FILES include/rlibretro-map.h DESTINATION include)
 
 # raylib-libretro binary
 add_executable(raylib-libretro
@@ -49,6 +52,9 @@ target_link_libraries(raylib-libretro PUBLIC
 target_include_directories(raylib-libretro PUBLIC
     vendor/raygui/src
 )
+install(TARGETS raylib-libretro DESTINATION bin)
+install(FILES README.md DESTINATION share/raylib-libretro)
+install(FILES LICENSE DESTINATION share/raylib-libretro)
 
 # Examples
 option(BUILD_RLIBRETRO_EXAMPLES "rlibretro Examples" ON)
@@ -60,3 +66,11 @@ if (BUILD_RLIBRETRO_EXAMPLES)
         rlibretro
     )
 endif()
+
+set(CPACK_PACKAGE_VENDOR "Rob Loach")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+set(CPACK_GENERATOR "TGZ;ZIP")
+set(CPACK_PACKAGE_EXECUTABLES "raylib-libretro" "raylib-libretro")
+
+include(CPack)

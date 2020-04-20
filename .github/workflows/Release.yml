@@ -16,15 +16,11 @@ jobs:
     - name: Install Dependencies
       run: sudo apt-get install xorg-dev libglu1-mesa-dev
     - name: Configure
-      run: cmake -DCMAKE_BUILD_TYPE=RELEASE -B build .
+      run: cmake -DCMAKE_BUILD_TYPE=Release -B build .
     - name: Build
       run: cmake --build build
-
-    - name: Zip Project
-      uses: montudor/action-zip@v0.1.0
-      with:
-        args: zip --junk-paths raylib-libretro-linux build/raylib-libretro README.md LICENSE
-
+    - name: Package
+      run: make -D build package
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
@@ -32,10 +28,9 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        release_name: raylib-libretro ${{ github.ref }}
         draft: false
         prerelease: false
-
     - name: Upload Release Asset
       id: upload-release-asset
       uses: actions/upload-release-asset@v1
@@ -43,10 +38,9 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-        asset_path: ./raylib-libretro-linux.zip
-        asset_name: raylib-libretro-linux.zip
+        asset_path: ./build/raylib-libretro-${{ github.ref }}-Linux.zip
+        asset_name: raylib-libretro-${{ github.ref }}-Linux.zip
         asset_content_type: application/zip
-
 
   build-windows:
     runs-on: windows-latest
@@ -55,15 +49,11 @@ jobs:
       with:
         submodules: recursive
     - name: Configure
-      run: cmake -DCMAKE_BUILD_TYPE=RELEASE -B build .
+      run: cmake -DCMAKE_BUILD_TYPE=Release -B build .
     - name: Build
       run: cmake --build build
-
-    - name: Zip Project
-      uses: montudor/action-zip@v0.1.0
-      with:
-        args: zip --junk-paths raylib-libretro-windows build/Release/raylib-libretro.exe README.md LICENSE
-
+    - name: Package
+      run: make -D build package
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
@@ -71,10 +61,9 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        release_name: raylib-libretro ${{ github.ref }}
         draft: false
         prerelease: false
-
     - name: Upload Release Asset
       id: upload-release-asset
       uses: actions/upload-release-asset@v1
@@ -82,6 +71,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-        asset_path: ./raylib-libretro-windows.zip
-        asset_name: raylib-libretro-windows.zip
+        asset_path: ./build/raylib-libretro-${{ github.ref }}-Windows.zip
+        asset_name: raylib-libretro-${{ github.ref }}-Windows.zip
         asset_content_type: application/zip
