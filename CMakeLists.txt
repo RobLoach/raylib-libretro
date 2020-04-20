@@ -68,9 +68,20 @@ if (BUILD_RLIBRETRO_EXAMPLES)
 endif()
 
 set(CPACK_PACKAGE_VENDOR "Rob Loach")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Rob Loach")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
-set(CPACK_GENERATOR "TGZ;ZIP")
 set(CPACK_PACKAGE_EXECUTABLES "raylib-libretro" "raylib-libretro")
+
+if (WIN32)
+    if (USE_WIX_TOOLSET)
+        set(CPACK_GENERATOR "WIX") # this need WiX Tooset installed and a path to candle.exe
+    else ()
+        set(CPACK_GENERATOR "NSIS") # this needs NSIS installed, and available
+    endif ()
+    set(CPACK_SOURCE_GENERATOR "ZIP")
+else ()
+    set(CPACK_GENERATOR "TGZ")
+endif ()
 
 include(CPack)
