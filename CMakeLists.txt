@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.11)
 project(raylib-libretro
     DESCRIPTION "raylib-libretro: libretro frontend using raylib."
     HOMEPAGE_URL "https://github.com/robloach/raylib-libretro"
-    VERSION 0.0.3
+    VERSION 0.0.6
     LANGUAGES C
 )
 
