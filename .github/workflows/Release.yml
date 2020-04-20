@@ -16,13 +16,14 @@ jobs:
     - name: Install Dependencies
       run: sudo apt-get install xorg-dev libglu1-mesa-dev
     - name: Configure
-      run: cmake -B build .
+      run: cmake -DCMAKE_BUILD_TYPE=RELEASE -B build .
     - name: Build
       run: cmake --build build
 
-    - name: Build project # This would actually build your project, using zip for an example artifact
-      run: |
-        zip --junk-paths raylib-libretro-linux build/raylib-libretro README.md LICENSE
+    - name: Zip Project
+      uses: montudor/action-zip@v0.1.0
+      with:
+        args: zip --junk-paths raylib-libretro-linux build/raylib-libretro README.md LICENSE
 
     - name: Create Release
       id: create_release
@@ -54,13 +55,14 @@ jobs:
       with:
         submodules: recursive
     - name: Configure
-      run: cmake -B build .
+      run: cmake -DCMAKE_BUILD_TYPE=RELEASE -B build .
     - name: Build
       run: cmake --build build
 
-    - name: Build project # This would actually build your project, using zip for an example artifact
-      run: |
-        zip --junk-paths raylib-libretro-windows build/raylib-libretro.exe README.md LICENSE
+    - name: Zip Project
+      uses: montudor/action-zip@v0.1.0
+      with:
+        args: zip --junk-paths raylib-libretro-windows build/Release/raylib-libretro.exe README.md LICENSE
 
     - name: Create Release
       id: create_release
