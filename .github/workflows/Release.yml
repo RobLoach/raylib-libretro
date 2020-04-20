@@ -22,8 +22,8 @@ jobs:
 
     - name: Zip Project
       uses: montudor/action-zip@v0.1.0
-      run: |
-        zip --junk-paths raylib-libretro-linux build/raylib-libretro README.md LICENSE
+      with:
+        args: zip --junk-paths raylib-libretro-linux build/raylib-libretro README.md LICENSE
 
     - name: Create Release
       id: create_release
@@ -61,8 +61,8 @@ jobs:
 
     - name: Zip Project
       uses: montudor/action-zip@v0.1.0
-      run: |
-        zip --junk-paths raylib-libretro-windows build/Release/raylib-libretro.exe README.md LICENSE
+      with:
+        args: zip --junk-paths raylib-libretro-windows build/Release/raylib-libretro.exe README.md LICENSE
 
     - name: Create Release
       id: create_release
