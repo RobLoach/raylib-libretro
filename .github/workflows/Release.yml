@@ -20,7 +20,7 @@ jobs:
     - name: Build
       run: cmake --build build
     - name: Package
-      run: make -D build package
+      run: make -C build package
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
@@ -53,7 +53,7 @@ jobs:
     - name: Build
       run: cmake --build build
     - name: Package
-      run: make -D build package
+      run: make -C build package
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
