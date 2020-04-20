@@ -1,6 +1,6 @@
-# raylib-libretro :space_invader: ![Tests](https://github.com/RobLoach/raylib-libretro/workflows/Tests/badge.svg)
+# raylib-libretro :space_invader: [![Tests](https://github.com/RobLoach/raylib-libretro/workflows/Tests/badge.svg)](https://github.com/RobLoach/raylib-libretro/actions)
 
-[libretro](https://www.libretro.com/) frontend using [raylib](https://www.raylib.com), along with the [`rlibretro.h`](include/rlibretro.h) raylib extension to integrate any raylib application with the libretro API. *Still in early development.*
+[libretro](https://www.libretro.com/) frontend to play emulators, game engines and media players, using [raylib](https://www.raylib.com). The [rlibretro](include/rlibretro.h) raylib extension allows integrating any raylib application with the libretro API. *Still in early development.*
 
 ![Screenshot of raylib-libretro](src/screenshot.png)
 
@@ -40,7 +40,7 @@ raylib-libretro [core] [game]
 
 ## Compile
 
-[CMake](https://cmake.org/) is used to build raylib-libretro. Looking to add more project templates to help the build process!
+[CMake](https://cmake.org) is used to build raylib-libretro. Looking to add more project templates to help the build process!
 
 ``` sh
 git clone http://github.com/robloach/raylib-libretro.git
