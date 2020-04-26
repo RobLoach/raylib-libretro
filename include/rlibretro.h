@@ -141,6 +141,8 @@ typedef struct rLibretro {
     // Raylib objects used to play the libretro core.
     Texture texture;
     AudioStream audioStream;
+    int16_t* audioWriteBufferData;
+    int audioWriteBufferSize;
 } rLibretro;
 
 /**
@@ -525,6 +527,15 @@ static size_t LibretroAudioWrite(const int16_t *data, size_t frames) {
     //    UpdateAudioStream(LibretroCore.audioStream, data, sizeof(*data) * frames);
     //}
 
+    memcpy(LibretroCore.audioWriteBufferData + audioWriteBufferSize, data, sizeof(int16_t) * frames);
+    LibretroCore.audioWriteBufferSize += sizeof(int16_t) * frames;
+
+
+    if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
+        UpdateAudioStream(LibretroCore.audioStream, LibretroCore.audioWriteBufferData, LibretroCore.audioWriteBufferSize);
+        LibretroCore.audioWriteBufferSize = 0;
+    }
+
     return frames;
 }
 
@@ -544,8 +555,11 @@ static void LibretroInitAudio()
     //CloseAudioStream(LibretroCore.audioStream);
 
     // Create a new audio stream.
-    //LibretroCore.audioStream = InitAudioStream(LibretroCore.sampleRate, 16, 2);
-    //PlayAudioStream(LibretroCore.audioStream);
+    LibretroCore.audioStream = InitAudioStream(LibretroCore.sampleRate, 16, 2);
+    PlayAudioStream(LibretroCore.audioStream);
+
+    LibretroCore.audioWriteBufferData = (int16_t *)malloc(sizeof(int16_t)*1024);
+    LibretroCore.audioWriteBufferSize = 0;
     return;
 }
 
@@ -812,8 +826,8 @@ static void CloseLibretro() {
     }
 
     // Stop, close and unload all raylib objects.
-    //StopAudioStream(LibretroCore.audioStream);
-    //CloseAudioStream(LibretroCore.audioStream);
+    StopAudioStream(LibretroCore.audioStream);
+    CloseAudioStream(LibretroCore.audioStream);
     UnloadTexture(LibretroCore.texture);
 
     // Close the dynamically loaded handle.
@@ -821,6 +835,13 @@ static void CloseLibretro() {
         dylib_close(LibretroCore.handle);
         LibretroCore.handle = NULL;
     }
+
+    if (LibretroCore.audioWriteBufferData != NULL) {
+        free(LibretroCore.audioWriteBufferData);
+        LibretroCore.audioWriteBufferData = NULL;
+    }
+    LibretroCore.audioWriteBufferSize = 0;
+
     LibretroCore = (rLibretro){0};
 }
 
