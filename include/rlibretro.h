@@ -90,8 +90,6 @@ static void CloseLibretro();                             // Close the initialize
 } while (0)
 #define LoadLibretroMethod(S) LoadLibretroMethodHandle(LibretroCore.S, S)
 
-#define RLIBRETRO_MAX_SAMPLES 32000
-
 typedef struct rLibretro {
     // Dynamic library symbols.
     void *handle;
@@ -143,10 +141,6 @@ typedef struct rLibretro {
     // Raylib objects used to play the libretro core.
     Texture texture;
     AudioStream audioStream;
-
-    int writeCursor;
-    int16_t audioData[RLIBRETRO_MAX_SAMPLES];
-    int16_t audioWriteBuffer[RLIBRETRO_MAX_SAMPLES];
 } rLibretro;
 
 /**
@@ -186,6 +180,28 @@ static void LibretroInitVideo() {
 
 static bool LibretroSetEnvironment(unsigned cmd, void * data) {
     switch (cmd) {
+        case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
+        case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY:
+        case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: {
+            const char** dir = (const char**)data;
+            *dir = ".";
+            return true;
+        }
+        case RETRO_ENVIRONMENT_GET_VARIABLE: {
+            struct retro_variable * var = (struct retro_variable *)data;
+            if (data == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO no data provided");
+                return false;
+            }
+
+            // Override some default variables.
+            if (TextIsEqual(var->key, "fceumm_sndvolume")) {
+                var->value = "10";
+                return true;
+            }
+
+            return false;
+        }
         case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO: {
             if (data == NULL) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO no data provided");
@@ -203,6 +219,13 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 LibretroCore.fps,
                 LibretroCore.sampleRate
             );
+            return true;
+        }
+        break;
+
+        case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: {
+            int* output = (int *)data;
+            *output = 3; // Audio and Video
             return true;
         }
         break;
@@ -242,19 +265,6 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_VARIABLES");
             TraceLog(LOG_INFO, "    > Key:   %s", var->key);
             TraceLog(LOG_INFO, "    > Value: %s", var->value);
-            return true;
-        }
-        break;
-
-        case RETRO_ENVIRONMENT_GET_VARIABLE: {
-            if (data == NULL) {
-                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VARIABLE no data provided");
-                return false;
-            }
-            // TODO: Retrieve varables with RETRO_ENVIRONMENT_GET_VARIABLE.
-            struct retro_variable* variableData = (struct retro_variable *)data;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_GET_VARIABLE: %s", variableData->key);
-            variableData->value = "";
             return true;
         }
         break;
@@ -379,9 +389,9 @@ static bool LibretroGetAudioVideo() {
     LibretroCore.retro_get_system_av_info(&av);
     LibretroCore.width = av.geometry.base_width;
     LibretroCore.height = av.geometry.base_height;
+    LibretroCore.aspectRatio = av.geometry.aspect_ratio;
     LibretroCore.fps = av.timing.fps;
     LibretroCore.sampleRate = av.timing.sample_rate;
-    LibretroCore.aspectRatio = av.geometry.aspect_ratio;
     TraceLog(LOG_INFO, "LIBRETRO: Video and Audio information");
     TraceLog(LOG_INFO, "    > Display size: %i x %i", LibretroCore.width, LibretroCore.height);
     TraceLog(LOG_INFO, "    > Target FPS:   %i", LibretroCore.fps);
@@ -530,25 +540,15 @@ static size_t LibretroAudioWrite(const int16_t *data, size_t frames) {
         return 0;
     }
 
-    // Write the data to the write buffer. Size of the data, in stereo, and number of frames.
-    int i;
-    for (i = 0; i < frames * 2; i++) {
-        if (LibretroCore.writeCursor >= RLIBRETRO_MAX_SAMPLES) {
-            TraceLog(LOG_INFO, "Ran out of sample space.");
-            LibretroCore.writeCursor = 0;
-            return 0;
-        }
-        LibretroCore.audioWriteBuffer[LibretroCore.writeCursor++] = *(data + i);
-    }
+    while (IsAudioStreamProcessed(LibretroCore.audioStream))
+    {
+        // QUESTION: frames refer to individual samples or 2-channel-samples?
+        // frames batch should match SAMPLE_BATCH_SIZE
 
-    if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
-        TraceLog(LOG_INFO, "Reset at %i", LibretroCore.writeCursor);
-        for (i = 0; i < LibretroCore.writeCursor; i++) {
-            LibretroCore.audioData[i] = LibretroCore.audioWriteBuffer[i];
-        }
-
-        UpdateAudioStream(LibretroCore.audioStream, &LibretroCore.audioData, LibretroCore.writeCursor);
-        LibretroCore.writeCursor = 0;
+        // "frames" represents how many frames are being sampled.
+        // One frame is defined as a sample of left and right channels, interleaved.
+        // I.e. int16_t buf[4] = { l, r, l, r }; would be 2 frames.
+        UpdateAudioStream(LibretroCore.audioStream, data, frames * 2);   // Maybe x2 if stereo
     }
 
     return frames;
@@ -565,16 +565,16 @@ static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames) {
 
 static void LibretroInitAudio()
 {
-    // Ensure the audio stream is closed.
-    //StopAudioStream(LibretroCore.audioStream);
-    //CloseAudioStream(LibretroCore.audioStream);
+    // Set the audio stream buffer size.
+    int sampleSize = 16;
+    int channels = 2;
+    int bufferSize = 60;
+    SetAudioStreamBufferSizeDefault(sampleSize * channels * bufferSize);
 
-    // Create a new audio stream.
-    LibretroCore.audioStream = InitAudioStream(LibretroCore.sampleRate, 16, 2);
+    // Create the audio stream.
+    LibretroCore.audioStream = InitAudioStream(LibretroCore.sampleRate, sampleSize, channels);
     PlayAudioStream(LibretroCore.audioStream);
-
-    // Buffer for the single cycle waveform we are synthesizing
-    LibretroCore.writeCursor = 0;
+    TraceLog(LOG_INFO, "LIBRETRO: Audio stream initialized.");
     return;
 }
 
@@ -841,8 +841,8 @@ static void CloseLibretro() {
     }
 
     // Stop, close and unload all raylib objects.
-    //StopAudioStream(LibretroCore.audioStream);
-    //CloseAudioStream(LibretroCore.audioStream);
+    StopAudioStream(LibretroCore.audioStream);
+    CloseAudioStream(LibretroCore.audioStream);
     UnloadTexture(LibretroCore.texture);
 
     // Close the dynamically loaded handle.
