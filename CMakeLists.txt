@@ -3,8 +3,13 @@ project(raylib-libretro
     DESCRIPTION "raylib-libretro: libretro frontend using raylib."
     HOMEPAGE_URL "https://github.com/robloach/raylib-libretro"
     VERSION 0.0.7
-    LANGUAGES C
+    LANGUAGES C CXX
 )
+
+# C++11
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # raylib
 find_package(raylib QUIET)
@@ -14,6 +19,9 @@ if (NOT raylib_FOUND)
     set(BUILD_TESTING  OFF CACHE BOOL "" FORCE)
     add_subdirectory(vendor/raylib)
 endif()
+
+# raylib-cpp
+add_subdirectory(vendor/raylib-cpp/include)
 
 # rlibretro static library
 add_library(rlibretro STATIC
@@ -29,6 +37,7 @@ add_library(rlibretro STATIC
 )
 target_link_libraries(rlibretro PUBLIC
     raylib
+    raylib-cpp
     ${CMAKE_DL_LIBS}
 )
 target_include_directories(rlibretro PUBLIC
@@ -44,7 +53,7 @@ install(FILES include/rlibretro-map.h DESTINATION include)
 
 # raylib-libretro binary
 add_executable(raylib-libretro
-    bin/raylib-libretro.c
+    bin/raylib-libretro.cpp
 )
 target_link_libraries(raylib-libretro PUBLIC
     rlibretro

@@ -10,3 +10,7 @@
 	path = vendor/raygui
 	url = https://github.com/raysan5/raygui.git
     ignore = dirty
+[submodule "vendor/raylib-cpp"]
+	path = vendor/raylib-cpp
+	url = https://github.com/RobLoach/raylib-cpp.git
+    ignore = dirty

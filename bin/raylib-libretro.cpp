@@ -26,7 +26,17 @@
 *
 **********************************************************************************************/
 
-#include "raylib.h"
+#include "raylib-cpp.hpp"
+
+#define RAYGUI_IMPLEMENTATION
+#define RAYGUI_SUPPORT_ICONS
+#include "raygui.hpp"
+
+#undef RAYGUI_IMPLEMENTATION            // Avoid including raygui implementation again
+
+#define GUI_FILE_DIALOG_IMPLEMENTATION
+#include "../vendor/raygui/examples/custom_file_dialog/gui_file_dialog.h"
+
 #include "../include/rlibretro.h"
 #include "../src/shaders.h"
 #include "../src/menu.h"
@@ -37,13 +47,13 @@ int main(int argc, char* argv[]) {
 
     // Create the window and audio.
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
-    InitWindow(800, 600, "raylib-libretro");
-    SetWindowMinSize(575, 450);
-    InitAudioDevice();
+    raylib::Window window(800, 600, "raylib-libretro");
+    window.SetMinSize(575, 450);
+    raylib::AudioDevice audioDevice;
 
     // Load the shaders and the menu.
-    LoadShaders();
-    InitMenu();
+    Shaders shaders;
+    Menu menu(&shaders);
 
     // Parse the command line arguments.
     if (argc > 1) {
@@ -52,7 +62,7 @@ int main(int argc, char* argv[]) {
             // Load the given game.
             const char* gameFile = (argc > 2) ? argv[2] : NULL;
             if (LoadLibretroGame(gameFile)) {
-                SetMenuActive(false);
+                menu.SetMenuActive(false);
             }
         }
     }
@@ -64,9 +74,9 @@ int main(int argc, char* argv[]) {
         }
 
         // Update the shaders.
-        UpdateShaders();
+        shaders.Update();
 
-        if (!IsMenuActive()) {
+        if (!menu.IsMenuActive()) {
             // Run a frame of the core.
             UpdateLibretro();
         }
@@ -82,17 +92,13 @@ int main(int argc, char* argv[]) {
         {
             ClearBackground(BLACK);
 
-            if (currentShader > 0) {
-                BeginShaderMode(shaders[currentShader - 1]);
-            }
+            shaders.Begin();
 
             DrawLibretro();
 
-            if (currentShader > 0) {
-                EndShaderMode();
-            }
+            shaders.End();
 
-            UpdateMenu();
+            menu.Update();
         }
         EndDrawing();
     }
@@ -100,10 +106,6 @@ int main(int argc, char* argv[]) {
     // Unload the game and close the core.
     UnloadLibretroGame();
     CloseLibretro();
-
-    UnloadShaders();
-    CloseAudioDevice();
-    CloseWindow();
 
     return 0;
 }
