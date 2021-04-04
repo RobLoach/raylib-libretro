@@ -1,6 +1,6 @@
 /**********************************************************************************************
 *
-*   rlibretro_basic_window - A basic example of using rlibretro.h with Raylib.
+*   raylib-libretro-basic - A basic example of using raylib-libretro.h with Raylib.
 *
 *   LICENSE: zlib/libpng
 *
@@ -27,7 +27,9 @@
 **********************************************************************************************/
 
 #include "raylib.h"
-#include "../include/rlibretro.h"
+
+#define RAYLIB_LIBRETRO_IMPLEMENTATION
+#include "raylib-libretro.h"
 
 int main(int argc, char* argv[]) {
     // Ensure proper amount of arguments.
@@ -37,7 +39,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Create the window and audio.
-    InitWindow(800, 600, "rlibretro - basic window");
+    InitWindow(800, 600, "raylib-libretro - basic window");
     InitAudioDevice();
 
     // Initialize the given core.

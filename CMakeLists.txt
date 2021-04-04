@@ -12,76 +12,20 @@ if (NOT raylib_FOUND)
     set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(BUILD_GAMES    OFF CACHE BOOL "" FORCE)
     set(BUILD_TESTING  OFF CACHE BOOL "" FORCE)
-    add_subdirectory(vendor/raylib)
+    add_subdirectory(vendor/raylib vendor/raylib)
 endif()
 
-# rlibretro static library
-add_library(rlibretro STATIC
-    include/rlibretro.h
-    include/rlibretro-map.h
-    lib/rlibretro.c
-    vendor/libretro-common/compat/compat_strl.c
-    vendor/libretro-common/compat/compat_posix_string.c
-    vendor/libretro-common/string/stdstring.c
-    vendor/libretro-common/encodings/encoding_utf.c
-    vendor/libretro-common/file/file_path.c
-    vendor/libretro-common/dynamic/dylib.c
-)
-target_link_libraries(rlibretro PUBLIC
-    raylib
-    ${CMAKE_DL_LIBS}
-)
-target_include_directories(rlibretro PUBLIC
-    vendor/libretro-common/include
-    include
-)
-target_compile_definitions(rlibretro PUBLIC
-    HAVE_DYNAMIC=1
-)
-install(TARGETS rlibretro DESTINATION lib)
-install(FILES include/rlibretro.h DESTINATION include)
-install(FILES include/rlibretro-map.h DESTINATION include)
+add_subdirectory(include)
+add_subdirectory(lib)
 
-# raylib-libretro binary
-add_executable(raylib-libretro
-    bin/raylib-libretro.c
-)
-target_link_libraries(raylib-libretro PUBLIC
-    rlibretro
-)
-target_include_directories(raylib-libretro PUBLIC
-    vendor/raygui/src
-)
-install(TARGETS raylib-libretro DESTINATION bin)
-install(FILES README.md DESTINATION share/raylib-libretro)
-install(FILES LICENSE DESTINATION share/raylib-libretro)
-
-# Examples
-option(BUILD_RLIBRETRO_EXAMPLES "rlibretro Examples" ON)
-if (BUILD_RLIBRETRO_EXAMPLES)
-    add_executable(rlibretro_basic_window
-        examples/rlibretro_basic_window.c
-    )
-    target_link_libraries(rlibretro_basic_window PUBLIC
-        rlibretro
-    )
+# Example
+option(BUILD_RAYLIB_LIBRETRO_EXAMPLE "Build Examples" ON)
+if (BUILD_RAYLIB_LIBRETRO_EXAMPLE)
+    add_subdirectory(example)
 endif()
 
-set(CPACK_PACKAGE_VENDOR "Rob Loach")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Rob Loach")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
-set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
-set(CPACK_PACKAGE_EXECUTABLES "raylib-libretro" "raylib-libretro")
-
-if (WIN32)
-    if (USE_WIX_TOOLSET)
-        set(CPACK_GENERATOR "WIX") # this need WiX Tooset installed and a path to candle.exe
-    else ()
-        set(CPACK_GENERATOR "NSIS") # this needs NSIS installed, and available
-    endif ()
-    set(CPACK_SOURCE_GENERATOR "ZIP")
-else ()
-    set(CPACK_GENERATOR "TGZ")
-endif ()
-
-include(CPack)
+# raylib-libretro
+option(BUILD_RAYLIB_LIBRETRO "raylib-libretro" ON)
+if(BUILD_RAYLIB_LIBRETRO)
+    add_subdirectory(bin)
+endif()
