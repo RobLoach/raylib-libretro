@@ -27,7 +27,8 @@
 **********************************************************************************************/
 
 #include "raylib.h"
-#include "../include/rlibretro.h"
+#define RAYLIB_LIBRETRO_IMPLEMENTATION
+#include "raylib-libretro.h"
 #include "../src/shaders.h"
 #include "../src/menu.h"
 

@@ -9,7 +9,7 @@
 #define GUI_FILE_DIALOG_IMPLEMENTATION
 #include "../examples/custom_file_dialog/gui_file_dialog.h"
 
-#include "../include/rlibretro.h"
+#include "../include/raylib-libretro.h"
 #include "shaders.h"
 
 bool menuActive = true;
@@ -44,7 +44,7 @@ void InitMenu() {
     GuiSetStyle(0, 19, 0x00222bff);
 
     // Default style settings.
-    GuiFade(0.9f);
+    GuiFade(0.95f);
     GuiSetStyle(DEFAULT, TEXT_SPACING, 3);
 }
 
@@ -181,13 +181,15 @@ void UpdateMenu() {
             // Run/Close Game
             Rectangle runResetGameRect = (Rectangle){ padding, buttonHeight * 2 + padding + smallPadding * 2, buttonWidth, buttonHeight };
             if (!IsLibretroGameReady()) {
-                GuiSetTooltip("Run the core without content");
-                if (GuiButton(runResetGameRect, GuiIconText(RICON_ARROW_RIGHT_FILL, "Run"))) {
-                    if (LoadLibretroGame(NULL)) {
-                        menuActive = false;
+                if (!DoesLibretroCoreNeedContent()) {
+                    GuiSetTooltip("Run the core without content");
+                    if (GuiButton(runResetGameRect, GuiIconText(RICON_ARROW_RIGHT_FILL, "Run"))) {
+                        if (LoadLibretroGame(NULL)) {
+                            menuActive = false;
+                        }
                     }
+                    GuiClearTooltip();
                 }
-                GuiClearTooltip();
             }
             else {
                 GuiSetTooltip("Stop the currently running game");

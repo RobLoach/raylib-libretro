@@ -33,4 +33,5 @@
 *
 **********************************************************************************************/
 
-#include "../include/rlibretro.h"
+#define RAYLIB_LIBRETRO_IMPLEMENTATION
+#include "raylib-libretro.h"
