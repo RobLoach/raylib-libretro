@@ -34,7 +34,7 @@
 
 int main(int argc, char* argv[]) {
     // Ensure proper amount of arguments.
-    SetTraceLogExit(LOG_FATAL);
+    //SetTraceLogExit(LOG_FATAL);
 
     // Create the window and audio.
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);

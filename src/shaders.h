@@ -58,7 +58,7 @@ const char* GetShaderCodeCRT() {
 }
 
 Shader LoadShaderCRT() {
-    Shader shader = LoadShaderCode(NULL, GetShaderCodeCRT());
+    Shader shader = LoadShaderFromMemory(NULL, GetShaderCodeCRT());
     float brightnessLoc = GetShaderLocation(shader, "Brightness");
     float ScanlineIntensityLoc = GetShaderLocation(shader, "ScanlineIntensity");
     float curvatureRadiusLoc = GetShaderLocation(shader, "CurvatureRadius");
@@ -73,14 +73,14 @@ Shader LoadShaderCRT() {
     shaderCRT.cornersmooth = 35.0f;
     shaderCRT.curvature = true;
     shaderCRT.border = true;
-    SetShaderValue(shader, GetShaderLocation(shader, "resolution"), &((Vector2){GetScreenWidth(), GetScreenHeight()}), UNIFORM_VEC2);
-    SetShaderValue(shader, brightnessLoc, &shaderCRT.brightness, UNIFORM_FLOAT);
-    SetShaderValue(shader, ScanlineIntensityLoc, &shaderCRT.scanlineIntensity, UNIFORM_FLOAT);
-    SetShaderValue(shader, curvatureRadiusLoc, &shaderCRT.curvatureRadius, UNIFORM_FLOAT);
-    SetShaderValue(shader, cornerSizeLoc, &shaderCRT.cornerSize, UNIFORM_FLOAT);
-    SetShaderValue(shader, cornersmoothLoc, &shaderCRT.cornersmooth, UNIFORM_FLOAT);
-    SetShaderValue(shader, curvatureLoc, &shaderCRT.curvature, UNIFORM_FLOAT);
-    SetShaderValue(shader, borderLoc, &shaderCRT.border, UNIFORM_FLOAT);
+    SetShaderValue(shader, GetShaderLocation(shader, "resolution"), &((Vector2){GetScreenWidth(), GetScreenHeight()}), SHADER_UNIFORM_VEC2);
+    SetShaderValue(shader, brightnessLoc, &shaderCRT.brightness, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, ScanlineIntensityLoc, &shaderCRT.scanlineIntensity, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, curvatureRadiusLoc, &shaderCRT.curvatureRadius, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, cornerSizeLoc, &shaderCRT.cornerSize, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, cornersmoothLoc, &shaderCRT.cornersmooth, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, curvatureLoc, &shaderCRT.curvature, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, borderLoc, &shaderCRT.border, SHADER_UNIFORM_FLOAT);
     return shader;
 }
 
@@ -100,7 +100,7 @@ void UpdateShaders() {
 
 void LoadShaders() {
     shaders[0] = LoadShaderCRT();
-    shaders[1] = LoadShaderCode(NULL, GetShaderCodeScanLines());
+    shaders[1] = LoadShaderFromMemory(NULL, GetShaderCodeScanLines());
 }
 
 void UnloadShaders() {

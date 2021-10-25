@@ -185,7 +185,7 @@ static void LibretroInitVideo() {
 
     // Create the texture.
     LibretroCore.texture = LoadTextureFromImage(image);
-    SetTextureFilter(LibretroCore.texture, FILTER_POINT);
+    SetTextureFilter(LibretroCore.texture, TEXTURE_FILTER_POINT);
 
     // We don't need the image anymore.
     UnloadImage(image);
@@ -801,7 +801,7 @@ static void LibretroInitAudio()
     SetAudioStreamBufferSizeDefault(sampleSize * channels * bufferSize);
 
     // Create the audio stream.
-    LibretroCore.audioStream = InitAudioStream(LibretroCore.sampleRate, sampleSize, channels);
+    LibretroCore.audioStream = LoadAudioStream(LibretroCore.sampleRate, sampleSize, channels);
 
     PlayAudioStream(LibretroCore.audioStream);
     TraceLog(LOG_INFO, "LIBRETRO: Audio stream initialized.");
@@ -1076,7 +1076,7 @@ static void CloseLibretro() {
 
     // Stop, close and unload all raylib objects.
     StopAudioStream(LibretroCore.audioStream);
-    CloseAudioStream(LibretroCore.audioStream);
+    UnloadAudioStream(LibretroCore.audioStream);
     UnloadTexture(LibretroCore.texture);
 
     // Close the dynamically loaded handle.
@@ -1486,15 +1486,15 @@ static int LibretroMapRetroJoypadButtonToGamepadButton(int button) {
 static int LibretroMapRetroPixelFormatToPixelFormat(int pixelFormat) {
     switch (pixelFormat) {
         case RETRO_PIXEL_FORMAT_0RGB1555:
-            return UNCOMPRESSED_R5G6B5;
+            return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
         case RETRO_PIXEL_FORMAT_XRGB8888:
-            return UNCOMPRESSED_R8G8B8A8;
+            return PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
         case RETRO_PIXEL_FORMAT_RGB565:
-            return UNCOMPRESSED_R5G6B5;
+            return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
     }
 
     // By default, libretro uses RETRO_PIXEL_FORMAT_0RGB1555.
-    return UNCOMPRESSED_R5G6B5;
+    return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
 }
 
 /**
