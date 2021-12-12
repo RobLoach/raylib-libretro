@@ -903,13 +903,12 @@ static void LibretroInitAudio()
     // Set the audio stream buffer size.
     int sampleSize = 16;
     int channels = 2;
-    int bufferSize = sampleSize * channels * 2;
 
     // Create the audio stream.
-    LibretroCore.audioStream = LoadAudioStream(LibretroCore.sampleRate, sampleSize, channels);
+    LibretroCore.audioStream = LoadAudioStream((unsigned int)LibretroCore.sampleRate, sampleSize, channels);
 
     PlayAudioStream(LibretroCore.audioStream);
-    TraceLog(LOG_INFO, "LIBRETRO: Audio stream initialized.");
+    TraceLog(LOG_INFO, "LIBRETRO: Audio stream initialized %i %f.", sampleSize, (float)LibretroCore.sampleRate);
 
     // Let the core know that the audio device has been initialized.
     if (LibretroCore.audio_callback.set_state) {
@@ -923,10 +922,7 @@ static bool LibretroInitAudioVideo() {
     LibretroInitVideo();
     LibretroInitAudio();
 
-    // TODO: Support frametime perforance counter instead of static FPS.
-    if (LibretroCore.fps > 0) {
-        SetTargetFPS(LibretroCore.fps);
-    }
+    SetTargetFPS(LibretroCore.fps);
 
     return true;
 }
@@ -1099,24 +1095,39 @@ static bool InitLibretro(const char* core) {
 }
 
 static void DrawLibretroTexture(int posX, int posY, Color tint) {
+    if (LibretroCore.loaded == false) {
+        return;
+    }
     DrawTexture(LibretroCore.texture, posX, posY, tint);
 }
 
 static void DrawLibretroV(Vector2 position, Color tint) {
+    if (LibretroCore.loaded == false) {
+        return;
+    }
     DrawTextureV(LibretroCore.texture, position, tint);
 }
 
 static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint) {
+    if (LibretroCore.loaded == false) {
+        return;
+    }
     DrawTextureEx(LibretroCore.texture, position, rotation, scale, tint);
 }
 
 static void DrawLibretroPro(Rectangle destRec, Color tint) {
+    if (LibretroCore.loaded == false) {
+        return;
+    }
     Rectangle source = {0, 0, LibretroCore.width, LibretroCore.height};
     Vector2 origin = {0, 0};
     DrawTexturePro(LibretroCore.texture, source, destRec, origin, 0, tint);
 }
 
 static void DrawLibretroTint(Color tint) {
+    if (LibretroCore.loaded == false) {
+        return;
+    }
     // Find the aspect ratio.
     float aspect = LibretroCore.aspectRatio;
     if (aspect <= 0) {
