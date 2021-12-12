@@ -26,6 +26,7 @@ void InitMenu() {
     GuiLoadStyleDefault();
 
     // Cyber Style
+    /*
     GuiSetStyle(0, 0, 0x2f7486ff);
     GuiSetStyle(0, 1, 0x024658ff);
     GuiSetStyle(0, 2, 0x51bfd3ff);
@@ -42,6 +43,7 @@ void InitMenu() {
     GuiSetStyle(0, 17, 0x00000000);
     GuiSetStyle(0, 18, 0x81c0d0ff);
     GuiSetStyle(0, 19, 0x00222bff);
+    */
 
     // Default style settings.
     GuiFade(0.95f);
@@ -158,6 +160,18 @@ void UpdateMenu() {
             ToggleFullscreen();
         }
         //GuiClearTooltip();
+
+        // Volume
+        Rectangle muteCheckbox = (Rectangle){GetScreenWidth() - buttonHeight * 4 - (padding - smallPadding) * 2, padding, buttonHeight, buttonHeight};
+        int muteIcon = (LibretroCore.volume >= 0.5f) ? RICON_AUDIO : RICON_WAVE;
+        if (GuiButton(muteCheckbox, GuiIconText(muteIcon, ""))) {
+            if (LibretroCore.volume <= 0.5f) {
+                LibretroCore.volume = 1.0f;
+            }
+            else {
+                LibretroCore.volume = 0.f;
+            }
+        }
 
         // Open Core
         //GuiSetTooltip("Select a libretro core to load");
