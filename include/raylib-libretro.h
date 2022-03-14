@@ -352,7 +352,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: {
             // TODO: RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS
             TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS not implemented");
-            return true;
+            return false;
         }
 
         case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK: {
@@ -563,15 +563,15 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_USERNAME: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_USERNAME not implemented");
             const char** name = (const char**)data;
             *name = "raylib";
-            return false;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_LANGUAGE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_LANGUAGE not implemented");
-            return false;
+            unsigned * language = (unsigned *)data;
+            *language = RETRO_LANGUAGE_ENGLISH;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: {
@@ -626,6 +626,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_FASTFORWARDING: {
+            // Fast forward is not supported currently.
             bool* output = (bool *)data;
             *output = false;
             return true;
@@ -677,8 +678,10 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION not implemented");
-            return false;
+            // TODO: Add support for RETRO_ENVIRONMENT_SET_MESSAGE_EXT.
+            unsigned * interfaceVersion = (unsigned *)data;
+            *interfaceVersion = 0;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_MESSAGE_EXT: {
@@ -687,8 +690,10 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS not implemented");
-            return false;
+            // TODO: RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS: Add support for more users.
+            unsigned * maxUsers = (unsigned *)data;
+            *maxUsers = 1;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: {
