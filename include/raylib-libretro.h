@@ -633,8 +633,11 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE not implemented");
-            return false;
+            float *refreshRate = (float *)data;
+            int currentRate = GetMonitorRefreshRate(GetCurrentMonitor());
+            *refreshRate = (float)currentRate;
+            TraceLog(LOG_INFO, "LIBRETRO: Monitor Refresh Rate: %i", currentRate);
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: {
@@ -703,6 +706,46 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 
         case RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY: {
             TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_GAME_INFO_EXT: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_GAME_INFO_EXT not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2 not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_SET_VARIABLE: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_VARIABLE not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_THROTTLE_STATE: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_THROTTLE_STATE not implemented");
             return false;
         }
     }
@@ -888,9 +931,10 @@ static size_t LibretroAudioWrite(const int16_t *data, size_t frames) {
     if (LibretroCore.volume > 0.0f) {
         // TODO: Fix Audio being choppy since it doesn't append to the buffer.
         if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
-            UpdateAudioStream(LibretroCore.audioStream, data, frames * 2);
+            UpdateAudioStream(LibretroCore.audioStream, data, frames);
         }
     }
+
     return frames;
 }
 
@@ -911,15 +955,14 @@ static void LibretroInitAudio()
 
     // Create the audio stream.
     LibretroCore.audioStream = LoadAudioStream((unsigned int)LibretroCore.sampleRate, sampleSize, channels);
-
     PlayAudioStream(LibretroCore.audioStream);
-    TraceLog(LOG_INFO, "LIBRETRO: Audio stream initialized %i %f.", sampleSize, (float)LibretroCore.sampleRate);
 
     // Let the core know that the audio device has been initialized.
     if (LibretroCore.audio_callback.set_state) {
         LibretroCore.audio_callback.set_state(true);
     }
-    return;
+
+    TraceLog(LOG_INFO, "LIBRETRO: Audio stream initialized (%i Hz, %i bit)", sampleSize, (int)LibretroCore.sampleRate);
 }
 
 static bool LibretroInitAudioVideo() {
