@@ -43,9 +43,8 @@ raylib-libretro [core] [game]
 [CMake](https://cmake.org) is used to build raylib-libretro. Looking to add more project templates to help the build process!
 
 ``` sh
-git clone http://github.com/robloach/raylib-libretro.git
+git clone --recursive http://github.com/robloach/raylib-libretro.git
 cd raylib-libretro
-git submodule update --init
 mkdir build
 cd build
 cmake ..
