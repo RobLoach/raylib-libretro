@@ -52,6 +52,20 @@ cmake ..
 make
 ```
 
+### Getting started on mac
+
+- You should be able to build with instructions, above, if you have cmake/xcode-cli-tools installed.
+- Install retroarch and install a few cores in it use menus to get to "install cores") fceumm works pretty well for NES
+
+DnD didn't work for me, so I used CLI:
+
+```bash
+bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib ~/Desktop/smb.nes
+```
+
+where `smb.nes` is your NES rom.
+
+
 ## License
 
 [zlib/libpng](LICENSE)
