@@ -58,6 +58,14 @@ bool IsMenuActive() {
     return menuActive;
 }
 
+bool IsFileCore(const char* filename) {
+    return IsFileExtension(filename, ".so") ||
+        IsFileExtension(filename, ".dll") ||
+        IsFileExtension(filename, ".dylib") ||
+        IsFileExtension(filename, ".3dsx") ||
+        IsFileExtension(filename, ".cia");
+}
+
 /**
  * Handle any dropped files.
  */
@@ -72,10 +80,7 @@ void ManageDroppedFiles() {
     {
         // Load any dropped cores first.
         for (int i = 0; i < filesCount; i++) {
-            if (IsFileExtension(droppedFiles[i], ".so") ||
-                    IsFileExtension(droppedFiles[i], ".dll") ||
-                    IsFileExtension(droppedFiles[i], ".3dsx") ||
-                    IsFileExtension(droppedFiles[i], ".cia")) {
+            if (IsFileCore(droppedFiles[i])) {
                 UnloadLibretroGame();
                 CloseLibretro();
                 // If it loaded successfully, stop trying to load any other cores.
@@ -87,7 +92,7 @@ void ManageDroppedFiles() {
 
         // Finally, load the found content.
         for (int i = 0; i < filesCount; i++) {
-            if (!IsFileExtension(droppedFiles[i], ".so") && !IsFileExtension(droppedFiles[i], ".dll")) {
+            if (!IsFileCore(droppedFiles[i])) {
                 // If loading worked, stop trying to load any other content.
                 if (LoadLibretroGame(droppedFiles[i])) {
                     menuActive = false;
