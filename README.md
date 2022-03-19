@@ -20,6 +20,13 @@ raylib-libretro [core] [game]
 | Switch Shader | F10         |
 | Fullscreen    | F11         |
 
+### Core Support
+
+The following cores have been tested with raylib-libretro:
+
+- fceumm
+- picodrive
+
 ## Wishlist
 
 - [x] Video
@@ -52,19 +59,14 @@ cmake ..
 make
 ```
 
-### Getting started on mac
+### Mac OSX
 
-- You should be able to build with instructions, above, if you have cmake/xcode-cli-tools installed.
-- Install retroarch and install a few cores in it use menus to get to "install cores") fceumm works pretty well for NES
-
-DnD didn't work for me, so I used CLI:
-
-```bash
-bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib ~/Desktop/smb.nes
-```
-
-where `smb.nes` is your NES rom.
-
+- Make sure you have you have cmake/xcode-cli-tools installed
+- Run the above compile instructions
+- After installing RetroArch and some cores, you should be able to run the below:
+    ```bash
+    bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib ~/Desktop/smb.nes
+    ```
 
 ## License
 
