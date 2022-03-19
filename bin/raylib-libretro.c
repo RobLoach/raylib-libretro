@@ -59,11 +59,6 @@ int main(int argc, char* argv[]) {
     }
 
     while (!WindowShouldClose()) {
-        // Fullscreen
-        if (IsKeyReleased(KEY_F11)) {
-            ToggleFullscreen();
-        }
-
         // Update the shaders.
         UpdateShaders();
 
@@ -96,6 +91,22 @@ int main(int argc, char* argv[]) {
             UpdateMenu();
         }
         EndDrawing();
+
+        // Fullscreen
+        if (IsKeyReleased(KEY_F11)) {
+            ToggleFullscreen();
+        }
+
+        // Screenshot
+        if (IsKeyReleased(KEY_F8)) {
+            for (int i = 1; i < 1000; i++) {
+                const char* screenshotName = TextFormat("screenshot-%i.png", i);
+                if (!FileExists(screenshotName)) {
+                    TakeScreenshot(screenshotName);
+                    break;
+                }
+            }
+        }
     }
 
     // Unload the game and close the core.

@@ -17,6 +17,7 @@ raylib-libretro [core] [game]
 | Start         | Enter       |
 | Select        | Right Shift |
 | Menu          | F1          |
+| Screenshot    | F8          |
 | Switch Shader | F10         |
 | Fullscreen    | F11         |
 
