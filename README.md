@@ -21,6 +21,13 @@ raylib-libretro [core] [game]
 | Switch Shader | F10         |
 | Fullscreen    | F11         |
 
+### Core Support
+
+The following cores have been tested with raylib-libretro:
+
+- fceumm
+- picodrive
+
 ## Wishlist
 
 - [x] Video
@@ -52,6 +59,15 @@ cd build
 cmake ..
 make
 ```
+
+### Mac OSX
+
+- Make sure you have you have cmake/xcode-cli-tools installed
+- Run the above compile instructions
+- After installing RetroArch and some cores, you should be able to run the below:
+    ```bash
+    bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib ~/Desktop/smb.nes
+    ```
 
 ## License
 
