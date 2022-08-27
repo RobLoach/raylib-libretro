@@ -75,33 +75,32 @@ void ManageDroppedFiles() {
     }
 
     // Retrieve the list of dropped files.
-    int filesCount;
-    char **droppedFiles = GetDroppedFiles(&filesCount);
+    FilePathList files = LoadDroppedFiles();
     {
         // Load any dropped cores first.
-        for (int i = 0; i < filesCount; i++) {
-            if (IsFileCore(droppedFiles[i])) {
+        for (int i = 0; i < files.count; i++) {
+            if (IsFileCore(files.paths[i])) {
                 UnloadLibretroGame();
                 CloseLibretro();
                 // If it loaded successfully, stop trying to load any other cores.
-                if (InitLibretro(droppedFiles[i])) {
+                if (InitLibretro(files.paths[i])) {
                     break;
                 }
             }
         }
 
         // Finally, load the found content.
-        for (int i = 0; i < filesCount; i++) {
-            if (!IsFileCore(droppedFiles[i])) {
+        for (int i = 0; i < files.count; i++) {
+            if (!IsFileCore(files.paths[i])) {
                 // If loading worked, stop trying to load any other content.
-                if (LoadLibretroGame(droppedFiles[i])) {
+                if (LoadLibretroGame(files.paths[i])) {
                     menuActive = false;
                     break;
                 }
             }
         }
     }
-    ClearDroppedFiles();
+    UnloadDroppedFiles(files);
 }
 
 void UpdateMenu() {
@@ -129,7 +128,7 @@ void UpdateMenu() {
     int smallPadding = 25;
 
     // Background
-    GuiPanel((Rectangle){0, 0, GetScreenWidth(), GetScreenHeight()});
+    GuiPanel((Rectangle){0, 0, GetScreenWidth(), GetScreenHeight()}, "raylib-libretro");
 
     // On the main menu, have a large font.
     GuiSetStyle(DEFAULT, TEXT_SIZE, 20);
@@ -142,7 +141,7 @@ void UpdateMenu() {
     }
     else {
         GuiLabel((Rectangle){padding + buttonWidth, padding, GetScreenWidth() - buttonWidth, buttonHeight}, " ...or Drag and Drop.");
-        GuiDrawText("raylib-libretro", (Rectangle){0,0, GetScreenWidth(), GetScreenHeight()}, GUI_TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_NORMAL)));
+        GuiDrawText("raylib-libretro", (Rectangle){0,0, GetScreenWidth(), GetScreenHeight()}, TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_NORMAL)));
     }
 
     if (!openFileDialog.fileDialogActive) {
@@ -150,7 +149,7 @@ void UpdateMenu() {
         // Close Menu
         //GuiSetTooltip("Close Menu (F1)");
         Rectangle closeButton = (Rectangle){GetScreenWidth() - buttonHeight - padding, padding, buttonHeight, buttonHeight};
-        if (GuiButton(closeButton, GuiIconText(RICON_CROSS, ""))) {
+        if (GuiButton(closeButton, GuiIconText(ICON_CROSS, ""))) {
             if (IsLibretroGameReady()) {
                 menuActive = false;
                 return;
@@ -161,14 +160,14 @@ void UpdateMenu() {
         // Fullscreen
         //GuiSetTooltip("Fullscreen (F11)");
         Rectangle fullscreenCheckbox = (Rectangle){GetScreenWidth() - buttonHeight * 2 - padding - smallPadding, padding, buttonHeight, buttonHeight};
-        if (GuiButton(fullscreenCheckbox, GuiIconText(RICON_ZOOM_CENTER, ""))) {
+        if (GuiButton(fullscreenCheckbox, GuiIconText(ICON_ZOOM_CENTER, ""))) {
             ToggleFullscreen();
         }
         //GuiClearTooltip();
 
         // Volume
         Rectangle muteCheckbox = (Rectangle){GetScreenWidth() - buttonHeight * 4 - (padding - smallPadding) * 2, padding, buttonHeight, buttonHeight};
-        int muteIcon = (LibretroCore.volume >= 0.5f) ? RICON_AUDIO : RICON_WAVE;
+        int muteIcon = (LibretroCore.volume >= 0.5f) ? ICON_AUDIO : ICON_WAVE;
         if (GuiButton(muteCheckbox, GuiIconText(muteIcon, ""))) {
             if (LibretroCore.volume <= 0.5f) {
                 LibretroCore.volume = 1.0f;
@@ -180,7 +179,7 @@ void UpdateMenu() {
 
         // Open Core
         //GuiSetTooltip("Select a libretro core to load");
-        if (GuiButton((Rectangle){ padding, padding, buttonWidth, buttonHeight }, GuiIconText(RICON_FOLDER_FILE_OPEN, "Open Core")))
+        if (GuiButton((Rectangle){ padding, padding, buttonWidth, buttonHeight }, GuiIconText(ICON_FOLDER_FILE_OPEN, "Open Core")))
         {
             openFileDialog.fileDialogActive = true;
             openFileType = 0;
@@ -191,7 +190,7 @@ void UpdateMenu() {
         if (IsLibretroReady()) {
             // Open Game
             //GuiSetTooltip("Select a game to run with the loaded core");
-            if (GuiButton((Rectangle){ padding, buttonHeight + padding + smallPadding, buttonWidth, buttonHeight }, GuiIconText(RICON_FILETYPE_IMAGE, "Open Game"))) {
+            if (GuiButton((Rectangle){ padding, buttonHeight + padding + smallPadding, buttonWidth, buttonHeight }, GuiIconText(ICON_FILETYPE_IMAGE, "Open Game"))) {
                 openFileDialog.fileDialogActive = true;
                 openFileType = 1;
             }
@@ -202,7 +201,7 @@ void UpdateMenu() {
             if (!IsLibretroGameReady()) {
                 if (!DoesLibretroCoreNeedContent()) {
                     //GuiSetTooltip("Run the core without content");
-                    if (GuiButton(runResetGameRect, GuiIconText(RICON_ARROW_RIGHT_FILL, "Run"))) {
+                    if (GuiButton(runResetGameRect, GuiIconText(ICON_ARROW_RIGHT_FILL, "Run"))) {
                         if (LoadLibretroGame(NULL)) {
                             menuActive = false;
                         }
@@ -212,7 +211,7 @@ void UpdateMenu() {
             }
             else {
                 //GuiSetTooltip("Stop the currently running game");
-                if (GuiButton(runResetGameRect, GuiIconText(RICON_CROSS, "Close Game"))) {
+                if (GuiButton(runResetGameRect, GuiIconText(ICON_CROSS, "Close Game"))) {
                     UnloadLibretroGame();
                 }
                 //GuiClearTooltip();
@@ -221,7 +220,7 @@ void UpdateMenu() {
             // Reset Game
             if (IsLibretroGameReady()) {
                 //GuiSetTooltip("Reset the currently running game");
-                if (GuiButton((Rectangle){ padding, buttonHeight * 3 + padding + smallPadding * 3, buttonWidth, buttonHeight }, GuiIconText(RICON_ROTATE_FILL, "Reset"))) {
+                if (GuiButton((Rectangle){ padding, buttonHeight * 3 + padding + smallPadding * 3, buttonWidth, buttonHeight }, GuiIconText(ICON_ROTATE_FILL, "Reset"))) {
                     ResetLibretro();
                     menuActive = false;
                 }
