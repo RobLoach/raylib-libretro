@@ -815,6 +815,40 @@ static bool LibretroShouldClose() {
     return LibretroCore.shutdown;
 }
 
+
+void libretro_conv_argb8888_rgba4444(void *output_, const void *input_,
+      int width, int height,
+      int out_stride, int in_stride)
+{
+   int h, w;
+   const uint32_t *input = (const uint32_t*)input_;
+   uint16_t *output      = (uint16_t*)output_;
+
+   for (h = 0; h < height;
+         h++, output += out_stride >> 2, input += in_stride >> 1)
+   {
+      for (w = 0; w < width; w++)
+      {
+         uint32_t col = input[w];
+         uint32_t r   = (col >> 16) & 0xf;
+         uint32_t g   = (col >>  8) & 0xf;
+         uint32_t b   = (col) & 0xf;
+         uint32_t a   = (col >>  24) & 0xf;
+         r            = (r >> 4) | r;
+         g            = (g >> 4) | g;
+         b            = (b >> 4) | b;
+         a            = (a >> 4) | a;
+
+         a = 255;
+
+        // Force the alpha channel
+         output[w]    = (r << 12) | (g << 8) | (b << 4) | a;
+         //output[w]    = (r << 12) | (g << 8) | (b << 4) | a;
+      }
+   }
+}
+
+
 /**
  * Called when the core is updating the video.
  */
@@ -825,6 +859,8 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         return;
     }
 
+    //void* outData = (void*)data;
+
     // Resize the video if needed.
     if (width != LibretroCore.width || height != LibretroCore.height) {
         LibretroCore.width = width;
@@ -832,31 +868,116 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         LibretroInitVideo();
     }
 
-    // Translate for the pixel format.
     switch (LibretroCore.pixelFormat) {
-        case RETRO_PIXEL_FORMAT_XRGB8888: {
-            // Port RETRO_PIXEL_FORMAT_XRGB8888 to UNCOMPRESSED_R8G8B8A8.
-            // Examples: TIC-80, Higan
-            // Broken Examples: Snes9x?
-            LibretroMapPixelFormatARGB8888ToARGB8888((void*)data, data, width, height, pitch, pitch);
-        }
-        break;
-
         case RETRO_PIXEL_FORMAT_RGB565: {
-            // Nothing needed to port from RETRO_PIXEL_FORMAT_RGB565 to UNCOMPRESSED_R5G6B5.
-            // Examples: FCEUMM, PicoDrive
+            // fceumm -- Working
+            // Image image;
+            // image.format = PIXELFORMAT_UNCOMPRESSED_R5G6B5;
+            // image.mipmaps = 1;
+            // image.width = width;
+            // image.height = height;
+            // image.data = data;
+            // ImageFormat(&image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+            UpdateTexture(LibretroCore.texture, data);
         }
         break;
+        case RETRO_PIXEL_FORMAT_0RGB1555: {
+            // BSNES -- Wonky
+            Image image;
+            image.format = PIXELFORMAT_UNCOMPRESSED_R5G6B5;
+            image.mipmaps = 1;
+            image.width = width;
+            image.height = height;
+            image.data = MemAlloc(GetPixelDataSize(width, height, PIXELFORMAT_UNCOMPRESSED_R5G6B5));
 
-        case RETRO_PIXEL_FORMAT_0RGB1555: default: {
-            // Port RETRO_PIXEL_FORMAT_0RGB1555 to UNCOMPRESSED_R5G6B5
-            // Examples: Dosbox?
-            LibretroMapPixelFormatARGB1555ToRGB565((void*)data, data, width, height, pitch, width << 2);
+            LibretroMapPixelFormatARGB1555ToRGB565(image.data, data, width, height,
+                GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R5G6B5),
+                GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R5G5B5A1));
+            UpdateTexture(LibretroCore.texture, image.data);
+            UnloadImage(image);
         }
+        break;
+        case RETRO_PIXEL_FORMAT_XRGB8888: {
+            // Blastem -- Wonky
+            //Image image;
+            //PIXELFORMAT_UNCOMPRESSED_R4G4B4A4
+            //UpdateTexture(LibretroCore.texture, (void*)data);
+
+            Image image;
+            image.format = PIXELFORMAT_UNCOMPRESSED_R4G4B4A4;
+            image.mipmaps = 1;
+            image.width = width;
+            image.height = height;
+            int size = GetPixelDataSize(width, height, PIXELFORMAT_UNCOMPRESSED_R4G4B4A4);
+            // TraceLog(LOG_INFO, "SDFSDF: %i", size);
+            image.data = MemAlloc(size);
+
+
+            // Image image = GenImageColor(width, height, RED);
+            // ImageFormat(&image, PIXELFORMAT_UNCOMPRESSED_R4G4B4A4);
+
+            // Image image = GenImageColor(width, height, RED);
+            // ImageFormat(&image, PIXELFORMAT_UNCOMPRESSED_R4G4B4A4);
+
+            libretro_conv_argb8888_rgba4444(image.data, data, width, height,
+                GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8),
+                GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R4G4B4A4));
+
+
+            // Image image;
+            // image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+            // image.width = width;
+            // image.height = height;
+            // image.data = data - GetPixelDataSize(1, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) / 4;
+            // image.mipmaps = 1;
+            // Image new = ImageCopy(image);
+            // //ImageAlphaClear(&new, WHITE, 0.5f);
+
+
+            //ImageFormat(&image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+            UpdateTexture(LibretroCore.texture, image.data);
+            UnloadImage(image);
+        }
+        break;
     }
 
+
+    // Image image;
+    // image.format = LibretroMapRetroPixelFormatToPixelFormat(LibretroCore.pixelFormat);
+    // image.mipmaps = 1;
+    // image.width = width;
+    // image.height = height;
+    // image.data = data;
+
+    // Image screen = ImageCopy(image);
+    // ImageFormat(&screen, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+
+    // // Translate for the pixel format.
+    // switch (LibretroCore.pixelFormat) {
+    //     case RETRO_PIXEL_FORMAT_XRGB8888: {
+    //         // Port RETRO_PIXEL_FORMAT_XRGB8888 to UNCOMPRESSED_R8G8B8A8.
+    //         // Examples: TIC-80, Higan
+    //         // Broken Examples: Snes9x?
+    //         LibretroMapPixelFormatARGB8888ToARGB8888((void*)data, data, width, height, pitch, pitch);
+    //     }
+    //     break;
+
+    //     case RETRO_PIXEL_FORMAT_RGB565: {
+    //         // Nothing needed to port from RETRO_PIXEL_FORMAT_RGB565 to UNCOMPRESSED_R5G6B5.
+    //         // Examples: FCEUMM, PicoDrive
+    //     }
+    //     break;
+
+    //     case RETRO_PIXEL_FORMAT_0RGB1555: default: {
+    //         // Port RETRO_PIXEL_FORMAT_0RGB1555 to UNCOMPRESSED_R5G6B5
+    //         // Examples: Dosbox?
+    //         LibretroMapPixelFormatARGB1555ToRGB565((void*)data, data, width, height, pitch, width << 2);
+    //     }
+    // }
+
     // Update the texture data.
-    UpdateTexture(LibretroCore.texture, data);
+    //UpdateTexture(LibretroCore.texture, (const void*)outData);
+    //MemFree(outData);
 }
 
 static void LibretroInputPoll() {
@@ -1686,7 +1807,8 @@ static int LibretroMapRetroPixelFormatToPixelFormat(int pixelFormat) {
         case RETRO_PIXEL_FORMAT_0RGB1555:
             return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
         case RETRO_PIXEL_FORMAT_XRGB8888:
-            return PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+            return PIXELFORMAT_UNCOMPRESSED_R4G4B4A4;
+            //return PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
         case RETRO_PIXEL_FORMAT_RGB565:
             return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
     }
@@ -1712,6 +1834,7 @@ static void LibretroMapPixelFormatARGB8888ToARGB8888(void *output_, const void *
                 ((col & 0x00FF0000) >> 16)  | //______RR
                 ((col & 0x0000FF00))        | //____GG__
                 ((col & 0x000000FF) << 16)  | //___BB____
+                //((1));         //AA______
                 ((col & 0xFF000000));         //AA______
         }
     }
