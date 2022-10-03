@@ -161,6 +161,8 @@ typedef struct rLibretro {
 
     // Audio
     AudioStream audioStream;
+    int16_t *audioBuffer;
+    size_t audioFrames;
 } rLibretro;
 
 /**
@@ -768,7 +770,7 @@ static bool LibretroGetAudioVideo() {
     TraceLog(LOG_INFO, "LIBRETRO: Video and Audio information");
     TraceLog(LOG_INFO, "    > Display size: %i x %i", LibretroCore.width, LibretroCore.height);
     TraceLog(LOG_INFO, "    > Target FPS:   %i", LibretroCore.fps);
-    TraceLog(LOG_INFO, "    > Sample rate:  %d Hz", LibretroCore.sampleRate);
+    TraceLog(LOG_INFO, "    > Sample rate:  %.2f Hz", LibretroCore.sampleRate);
 
     return true;
 }
@@ -923,17 +925,35 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
     return 0;
 }
 
+static void LibretroAudioCallback(void *bufferData, unsigned int frames) {
+    if (LibretroCore.audioBuffer) {
+        //TraceLog(LOG_INFO, "Frames: %i", frames);
+        for (unsigned int i = 0; i < frames * 2; i += 2) {
+            if (i < LibretroCore.audioFrames) {
+                ((float*)bufferData)[i] = (float)(LibretroCore.audioBuffer[i]);
+                ((float*)bufferData)[i + 1] = (float)(LibretroCore.audioBuffer[i + 1]);
+            }
+            else {
+                ((float*)bufferData)[i] = 0.0f;
+                ((float*)bufferData)[i + 1] = 0.0f;
+            }
+        }
+    }
+}
+
 static size_t LibretroAudioWrite(const int16_t *data, size_t frames) {
     if (data == NULL) {
         return 0;
     }
 
-    if (LibretroCore.volume > 0.0f) {
-        // TODO: Fix Audio being choppy since it doesn't append to the buffer.
-        if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
-            UpdateAudioStream(LibretroCore.audioStream, data, frames);
-        }
-    }
+    //LibretroCore.audioBuffer = data;
+    LibretroCore.audioFrames = frames;
+
+    //     // TODO: Fix Audio being choppy since it doesn't append to the buffer.
+    //     if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
+    //         UpdateAudioStream(LibretroCore.audioStream, data, frames);
+    //     }
+    // }
 
     return frames;
 }
@@ -950,11 +970,14 @@ static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames) {
 static void LibretroInitAudio()
 {
     // Set the audio stream buffer size.
-    int sampleSize = 16;
+    int sampleSize = 32;
     int channels = 2;
 
     // Create the audio stream.
+    //SetAudioStreamBufferSizeDefault(sampleSize);
     LibretroCore.audioStream = LoadAudioStream((unsigned int)LibretroCore.sampleRate, sampleSize, channels);
+
+    SetAudioStreamCallback(LibretroCore.audioStream, LibretroAudioCallback);
     PlayAudioStream(LibretroCore.audioStream);
 
     // Let the core know that the audio device has been initialized.
