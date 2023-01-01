@@ -4,7 +4,7 @@
 
 #define RAYGUI_IMPLEMENTATION
 #define RAYGUI_SUPPORT_ICONS
-#include "raygui.h"
+//#include "raygui.h"
 
 #define GUI_FILE_DIALOG_IMPLEMENTATION
 #include "../examples/custom_file_dialog/gui_file_dialog.h"
@@ -19,7 +19,7 @@ char* menuMessage;
 
 void InitMenu() {
     // Set up the file dialog.
-    openFileDialog = InitGuiFileDialog(GetScreenWidth() * 0.8f, GetScreenHeight() * 0.8f, GetWorkingDirectory(), false);
+    openFileDialog = InitGuiFileDialog(GetWorkingDirectory());
     TextCopy(openFileDialog.dirPathText, GetWorkingDirectory());
 
     // Configure the GUI styles.
@@ -144,7 +144,7 @@ void UpdateMenu() {
         GuiDrawText("raylib-libretro", (Rectangle){0,0, GetScreenWidth(), GetScreenHeight()}, TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_NORMAL)));
     }
 
-    if (!openFileDialog.fileDialogActive) {
+    if (!openFileDialog.windowActive) {
 
         // Close Menu
         //GuiSetTooltip("Close Menu (F1)");
@@ -181,7 +181,7 @@ void UpdateMenu() {
         //GuiSetTooltip("Select a libretro core to load");
         if (GuiButton((Rectangle){ padding, padding, buttonWidth, buttonHeight }, GuiIconText(ICON_FOLDER_FILE_OPEN, "Open Core")))
         {
-            openFileDialog.fileDialogActive = true;
+            openFileDialog.windowActive = true;
             openFileType = 0;
         }
         //GuiClearTooltip();
@@ -191,7 +191,7 @@ void UpdateMenu() {
             // Open Game
             //GuiSetTooltip("Select a game to run with the loaded core");
             if (GuiButton((Rectangle){ padding, buttonHeight + padding + smallPadding, buttonWidth, buttonHeight }, GuiIconText(ICON_FILETYPE_IMAGE, "Open Game"))) {
-                openFileDialog.fileDialogActive = true;
+                openFileDialog.windowActive = true;
                 openFileType = 1;
             }
             //GuiClearTooltip();

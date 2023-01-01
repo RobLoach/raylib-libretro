@@ -73,6 +73,13 @@ void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
 static void LibretroMapPixelFormatARGB8888ToARGB8888(void *output_, const void *input_,
         int width, int height,
         int out_stride, int in_stride);
+
+
+void conv_argb8888_rgba4444(void *output_, const void *input_,
+      int width, int height,
+      int out_stride, int in_stride);
+
+
 static int LibretroMapRetroPixelFormatToPixelFormat(int pixelFormat);
 static int LibretroMapRetroJoypadButtonToGamepadButton(int button);
 static int LibretroMapRetroJoypadButtonToRetroKey(int button);
@@ -871,13 +878,6 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
     switch (LibretroCore.pixelFormat) {
         case RETRO_PIXEL_FORMAT_RGB565: {
             // fceumm -- Working
-            // Image image;
-            // image.format = PIXELFORMAT_UNCOMPRESSED_R5G6B5;
-            // image.mipmaps = 1;
-            // image.width = width;
-            // image.height = height;
-            // image.data = data;
-            // ImageFormat(&image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
             UpdateTexture(LibretroCore.texture, data);
         }
         break;
@@ -898,6 +898,7 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         }
         break;
         case RETRO_PIXEL_FORMAT_XRGB8888: {
+            /*
             // Blastem -- Wonky
             //Image image;
             //PIXELFORMAT_UNCOMPRESSED_R4G4B4A4
@@ -937,6 +938,63 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
             //ImageFormat(&image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
             UpdateTexture(LibretroCore.texture, image.data);
             UnloadImage(image);
+            */
+
+        //   conv_argb8888_rgba4444(data, (const void*)data, width, height,
+        //     width << 2,
+        //     width << 1);
+        //         //GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R4G4B4A4) << 2,
+        //         //width << 1);
+        //         //GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8));
+
+
+           // uint8_t* imageData = (uint8_t*)data;
+
+        //    LibretroMapPixelFormatARGB8888ToARGB8888(data, (const void*)data, width, height,
+        //         GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8),
+        //         GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8));
+
+
+            // uint8_t* imageData = data;
+            // for (int i = 0; i < width * height; i++) {
+            //     uint8_t* a = imageData + i * 4;
+            //     *a = 255;
+            //     // uint8_t* a = imageData + i * 4;
+            //     // uint8_t* r = imageData + i * 4 + 1;
+            //     // uint8_t* g = imageData + i * 4 + 2;
+            //     // uint8_t* b = imageData + i * 4 + 3;
+            //     // *a = *r;
+            //     // *r = *g;
+            //     // *g = *b;
+            //     // *b = 255;
+            // }
+            // imageData++;
+            //imageData += 1;
+            // for (int x = 0; x < width; x++) {
+            //     for (int y = 0; y < height; y++) {
+
+            //     }
+            // }
+
+
+
+            Image image;
+            image.format = PIXELFORMAT_UNCOMPRESSED_R4G4B4A4;
+            image.mipmaps = 1;
+            image.width = width;
+            image.height = height;
+            image.data = MemAlloc(GetPixelDataSize(width, height, PIXELFORMAT_UNCOMPRESSED_R4G4B4A4));
+
+            conv_argb8888_rgba4444(image.data, data, width, height,
+                width << 2,
+                width <<1);
+                //GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R4G4B4A4),
+                //GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8));
+            UpdateTexture(LibretroCore.texture, image.data);
+            UnloadImage(image);
+
+           //UpdateTexture(LibretroCore.texture, imageData);
+
         }
         break;
     }
@@ -1809,6 +1867,7 @@ static int LibretroMapRetroPixelFormatToPixelFormat(int pixelFormat) {
         case RETRO_PIXEL_FORMAT_XRGB8888:
             return PIXELFORMAT_UNCOMPRESSED_R4G4B4A4;
             //return PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+            //return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
         case RETRO_PIXEL_FORMAT_RGB565:
             return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
     }
@@ -1839,6 +1898,38 @@ static void LibretroMapPixelFormatARGB8888ToARGB8888(void *output_, const void *
         }
     }
 }
+
+
+void conv_argb8888_rgba4444(void *output_, const void *input_,
+      int width, int height,
+      int out_stride, int in_stride)
+{
+   int h, w;
+   const uint32_t *input = (const uint32_t*)input_;
+   uint16_t *output      = (uint16_t*)output_;
+
+   for (h = 0; h < height;
+         h++, output += out_stride >> 2, input += in_stride >> 1)
+   {
+      for (w = 0; w < width; w++)
+      {
+         uint32_t col = input[w];
+         uint32_t r   = (col >> 16) & 0xf;
+         uint32_t g   = (col >>  8) & 0xf;
+         uint32_t b   = (col) & 0xf;
+         //uint32_t a   = (col >>  24) & 0xf;
+         uint32_t a   = 0xf;
+
+         r            = (r >> 4) | r;
+         g            = (g >> 4) | g;
+         b            = (b >> 4) | b;
+         a            = (a >> 4) | a;
+
+         output[w]    = (r << 12) | (g << 8) | (b << 4) | a;
+      }
+   }
+}
+
 
 /**
  * Convert a pixel format from 1555 to 565.

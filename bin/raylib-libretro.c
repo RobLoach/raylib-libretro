@@ -39,7 +39,7 @@ int main(int argc, char* argv[]) {
     // Create the window and audio.
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(800, 600, "raylib-libretro");
-    SetWindowMinSize(575, 450);
+    SetWindowMinSize(400, 300);
     InitAudioDevice();
 
     // Load the shaders and the menu.
