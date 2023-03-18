@@ -1124,9 +1124,10 @@ static size_t LibretroAudioWrite(const int16_t *data, size_t frames) {
     if (data == NULL) {
         return 0;
     }
+    //UpdateAudioStream(LibretroCore.audioStream, data, frames);
 
     //LibretroCore.audioBuffer = data;
-    LibretroCore.audioFrames = frames;
+    //LibretroCore.audioFrames = frames;
 
     //     // TODO: Fix Audio being choppy since it doesn't append to the buffer.
     //     if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
