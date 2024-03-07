@@ -6,20 +6,20 @@
 #define RAYGUI_SUPPORT_ICONS
 //#include "raygui.h"
 
-#define GUI_FILE_DIALOG_IMPLEMENTATION
-#include "../examples/custom_file_dialog/gui_file_dialog.h"
+#define GUI_WINDOW_FILE_DIALOG_IMPLEMENTATION
+#include "../examples/custom_file_dialog/gui_window_file_dialog.h"
 
 #include "../include/raylib-libretro.h"
 #include "shaders.h"
 
 bool menuActive = true;
-GuiFileDialogState openFileDialog;
+GuiWindowFileDialogState openFileDialog;
 int openFileType = 0;
 char* menuMessage;
 
 void InitMenu() {
     // Set up the file dialog.
-    openFileDialog = InitGuiFileDialog(GetWorkingDirectory());
+    openFileDialog = InitGuiWindowFileDialog(GetWorkingDirectory());
     TextCopy(openFileDialog.dirPathText, GetWorkingDirectory());
 
     // Configure the GUI styles.
@@ -46,7 +46,7 @@ void InitMenu() {
     */
 
     // Default style settings.
-    GuiFade(0.95f);
+    GuiFade(WHITE, 0.95f);
     GuiSetStyle(DEFAULT, TEXT_SPACING, 3);
 }
 
@@ -232,7 +232,7 @@ void UpdateMenu() {
         if (IsLibretroGameReady()) {
             //GuiSetTooltip("Change shader (F10)");
             Rectangle shaderRect = (Rectangle){padding, GetScreenHeight() - padding - buttonHeight, buttonWidth, buttonHeight};
-            currentShader = GuiToggleGroup(shaderRect, "Pixel Perfect;CRT;Scanlines", currentShader);
+            currentShader = GuiToggleGroup(shaderRect, "Pixel Perfect;CRT;Scanlines", &currentShader);
             //GuiClearTooltip();
         }
     }
@@ -241,7 +241,7 @@ void UpdateMenu() {
     GuiSetStyle(DEFAULT, TEXT_SIZE, 10);
 
     // Select a file.
-    GuiFileDialog(&openFileDialog);
+    GuiWindowFileDialog(&openFileDialog);
     if (openFileDialog.SelectFilePressed) {
         openFileDialog.SelectFilePressed = false;
         switch (openFileType) {
