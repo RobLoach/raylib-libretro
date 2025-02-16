@@ -168,6 +168,7 @@ typedef struct rLibretro {
     AudioStream audioStream;
     int16_t *audioBuffer;
     size_t audioFrames;
+    float raylibAudioData[64];
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -868,12 +869,13 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
 
     // TODO: Move the MemAlloc() into a already built screen buffer, or something.
     switch (LibretroCore.pixelFormat) {
-        case RETRO_PIXEL_FORMAT_RGB565: { // FCEUMM: Working
-            // fceumm -- Working
+        case RETRO_PIXEL_FORMAT_RGB565: {
+            // FCEUMM: Working
+            // SNES9X: Broken
             UpdateTexture(LibretroCore.texture, data);
         }
         break;
-        case RETRO_PIXEL_FORMAT_0RGB1555: { // BSNES: Wonky
+        case RETRO_PIXEL_FORMAT_0RGB1555: {
             Image image;
             image.format = PIXELFORMAT_UNCOMPRESSED_R5G6B5;
             image.mipmaps = 1;
@@ -888,7 +890,9 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
             UnloadImage(image);
         }
         break;
-        case RETRO_PIXEL_FORMAT_XRGB8888: { // Blastem: Working
+        case RETRO_PIXEL_FORMAT_XRGB8888: {
+            // Blastem: Working
+            // BSNES: Working
             Image image;
             image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
             image.mipmaps = 1;
@@ -973,35 +977,23 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
     return 0;
 }
 
-static void LibretroAudioCallback(void *bufferData, unsigned int frames) {
-    if (LibretroCore.audioBuffer) {
-        //TraceLog(LOG_INFO, "Frames: %i", frames);
-        for (unsigned int i = 0; i < frames * 2; i += 2) {
-            if (i < LibretroCore.audioFrames) {
-                ((float*)bufferData)[i] = (float)(LibretroCore.audioBuffer[i]);
-                ((float*)bufferData)[i + 1] = (float)(LibretroCore.audioBuffer[i + 1]);
-            }
-            else {
-                ((float*)bufferData)[i] = 0.0f;
-                ((float*)bufferData)[i + 1] = 0.0f;
-            }
-        }
-    }
-}
-
 static size_t LibretroAudioWrite(const int16_t *data, size_t frames) {
     if (data == NULL) {
         return 0;
     }
-    //UpdateAudioStream(LibretroCore.audioStream, data, frames);
 
-    //LibretroCore.audioBuffer = data;
-    //LibretroCore.audioFrames = frames;
+    // UpdateAudioStream(LibretroCore.audioStream, data, frames);
+
+    // LibretroCore.audioBuffer = data;
+    // LibretroCore.audioFrames = frames;
 
     //     // TODO: Fix Audio being choppy since it doesn't append to the buffer.
-    //     if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
-    //         UpdateAudioStream(LibretroCore.audioStream, data, frames);
-    //     }
+        //if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
+            // for (size_t i = 0; i < frames; i++) {
+            //     LibretroCore.raylibAudioData[i] = (float)data[i];
+            // }
+            UpdateAudioStream(LibretroCore.audioStream, data, frames);
+        //}
     // }
 
     return frames;
@@ -1016,17 +1008,16 @@ static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames) {
     return LibretroAudioWrite(data, frames);
 }
 
-static void LibretroInitAudio()
-{
+static void LibretroInitAudio() {
     // Set the audio stream buffer size.
-    int sampleSize = 32;
+    int sampleSize = 16;
     int channels = 2;
 
     // Create the audio stream.
-    //SetAudioStreamBufferSizeDefault(sampleSize);
+    SetAudioStreamBufferSizeDefault(sizeof(uint16_t));
     LibretroCore.audioStream = LoadAudioStream((unsigned int)LibretroCore.sampleRate, sampleSize, channels);
 
-    SetAudioStreamCallback(LibretroCore.audioStream, LibretroAudioCallback);
+    //SetAudioStreamCallback(LibretroCore.audioStream, LibretroAudioCallback);
     PlayAudioStream(LibretroCore.audioStream);
 
     // Let the core know that the audio device has been initialized.
