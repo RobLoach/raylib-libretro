@@ -39,6 +39,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Create the window and audio.
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(800, 600, "raylib-libretro - basic window");
     InitAudioDevice();
 
