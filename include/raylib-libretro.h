@@ -70,21 +70,19 @@ static void CloseLibretro();                             // Close the initialize
 void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
         int out_stride, int in_stride);
-static void LibretroMapPixelFormatARGB8888ToARGB8888(void *output_, const void *input_,
-        int width, int height,
-        int out_stride, int in_stride);
-
-
-void conv_argb8888_rgba4444(void *output_, const void *input_,
-      int width, int height,
-      int out_stride, int in_stride);
-
+void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *input_,
+    int width, int height,
+    int out_stride, int in_stride);
 
 static int LibretroMapRetroPixelFormatToPixelFormat(int pixelFormat);
 static int LibretroMapRetroJoypadButtonToGamepadButton(int button);
 static int LibretroMapRetroJoypadButtonToRetroKey(int button);
 static int LibretroMapRetroKeyToKeyboardKey(int key);
 static int LibretroMapRetroLogLevelToTraceLogType(int level);
+
+#if defined(__cplusplus)
+}
+#endif
 
 #ifdef RAYLIB_LIBRETRO_IMPLEMENTATION
 
@@ -171,6 +169,10 @@ typedef struct rLibretro {
     int16_t *audioBuffer;
     size_t audioFrames;
 } rLibretro;
+
+#if defined(__cplusplus)
+extern "C" {            // Prevents name mangling of functions
+#endif
 
 /**
  * The global libretro core object.
@@ -1740,29 +1742,6 @@ static int LibretroMapRetroPixelFormatToPixelFormat(int pixelFormat) {
 
     // By default, libretro uses RETRO_PIXEL_FORMAT_0RGB1555.
     return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
-}
-
-/**
- * Ports pixel data of ARGB8888 pixel format to ARGB8888.
- */
-static void LibretroMapPixelFormatARGB8888ToARGB8888(void *output_, const void *input_,
-        int width, int height,
-        int out_stride, int in_stride) {
-    int h, w;
-    const uint32_t *input = (const uint32_t*)input_;
-    uint32_t *output = (uint32_t*)output_;
-
-    for (h = 0; h < height; h++, output += out_stride >> 2, input += in_stride >> 2) {
-        for (w = 0; w < width; w++) {
-            uint32_t col = input[w];
-            output[w] =
-                ((col & 0x00FF0000) >> 16)  | //______RR
-                ((col & 0x0000FF00))        | //____GG__
-                ((col & 0x000000FF) << 16)  | //___BB____
-                //((1));         //AA______
-                ((col & 0xFF000000));         //AA______
-        }
-    }
 }
 
 /**
