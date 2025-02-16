@@ -20,30 +20,39 @@ char* menuMessage;
 void InitMenu() {
     // Set up the file dialog.
     openFileDialog = InitGuiWindowFileDialog(GetWorkingDirectory());
+    openFileDialog.windowBounds.x = 10.0f;
+    openFileDialog.windowBounds.y = 30.0f;
+    openFileDialog.windowBounds.width = GetScreenWidth() - openFileDialog.windowBounds.x * 2.0f;
+    openFileDialog.windowBounds.height = GetScreenHeight() - openFileDialog.windowBounds.y * 2.0f;
     TextCopy(openFileDialog.dirPathText, GetWorkingDirectory());
 
     // Configure the GUI styles.
     GuiLoadStyleDefault();
 
-    // Cyber Style
-    /*
-    GuiSetStyle(0, 0, 0x2f7486ff);
-    GuiSetStyle(0, 1, 0x024658ff);
-    GuiSetStyle(0, 2, 0x51bfd3ff);
-    GuiSetStyle(0, 3, 0x82cde0ff);
-    GuiSetStyle(0, 4, 0x3299b4ff);
-    GuiSetStyle(0, 5, 0xb6e1eaff);
-    GuiSetStyle(0, 6, 0xeb7630ff);
-    GuiSetStyle(0, 7, 0xffbc51ff);
-    GuiSetStyle(0, 8, 0xd86f36ff);
-    GuiSetStyle(0, 9, 0x134b5aff);
-    GuiSetStyle(0, 10, 0x02313dff);
-    GuiSetStyle(0, 11, 0x17505fff);
-    GuiSetStyle(0, 16, 0x0000000e);
+    // Dark Style
+    GuiSetStyle(0, 0, 0x878787ff);
+    GuiSetStyle(0, 1, 0x2c2c2cff);
+    GuiSetStyle(0, 2, 0xc3c3c3ff);
+    GuiSetStyle(0, 3, 0xe1e1e1ff);
+    GuiSetStyle(0, 4, 0x848484ff);
+    GuiSetStyle(0, 5, 0x181818ff);
+    GuiSetStyle(0, 6, 0x000000ff);
+    GuiSetStyle(0, 7, 0xefefefff);
+    GuiSetStyle(0, 8, 0x202020ff);
+    GuiSetStyle(0, 9, 0x6a6a6aff);
+    GuiSetStyle(0, 10, 0x818181ff);
+    GuiSetStyle(0, 11, 0x606060ff);
+    GuiSetStyle(0, 16, 0x00000010);
     GuiSetStyle(0, 17, 0x00000000);
-    GuiSetStyle(0, 18, 0x81c0d0ff);
-    GuiSetStyle(0, 19, 0x00222bff);
-    */
+    GuiSetStyle(0, 18, 0x9d9d9dff);
+    GuiSetStyle(0, 19, 0x3c3c3cff);
+    GuiSetStyle(0, 20, 0x00000018);
+    GuiSetStyle(1, 5, 0xf7f7f7ff);
+    GuiSetStyle(1, 8, 0x898989ff);
+    GuiSetStyle(4, 5, 0xb0b0b0ff);
+    GuiSetStyle(5, 5, 0x848484ff);
+    GuiSetStyle(9, 5, 0xf5f5f5ff);
+    GuiSetStyle(10, 5, 0xf6f6f6ff);
 
     // Default style settings.
     GuiFade(WHITE, 0.95f);
@@ -140,7 +149,9 @@ void UpdateMenu() {
         GuiStatusBar(statusBarRect, statusText);
     }
     else {
-        GuiLabel((Rectangle){padding + buttonWidth, padding, GetScreenWidth() - buttonWidth, buttonHeight}, " ...or Drag and Drop.");
+        if (!openFileDialog.windowActive) {
+            GuiLabel((Rectangle){padding + buttonWidth, padding, GetScreenWidth() - buttonWidth, buttonHeight}, " ...or Drag and Drop.");
+        }
         GuiDrawText("raylib-libretro", (Rectangle){0,0, GetScreenWidth(), GetScreenHeight()}, TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_NORMAL)));
     }
 
@@ -238,7 +249,7 @@ void UpdateMenu() {
     }
 
     // When the dialog is displayed, use a smaller font.
-    GuiSetStyle(DEFAULT, TEXT_SIZE, 10);
+    GuiSetStyle(DEFAULT, TEXT_SIZE, 20);
 
     // Select a file.
     GuiWindowFileDialog(&openFileDialog);

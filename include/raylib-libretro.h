@@ -67,6 +67,9 @@ static bool DoesLibretroCoreNeedContent();               // Determine whether or
 static void UnloadLibretroGame();                        // Unload the game that's currently loaded.
 static void CloseLibretro();                             // Close the initialized libretro core.
 
+void* GetLibretroSerializedData(unsigned int* size);
+bool SetLibretroSerializedData(void* data, unsigned int size);
+
 void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
         int out_stride, int in_stride);
@@ -85,6 +88,8 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #endif
 
 #ifdef RAYLIB_LIBRETRO_IMPLEMENTATION
+#ifndef RAYLIB_LIBRETRO_IMPLEMENTATION_ONCE
+#define RAYLIB_LIBRETRO_IMPLEMENTATION_ONCE
 
 // System dependencies
 #include <string.h>
@@ -178,19 +183,19 @@ extern "C" {            // Prevents name mangling of functions
 /**
  * The global libretro core object.
  */
-rLibretro LibretroCore = {0};
+static rLibretro LibretroCore = {0};
 
 static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
     int type = LibretroMapRetroLogLevelToTraceLogType(level);
 
     va_list va;
-    char buffer[4096] = {0};
-
     va_start(va, fmt);
-    vsnprintf(buffer, sizeof(buffer), fmt, va);
+    const char* message = TextReplace(TextFormat(fmt, va), "\n", "");
     va_end(va);
 
-    TraceLog(type, "LIBRETRO: %s", buffer);
+    if (TextLength(message) > 0) {
+        TraceLog(type, "LIBRETRO: %s", message);
+    }
 }
 
 static void LibretroInitVideo() {
@@ -457,7 +462,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES: {
-            TraceLog(LOG_INFO, "RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES");
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES");
             uint64_t *capabilities = (uint64_t*)data;
             *capabilities = (1 << RETRO_DEVICE_JOYPAD) |
                 (1 << RETRO_DEVICE_MOUSE) |
@@ -627,8 +632,8 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: {
-            int* output = (int *)data;
-            *output = 3; // Audio and Video
+            enum retro_av_enable_flags* output = (enum retro_av_enable_flags *)data;
+            *output = RETRO_AV_ENABLE_VIDEO | RETRO_AV_ENABLE_AUDIO;
             return true;
         }
 
@@ -808,6 +813,23 @@ static void UpdateLibretro() {
 
     if (IsLibretroGameReady()) {
         LibretroCore.retro_run();
+
+        // Save State
+        if (IsKeyPressed(KEY_F5)) {
+            unsigned int size;
+            void* data = GetLibretroSerializedData(&size);
+            if (data != NULL) {
+                SaveFileData(TextFormat("save_%s.sav", GetLibretroName()), data, (int)size);
+                MemFree(data);
+            }
+        } else if (IsKeyPressed(KEY_F9)) {
+            int dataSize;
+            void* data = LoadFileData(TextFormat("save_%s.sav", GetLibretroName()), &dataSize);
+            if (data != NULL) {
+                SetLibretroSerializedData(data, (unsigned int)dataSize);
+                MemFree(data);
+            }
+        }
     }
 }
 
@@ -992,8 +1014,9 @@ static size_t LibretroAudioWrite(const int16_t *data, size_t frames) {
             // for (size_t i = 0; i < frames; i++) {
             //     LibretroCore.raylibAudioData[i] = (float)data[i];
             // }
+        if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
             UpdateAudioStream(LibretroCore.audioStream, data, frames);
-        //}
+        }
     // }
 
     return frames;
@@ -1723,16 +1746,14 @@ static int LibretroMapRetroJoypadButtonToGamepadButton(int button) {
  */
 static int LibretroMapRetroPixelFormatToPixelFormat(int pixelFormat) {
     switch (pixelFormat) {
-        case RETRO_PIXEL_FORMAT_0RGB1555:
-            return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
         case RETRO_PIXEL_FORMAT_XRGB8888:
             return PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
         case RETRO_PIXEL_FORMAT_RGB565:
             return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
+        case RETRO_PIXEL_FORMAT_0RGB1555:
+        default:
+            return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
     }
-
-    // By default, libretro uses RETRO_PIXEL_FORMAT_0RGB1555.
-    return PIXELFORMAT_UNCOMPRESSED_R5G6B5;
 }
 
 /**
@@ -1763,10 +1784,53 @@ void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
     }
 }
 
+void* GetLibretroSerializedData(unsigned int* size) {
+    if (!IsLibretroGameReady()) {
+        return NULL;
+    }
+
+    if (LibretroCore.retro_serialize_size == NULL || LibretroCore.retro_serialize == NULL) {
+        return NULL;
+    }
+
+    size_t finalSize = LibretroCore.retro_serialize_size();
+    if (finalSize == 0) {
+        return NULL;
+    }
+    if (size != NULL) {
+        *size = (unsigned int)finalSize;
+    }
+
+    void* saveData = MemAlloc((unsigned int)finalSize);
+    if (saveData == NULL) {
+        return NULL;
+    }
+
+    if (LibretroCore.retro_serialize(saveData, finalSize)) {
+        return saveData;
+    }
+    TraceLog(LOG_ERROR, "LIBRETRO: Failed to get retro_serialize");
+    MemFree(saveData);
+    return NULL;
+}
+
+bool SetLibretroSerializedData(void* data, unsigned int size) {
+    if (!IsLibretroGameReady()) {
+        return false;
+    }
+
+    if (LibretroCore.retro_unserialize == NULL) {
+        return false;
+    }
+
+    return LibretroCore.retro_unserialize(data, (size_t)size);
+}
+
 #endif
 
 #if defined(__cplusplus)
 }
 #endif
 
-#endif // RAYLIB_LIBRETRO_RLIBRETRO_H
+#endif // RAYLIB_LIBRETRO_IMPLEMENTATION_ONCE
+#endif // RAYLIB_LIBRETRO_IMPLEMENTATION
