@@ -82,6 +82,8 @@ static int LibretroMapRetroJoypadButtonToRetroKey(int button);
 static int LibretroMapRetroKeyToKeyboardKey(int key);
 static int LibretroMapRetroLogLevelToTraceLogType(int level);
 
+#include "raylib-libretro-vfs.h"
+
 #if defined(__cplusplus)
 }
 #endif
@@ -98,6 +100,9 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 
 // libretro-common
 #include <dynamic/dylib.h>
+
+#define RAYLIB_LIBRETRO_VFS_IMPLEMENTATION
+#include "raylib-libretro-vfs.h"
 
 // Dynamic loading methods.
 #define LoadLibretroMethodHandle(V, S) do {\
@@ -177,6 +182,8 @@ typedef struct rLibretro {
 
     // Callbacks
     retro_keyboard_event_t keyboard_event;
+    struct retro_vfs_interface vfs_interface;
+    //struct retro_game_info_ext game_info_ext;
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -626,8 +633,41 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VFS_INTERFACE not implemented");
-            return false;
+            struct retro_vfs_interface_info * vfs_interface = (struct retro_vfs_interface_info *)data;
+            if (vfs_interface == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VFS_INTERFACE data missing");
+                return false;
+            }
+            if (vfs_interface->required_interface_version > 3) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VFS_INTERFACE version not supported");
+                return false;
+            }
+
+            if (vfs_interface->iface == NULL) {
+                vfs_interface->iface = &LibretroCore.vfs_interface;
+            }
+
+            vfs_interface->iface->get_path = &raylib_libretro_vfs_get_path;
+            vfs_interface->iface->open = &raylib_libretro_vfs_open;
+            vfs_interface->iface->close = &raylib_libretro_vfs_close;
+            vfs_interface->iface->size = &raylib_libretro_vfs_size;
+            vfs_interface->iface->tell = &raylib_libretro_vfs_tell;
+            vfs_interface->iface->seek = &raylib_libretro_vfs_seek;
+            vfs_interface->iface->read = &raylib_libretro_vfs_read;
+            vfs_interface->iface->write = &raylib_libretro_vfs_write;
+            vfs_interface->iface->flush = &raylib_libretro_vfs_flush;
+            vfs_interface->iface->remove = &raylib_libretro_vfs_remove;
+            vfs_interface->iface->rename = &raylib_libretro_vfs_rename;
+            vfs_interface->iface->truncate = &raylib_libretro_vfs_truncate;
+            vfs_interface->iface->stat = &raylib_libretro_vfs_stat;
+            vfs_interface->iface->mkdir = &raylib_libretro_vfs_mkdir;
+            vfs_interface->iface->opendir = &raylib_libretro_vfs_opendir;
+            vfs_interface->iface->readdir = &raylib_libretro_vfs_readdir;
+            vfs_interface->iface->dirent_get_name = &raylib_libretro_vfs_dirent_get_name;
+            vfs_interface->iface->dirent_is_dir = &raylib_libretro_vfs_dirent_is_dir;
+            vfs_interface->iface->closedir = &raylib_libretro_vfs_closedir;
+
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_LED_INTERFACE: {
@@ -662,7 +702,8 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_INPUT_BITMASKS not implemented");
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_GET_INPUT_BITMASKS not supported");
+            // TODO: Add RETRO_ENVIRONMENT_GET_INPUT_BITMASKS support
             return false;
         }
 
@@ -742,6 +783,9 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 
         case RETRO_ENVIRONMENT_GET_GAME_INFO_EXT: {
             TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_GAME_INFO_EXT not implemented");
+            //const struct retro_game_info_ext ** game_info_ext = (const struct retro_game_info_ext **)data;
+            //*game_info_ext = &LibretroCore.game_info_ext;
+
             return false;
         }
 
@@ -767,6 +811,46 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 
         case RETRO_ENVIRONMENT_GET_THROTTLE_STATE: {
             TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_THROTTLE_STATE not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_JIT_CAPABLE: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_JIT_CAPABLE not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_MICROPHONE_INTERFACE: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_MICROPHONE_INTERFACE not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_DEVICE_POWER: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_DEVICE_POWER not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY not implemented");
             return false;
         }
     }
@@ -1027,6 +1111,10 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
             }
             return 0;
         }
+
+        case RETRO_DEVICE_ID_JOYPAD_MASK: {
+
+        }
     }
 
     return 0;
@@ -1173,8 +1261,6 @@ static bool InitLibretro(const char* core) {
         return false;
     }
 
-    // If there's an existing libretro core, close it.
-    LibretroCore.keyboard_event = NULL;
     if (LibretroCore.handle != NULL) {
         CloseLibretro();
     }
@@ -1360,12 +1446,12 @@ static void UnloadLibretroGame() {
  */
 static void CloseLibretro() {
     // Let the core know that the audio device has been initialized.
-    if (LibretroCore.audio_callback.set_state) {
+    if (LibretroCore.audio_callback.set_state != NULL) {
         LibretroCore.audio_callback.set_state(false);
     }
 
     // Call retro_deinit() to deinitialize the core.
-    if (LibretroCore.retro_deinit) {
+    if (LibretroCore.retro_deinit != NULL) {
         LibretroCore.retro_deinit();
     }
 
