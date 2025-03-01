@@ -66,7 +66,6 @@ static Texture2D GetLibretroTexture();                   // Retrieve the texture
 static bool DoesLibretroCoreNeedContent();               // Determine whether or not the loaded core require content.
 static void UnloadLibretroGame();                        // Unload the game that's currently loaded.
 static void CloseLibretro();                             // Close the initialized libretro core.
-
 void* GetLibretroSerializedData(unsigned int* size);
 bool SetLibretroSerializedData(void* data, unsigned int size);
 
@@ -156,6 +155,7 @@ typedef struct rLibretro {
     unsigned performanceLevel;
     bool loaded;
     float volume;
+
     // The last performance counter registered. TODO: Make it a linked list.
 	struct retro_perf_counter* perf_counter_last;
     struct retro_frame_time_callback runloop_frame_time;
@@ -174,6 +174,9 @@ typedef struct rLibretro {
     int16_t *audioBuffer;
     size_t audioFrames;
     float raylibAudioData[64];
+
+    // Callbacks
+    retro_keyboard_event_t keyboard_event;
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -373,8 +376,9 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK not implemented");
-            return false;
+            const struct retro_keyboard_callback * callback = (const struct retro_keyboard_callback *)data;
+            LibretroCore.keyboard_event = callback->callback;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: {
@@ -811,6 +815,35 @@ static void UpdateLibretro() {
         LibretroCore.audio_callback.callback();
     }
 
+    // Check keyboard event callback.
+    if (LibretroCore.keyboard_event != NULL) {
+        // Prepare the key modifiers.
+        uint16_t key_modifiers = 0;
+        if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
+            key_modifiers |= RETROKMOD_SHIFT;
+        }
+        if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) {
+            key_modifiers |= RETROKMOD_CTRL;
+        }
+        if (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) {
+            key_modifiers |= RETROKMOD_ALT;
+        }
+
+        // Check each keyboard key
+        for (int key = RETROK_FIRST; key < RETROK_LAST; key++) {
+            int raylibKey = LibretroMapRetroKeyToKeyboardKey(key);
+            if (raylibKey > 0) {
+                // TODO: Figure out character parameter.
+                if (IsKeyPressed(raylibKey)) {
+                    LibretroCore.keyboard_event(true, key, 0, key_modifiers);
+                }
+                else if (IsKeyReleased(raylibKey)) {
+                    LibretroCore.keyboard_event(false, key, 0, key_modifiers);
+                }
+            }
+        }
+    }
+
     if (IsLibretroGameReady()) {
         LibretroCore.retro_run();
 
@@ -1141,6 +1174,7 @@ static bool InitLibretro(const char* core) {
     }
 
     // If there's an existing libretro core, close it.
+    LibretroCore.keyboard_event = NULL;
     if (LibretroCore.handle != NULL) {
         CloseLibretro();
     }
