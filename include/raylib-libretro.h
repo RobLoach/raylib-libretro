@@ -542,7 +542,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             const struct retro_system_av_info av = *(const struct retro_system_av_info *)data;
             LibretroCore.width = av.geometry.base_width;
             LibretroCore.height = av.geometry.base_height;
-            LibretroCore.fps = av.timing.fps;
+            LibretroCore.fps = (unsigned int)av.timing.fps;
             LibretroCore.sampleRate = av.timing.sample_rate;
             LibretroCore.aspectRatio = av.geometry.aspect_ratio;
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO %i x %i @ %i FPS",
