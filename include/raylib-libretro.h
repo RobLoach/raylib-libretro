@@ -183,7 +183,7 @@ typedef struct rLibretro {
     // Callbacks
     retro_keyboard_event_t keyboard_event;
     struct retro_vfs_interface vfs_interface;
-    //struct retro_game_info_ext game_info_ext;
+    // struct retro_game_info_ext game_info_ext;
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -783,8 +783,9 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 
         case RETRO_ENVIRONMENT_GET_GAME_INFO_EXT: {
             TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_GAME_INFO_EXT not implemented");
-            //const struct retro_game_info_ext ** game_info_ext = (const struct retro_game_info_ext **)data;
-            //*game_info_ext = &LibretroCore.game_info_ext;
+            // const struct retro_game_info_ext ** game_info_ext = (const struct retro_game_info_ext **)data;
+            // *game_info_ext = &LibretroCore.game_info_ext;
+            // LibretroCore.game_info_ext.archive_file
 
             return false;
         }
@@ -1185,7 +1186,12 @@ static bool LibretroInitAudioVideo() {
 static bool LoadLibretroGame(const char* gameFile) {
     // Load empty game.
     if (gameFile == NULL) {
-        if (LibretroCore.retro_load_game(NULL)) {
+        struct retro_game_info info;
+        info.data = NULL;
+        info.size = 0;
+        info.path = "";
+        info.meta = "";
+        if (LibretroCore.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded without content");
             LibretroCore.loaded = true;
             return LibretroInitAudioVideo();
@@ -1197,6 +1203,7 @@ static bool LoadLibretroGame(const char* gameFile) {
     // Ensure the game exists.
     if (!FileExists(gameFile)) {
         TraceLog(LOG_ERROR, "LIBRETRO: Given content does not exist: %s", gameFile);
+        LibretroCore.loaded = false;
         return false;
     }
 
@@ -1213,15 +1220,17 @@ static bool LoadLibretroGame(const char* gameFile) {
         }
         else {
             TraceLog(LOG_ERROR, "LIBRETRO: Failed to load full path");
+            LibretroCore.loaded = false;
             return false;
         }
     }
 
     // Load the game data from the given file.
-    unsigned int size;
+    int size;
     unsigned char * gameData = LoadFileData(gameFile, &size);
     if (size == 0 || gameData == NULL) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with LoadFileData()");
+        LibretroCore.loaded = false;
         return false;
     }
 
@@ -1229,15 +1238,16 @@ static bool LoadLibretroGame(const char* gameFile) {
     struct retro_game_info info;
     info.path = gameFile;
     info.data = gameData;
-    info.size = size;
+    info.size = (size_t)size;
     info.meta = "";
     if (!LibretroCore.retro_load_game(&info)) {
-        free(gameData);
+        MemFree(gameData);
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with retro_load_game()");
         LibretroCore.loaded = false;
         return false;
     }
-    free(gameData);
+
+    MemFree(gameData);
     LibretroCore.loaded = true;
     return LibretroInitAudioVideo();
 }
