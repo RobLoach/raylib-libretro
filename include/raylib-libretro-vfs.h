@@ -481,23 +481,19 @@ int raylib_libretro_vfs_rename(const char *old_path, const char *new_path) {
  * @since VFS API v3
  */
 int raylib_libretro_vfs_stat(const char *path, int32_t *size) {
-    int output = 0;
-
-    //TraceLog(LOG_WARNING, "raylib_libretro_vfs_stat('%s')", path);
-
+    // TODO: raylib doesn't really have a stat().
     bool fileExists = FileExists(path);
-    bool directoryExists = DirectoryExists(path);
+    int fileLength = GetFileLength(path);
 
-    if (size != NULL && fileExists && !directoryExists) {
-        *size = (int32_t)GetFileLength(path);
-    }
-
-    if (fileExists) {
+    if (fileExists && fileLength > 0) {
+        if (size != NULL) {
+            *size = (int32_t)fileLength;
+        }
         return RETRO_VFS_STAT_IS_VALID;
     }
 
-    if (directoryExists) {
-        return RETRO_VFS_STAT_IS_DIRECTORY;
+    if (DirectoryExists(path)) {
+        return RETRO_VFS_STAT_IS_DIRECTORY | RETRO_VFS_STAT_IS_VALID;
     }
 
     return 0;
