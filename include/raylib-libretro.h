@@ -66,13 +66,13 @@ static Texture2D GetLibretroTexture();                   // Retrieve the texture
 static bool DoesLibretroCoreNeedContent();               // Determine whether or not the loaded core require content.
 static void UnloadLibretroGame();                        // Unload the game that's currently loaded.
 static void CloseLibretro();                             // Close the initialized libretro core.
-void* GetLibretroSerializedData(unsigned int* size);
+void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
 bool SetLibretroSerializedData(void* data, unsigned int size);
 
-void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
+static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
         int out_stride, int in_stride);
-void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *input_,
+static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *input_,
     int width, int height,
     int out_stride, int in_stride);
 
@@ -167,7 +167,7 @@ typedef struct rLibretro {
     float volume;
 
     // The last performance counter registered. TODO: Make it a linked list.
-	struct retro_perf_counter* perf_counter_last;
+    struct retro_perf_counter* perf_counter_last;
     struct retro_frame_time_callback runloop_frame_time;
     retro_usec_t runloop_frame_time_last;
     struct retro_audio_callback audio_callback;
@@ -891,7 +891,7 @@ static bool LibretroGetAudioVideo() {
     LibretroCore.retro_get_system_av_info(&av);
     LibretroCore.width = av.geometry.base_width;
     LibretroCore.height = av.geometry.base_height;
-    LibretroCore.fps = av.timing.fps;
+    LibretroCore.fps = (unsigned int)av.timing.fps;
     LibretroCore.sampleRate = av.timing.sample_rate;
     LibretroCore.aspectRatio = av.geometry.aspect_ratio;
     TraceLog(LOG_INFO, "LIBRETRO: Video and Audio information");
@@ -903,7 +903,7 @@ static bool LibretroGetAudioVideo() {
 }
 
 /**
- * Runs an interation of the libretro core.
+ * Runs an iteration of the libretro core.
  */
 static void UpdateLibretro() {
     // Update the game loop timer.
@@ -975,7 +975,7 @@ static void UpdateLibretro() {
 }
 
 /**
- * Retrieve whether or no the core has been loaded.
+ * Retrieve whether or not the core has been loaded.
  */
 static bool IsLibretroReady() {
     return LibretroCore.handle != NULL;
@@ -988,7 +988,7 @@ static bool LibretroShouldClose() {
     return LibretroCore.shutdown;
 }
 
-void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *input_,
+static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *input_,
     int width, int height,
     int out_stride, int in_stride) {
     int h, w;
@@ -1021,8 +1021,6 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         return;
     }
 
-    //void* outData = (void*)data;
-
     // Resize the video if needed.
     if (width != LibretroCore.width || height != LibretroCore.height) {
         LibretroCore.width = width;
@@ -1032,21 +1030,35 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
 
     switch (LibretroCore.pixelFormat) {
         case RETRO_PIXEL_FORMAT_RGB565: {
-            // FCEUMM: Working
-            // SNES9X: Broken
-            UpdateTexture(LibretroCore.texture, data);
+            // For small pitches, we can use the data 1:1, otherwise we need to adjust it.
+            if (pitch == width * 2) {
+                // Core: FCEUM
+                UpdateTexture(LibretroCore.texture, data);
+            }
+            else {
+                // Core: SNES9x
+                const uint8_t *src = (const uint8_t *)data;
+                uint8_t *dst = (uint8_t *)LibretroCore.frameBuffer;
+                size_t row_bytes = width * 2;
+                for (unsigned h = 0; h < height; h++) {
+                    memcpy(dst, src, row_bytes);
+                    src += pitch;
+                    dst += row_bytes;
+                }
+                UpdateTexture(LibretroCore.texture, LibretroCore.frameBuffer);
+            }
         }
         break;
         case RETRO_PIXEL_FORMAT_0RGB1555: {
             LibretroMapPixelFormatARGB1555ToRGB565(LibretroCore.frameBuffer, data, width, height,
                 GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R5G6B5),
-                GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R5G5B5A1));
+                pitch);
             UpdateTexture(LibretroCore.texture, LibretroCore.frameBuffer);
         }
         break;
         case RETRO_PIXEL_FORMAT_XRGB8888: {
-            // Blastem: Working
-            // BSNES: Working
+            // Core: Blastem
+            // Core: BSNES
             LibretroMapPixelFormatARGB8888ToRGBA8888(LibretroCore.frameBuffer, data,
                 width, height,
                 GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8), pitch);
@@ -1100,6 +1112,9 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
             }
 
             // Port 1+: map to gamepad (port 1 → gamepad 0).
+            if (!IsGamepadAvailable(port - 1)) {
+                return 0;
+            }
             int gamepadButton = LibretroMapRetroJoypadButtonToGamepadButton(id);
             return (int)IsGamepadButtonDown(port - 1, gamepadButton);
         }
@@ -1534,7 +1549,7 @@ static bool IsLibretroGameReady() {
 }
 
 /**
- * Retrieve whether or not the game has been loaded.
+ * Reset the libretro core.
  */
 static void ResetLibretro() {
     if (IsLibretroReady() && LibretroCore.retro_reset) {
@@ -1556,7 +1571,7 @@ static void UnloadLibretroGame() {
  * Close the libretro core.
  */
 static void CloseLibretro() {
-    // Let the core know that the audio device has been initialized.
+    // Let the core know that the audio device has been deinitialized.
     if (LibretroCore.audio_callback.set_state != NULL) {
         LibretroCore.audio_callback.set_state(false);
     }
@@ -1997,9 +2012,9 @@ static int LibretroMapRetroPixelFormatToPixelFormat(int pixelFormat) {
 /**
  * Convert a pixel format from 1555 to 565.
  *
- * TODO: Verify that LibretroMapPixelFormatARGB1555ToRGB565 is working. SNES9x uses it.
+ * Convert a pixel format from 1555 to 565. Used for RETRO_PIXEL_FORMAT_0RGB1555 cores.
  */
-void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
+static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
         int out_stride, int in_stride) {
     int h;
