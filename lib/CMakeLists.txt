@@ -8,6 +8,7 @@ add_library(raylib-libretro-static STATIC
     ../vendor/libretro-common/encodings/encoding_utf.c
     ../vendor/libretro-common/file/file_path.c
     ../vendor/libretro-common/dynamic/dylib.c
+    ../vendor/libretro-common/features/features_cpu.c
 )
 target_link_libraries(raylib-libretro-static PUBLIC
     raylib
