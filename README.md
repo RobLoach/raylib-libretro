@@ -71,6 +71,11 @@ make
     bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib ~/Desktop/smb.nes
     ```
 
+## Contributors
+
+- [Konsumer](https://github.com/konsumer)
+- [MikeDX](https://github.com/MikeDX) and [libretro-raylib](https://github.com/MikeDX/libretro-raylib)
+
 ## License
 
 [zlib/libpng](LICENSE)

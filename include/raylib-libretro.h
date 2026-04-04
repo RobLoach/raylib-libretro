@@ -179,6 +179,10 @@ typedef struct rLibretro {
     // Raylib objects used to play the libretro core.
     Texture texture;
 
+    // Pre-allocated frame conversion buffer (avoids per-frame MemAlloc).
+    void *frameBuffer;
+    size_t frameBufferSize;
+
     // Audio
     AudioStream audioStream;
     float *audioRingBuffer;
@@ -229,6 +233,14 @@ static void LibretroInitVideo() {
 
     // We don't need the image anymore.
     UnloadImage(image);
+
+    // (Re-)allocate the frame conversion buffer sized for XRGB8888→RGBA8888 (worst case).
+    size_t needed = (size_t)GetPixelDataSize(LibretroCore.width, LibretroCore.height, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    if (needed > LibretroCore.frameBufferSize) {
+        MemFree(LibretroCore.frameBuffer);
+        LibretroCore.frameBuffer = MemAlloc(needed);
+        LibretroCore.frameBufferSize = needed;
+    }
 }
 
 /**
@@ -1013,7 +1025,6 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         LibretroInitVideo();
     }
 
-    // TODO: Move the MemAlloc() into a already built screen buffer, or something.
     switch (LibretroCore.pixelFormat) {
         case RETRO_PIXEL_FORMAT_RGB565: {
             // FCEUMM: Working
@@ -1022,36 +1033,19 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         }
         break;
         case RETRO_PIXEL_FORMAT_0RGB1555: {
-            Image image;
-            image.format = PIXELFORMAT_UNCOMPRESSED_R5G6B5;
-            image.mipmaps = 1;
-            image.width = width;
-            image.height = height;
-            image.data = MemAlloc(GetPixelDataSize(width, height, PIXELFORMAT_UNCOMPRESSED_R5G6B5));
-
-            LibretroMapPixelFormatARGB1555ToRGB565(image.data, data, width, height,
+            LibretroMapPixelFormatARGB1555ToRGB565(LibretroCore.frameBuffer, data, width, height,
                 GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R5G6B5),
                 GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R5G5B5A1));
-            UpdateTexture(LibretroCore.texture, image.data);
-            UnloadImage(image);
+            UpdateTexture(LibretroCore.texture, LibretroCore.frameBuffer);
         }
         break;
         case RETRO_PIXEL_FORMAT_XRGB8888: {
             // Blastem: Working
             // BSNES: Working
-            Image image;
-            image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-            image.mipmaps = 1;
-            image.width = width;
-            image.height = height;
-            image.data = MemAlloc(GetPixelDataSize(width, height, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8));
-
-            LibretroMapPixelFormatARGB8888ToRGBA8888(image.data, data,
+            LibretroMapPixelFormatARGB8888ToRGBA8888(LibretroCore.frameBuffer, data,
                 width, height,
                 GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8), pitch);
-
-            UpdateTexture(LibretroCore.texture, image.data);
-            UnloadImage(image);
+            UpdateTexture(LibretroCore.texture, LibretroCore.frameBuffer);
         }
         break;
     }
@@ -1533,6 +1527,10 @@ static void CloseLibretro() {
         dylib_close(LibretroCore.handle);
         LibretroCore.handle = NULL;
     }
+
+    // Free the frame conversion buffer.
+    MemFree(LibretroCore.frameBuffer);
+
     LibretroCore = (rLibretro){0};
 }
 
