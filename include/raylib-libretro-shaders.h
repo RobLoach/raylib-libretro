@@ -50,21 +50,7 @@ typedef enum LibretroShaderType {
 #define RAYLIB_LIBRETRO_SHADERS_MAX (LIBRETRO_SHADER_TYPE_COUNT - 1)
 
 typedef struct ShaderCRTParams {
-    float brightness;           // Overall brightness multiplier  (default: 1.2)
-    float scanlineIntensity;    // Dot mask spacing intensity     (default: 2.0)
-    float curvatureRadius;      // Barrel distortion strength     (default: 0.4)
-    float cornerSize;           // Rounded corner radius percent  (default: 5.0)
-    float cornerSmooth;         // Corner anti-alias softness     (default: 35.0)
-    int   curvature;            // Enable barrel distortion       (default: 1)
-    int   border;               // Enable corner vignette/border  (default: 1)
     int loc_resolution;
-    int loc_brightness;
-    int loc_scanlineIntensity;
-    int loc_curvatureRadius;
-    int loc_cornerSize;
-    int loc_cornerSmooth;
-    int loc_curvature;
-    int loc_border;
 } ShaderCRTParams;
 
 typedef struct ShaderScanlinesParams {
@@ -326,13 +312,6 @@ LibretroShaderState GetLibretroShaderDefaults(LibretroShaderType type) {
     state.type = type;
     switch (type) {
         case LIBRETRO_SHADER_CRT:
-            state.params.crt.brightness        = 1.2f;
-            state.params.crt.scanlineIntensity = 2.0f;
-            state.params.crt.curvatureRadius   = 0.4f;
-            state.params.crt.cornerSize        = 5.0f;
-            state.params.crt.cornerSmooth      = 35.0f;
-            state.params.crt.curvature         = 1;
-            state.params.crt.border            = 1;
             break;
         case LIBRETRO_SHADER_SCANLINES:
             state.params.scanlines.frequency = 150.0f;
@@ -406,22 +385,8 @@ LibretroShaderState LoadLibretroShaderEx(LibretroShaderType type, const void *pa
         case LIBRETRO_SHADER_CRT: {
             ShaderCRTParams *p = &state.params.crt;
             if (params) *p = *(const ShaderCRTParams *)params;
-            p->loc_resolution        = GetShaderLocation(state.shader, "resolution");
-            p->loc_brightness        = GetShaderLocation(state.shader, "Brightness");
-            p->loc_scanlineIntensity = GetShaderLocation(state.shader, "ScanlineIntensity");
-            p->loc_curvatureRadius   = GetShaderLocation(state.shader, "CurvatureRadius");
-            p->loc_cornerSize        = GetShaderLocation(state.shader, "CornerSize");
-            p->loc_cornerSmooth      = GetShaderLocation(state.shader, "Cornersmooth");
-            p->loc_curvature         = GetShaderLocation(state.shader, "Curvature");
-            p->loc_border            = GetShaderLocation(state.shader, "Border");
+            p->loc_resolution = GetShaderLocation(state.shader, "resolution");
             rlsh_set_resolution(state.shader, p->loc_resolution);
-            SetShaderValue(state.shader, p->loc_brightness,        &p->brightness,        SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state.shader, p->loc_scanlineIntensity, &p->scanlineIntensity, SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state.shader, p->loc_curvatureRadius,   &p->curvatureRadius,   SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state.shader, p->loc_cornerSize,        &p->cornerSize,        SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state.shader, p->loc_cornerSmooth,      &p->cornerSmooth,      SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state.shader, p->loc_curvature,         &p->curvature,         SHADER_UNIFORM_INT);
-            SetShaderValue(state.shader, p->loc_border,            &p->border,            SHADER_UNIFORM_INT);
         } break;
 
         case LIBRETRO_SHADER_SCANLINES: {
@@ -538,13 +503,6 @@ void UpdateLibretroShader(LibretroShaderState *state, float dt) {
         case LIBRETRO_SHADER_CRT: {
             ShaderCRTParams *p = &state->params.crt;
             if (resized) rlsh_set_resolution(state->shader, p->loc_resolution);
-            SetShaderValue(state->shader, p->loc_brightness,        &p->brightness,        SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_scanlineIntensity, &p->scanlineIntensity, SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_curvatureRadius,   &p->curvatureRadius,   SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_cornerSize,        &p->cornerSize,        SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_cornerSmooth,      &p->cornerSmooth,      SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_curvature,         &p->curvature,         SHADER_UNIFORM_INT);
-            SetShaderValue(state->shader, p->loc_border,            &p->border,            SHADER_UNIFORM_INT);
         } break;
 
         case LIBRETRO_SHADER_SCANLINES: {
