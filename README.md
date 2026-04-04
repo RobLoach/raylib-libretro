@@ -10,47 +10,31 @@
 raylib-libretro [core] [game]
 ```
 
+## Controls
+
 | Control       | Keyboard    |
 | ---           | ---         |
 | D-Pad         | Arrow Keys  |
 | Buttons       | ZX AS QW    |
 | Start         | Enter       |
 | Select        | Right Shift |
-| Menu          | F1          |
-| Save State    | F5          |
+| Save State    | F2          |
+| Load State    | F4          |
 | Screenshot    | F8          |
-| Load State    | F9          |
-| Switch Shader | F10         |
+| Shader        | F10         |
 | Fullscreen    | F11         |
 
-### Core Support
+## Core Support
 
 The following cores have been tested with raylib-libretro:
 
 - fceumm
+- snes9x
 - picodrive
-
-## Wishlist
-
-- [x] Video
-- [x] Resizable Window
-- [x] Graphical User Interface
-- [x] Shaders
-- [x] Mouse Support
-- [x] Fullscreen
-- [ ] Audio
-- [ ] Core Options
-- [ ] `raylib-libretro.h` documentation
-- [ ] Rebindable Inputs
-- [ ] Gamepad Support
-- [ ] Project Templates (VS2017, etc)
-- [ ] Zip Loading
-- [ ] Binary Releases
-- [ ] OpenGL Cores
 
 ## Compile
 
-[CMake](https://cmake.org) is used to build raylib-libretro. Looking to add more project templates to help the build process!
+[CMake](https://cmake.org) is used to build raylib-libretro...
 
 ``` sh
 git clone http://github.com/robloach/raylib-libretro.git
@@ -60,6 +44,7 @@ mkdir build
 cd build
 cmake ..
 make
+bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
 ```
 
 ### Mac OSX

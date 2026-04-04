@@ -61,23 +61,6 @@ int main(int argc, char* argv[]) {
             DrawLibretro();
         }
         EndDrawing();
-
-        // Save State
-        if (IsKeyPressed(KEY_F5)) {
-            unsigned int size;
-            void* data = GetLibretroSerializedData(&size);
-            if (data != NULL) {
-                SaveFileData(TextFormat("save_%s.sav", GetLibretroName()), data, (int)size);
-                MemFree(data);
-            }
-        } else if (IsKeyPressed(KEY_F9)) {
-            int dataSize;
-            void* data = LoadFileData(TextFormat("save_%s.sav", GetLibretroName()), &dataSize);
-            if (data != NULL) {
-                SetLibretroSerializedData(data, (unsigned int)dataSize);
-                MemFree(data);
-            }
-        }
     }
 
     // Unload the game and close the core.

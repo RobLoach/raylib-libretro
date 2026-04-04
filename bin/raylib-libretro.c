@@ -29,14 +29,11 @@
 #include "raylib.h"
 #define RAYLIB_LIBRETRO_IMPLEMENTATION
 #include "raylib-libretro.h"
-#include "../src/menu.h"
+
 #define RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
 #include "../include/raylib-libretro-shaders.h"
 
 int main(int argc, char* argv[]) {
-    // Ensure proper amount of arguments.
-    //SetTraceLogExit(LOG_FATAL);
-
     // Create the window and audio.
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(800, 600, "raylib-libretro");
@@ -45,7 +42,6 @@ int main(int argc, char* argv[]) {
 
     // Load the shaders and the menu.
     LoadShaders();
-    InitMenu();
 
     // Parse the command line arguments.
     if (argc > 1) {
@@ -54,7 +50,7 @@ int main(int argc, char* argv[]) {
             // Load the given game.
             const char* gameFile = (argc > 2) ? argv[2] : NULL;
             if (LoadLibretroGame(gameFile)) {
-                SetMenuActive(false);
+                // TODO: Quit?
             }
         }
     }
@@ -63,10 +59,8 @@ int main(int argc, char* argv[]) {
         // Update the shaders.
         UpdateShaders();
 
-        if (!IsMenuActive()) {
-            // Run a frame of the core.
-            UpdateLibretro();
-        }
+        // Run a frame of the core.
+        UpdateLibretro();
 
         // Check if the core asks to be shutdown.
         if (LibretroShouldClose()) {
@@ -82,8 +76,6 @@ int main(int argc, char* argv[]) {
             BeginLibretroShader();
             DrawLibretro();
             EndLibretroShader();
-
-            UpdateMenu();
         }
         EndDrawing();
 
@@ -93,13 +85,33 @@ int main(int argc, char* argv[]) {
         }
 
         // Screenshot
-        if (IsKeyReleased(KEY_F8)) {
+        else if (IsKeyReleased(KEY_F8)) {
             for (int i = 1; i < 1000; i++) {
                 const char* screenshotName = TextFormat("screenshot-%i.png", i);
                 if (!FileExists(screenshotName)) {
                     TakeScreenshot(screenshotName);
                     break;
                 }
+            }
+        }
+
+        // Save State
+        else if (IsKeyReleased(KEY_F2)) {
+            unsigned int size;
+            void* data = GetLibretroSerializedData(&size);
+            if (data != NULL) {
+                SaveFileData(TextFormat("save_%s.sav", GetLibretroName()), data, (int)size);
+                MemFree(data);
+            }
+        }
+
+        // Load State
+        else if (IsKeyReleased(KEY_F4)) {
+            int dataSize;
+            void* data = LoadFileData(TextFormat("save_%s.sav", GetLibretroName()), &dataSize);
+            if (data != NULL) {
+                SetLibretroSerializedData(data, (unsigned int)dataSize);
+                MemFree(data);
             }
         }
     }

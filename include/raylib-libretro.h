@@ -40,7 +40,7 @@
 #include "raylib.h"
 
 #if defined(__cplusplus)
-extern "C" {            // Prevents name mangling of functions
+extern "C" {
 #endif
 
 //------------------------------------------------------------------------------------
@@ -89,11 +89,11 @@ static int LibretroMapRetroJoypadButtonToRetroKey(int button);
 static int LibretroMapRetroKeyToKeyboardKey(int key);
 static int LibretroMapRetroLogLevelToTraceLogType(int level);
 
-#include "raylib-libretro-vfs.h"
-
 #if defined(__cplusplus)
 }
 #endif
+
+#include "raylib-libretro-vfs.h"
 
 #ifdef RAYLIB_LIBRETRO_IMPLEMENTATION
 #ifndef RAYLIB_LIBRETRO_IMPLEMENTATION_ONCE
@@ -223,7 +223,7 @@ typedef struct rLibretro {
 } rLibretro;
 
 #if defined(__cplusplus)
-extern "C" {            // Prevents name mangling of functions
+extern "C" {
 #endif
 
 /**

@@ -34,6 +34,10 @@ struct retro_vfs_dir_handle {
     int directoryFilesIndex;
 };
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 static const char *raylib_libretro_vfs_get_path(struct retro_vfs_file_handle *stream);
 struct retro_vfs_file_handle* raylib_libretro_vfs_open(const char *path, unsigned int mode, unsigned int hints);
 int raylib_libretro_vfs_close(struct retro_vfs_file_handle *stream);
@@ -243,11 +247,19 @@ bool raylib_libretro_vfs_dirent_is_dir(struct retro_vfs_dir_handle *dirstream);
  */
 int raylib_libretro_vfs_closedir(struct retro_vfs_dir_handle *dirstream);
 
+#if defined(__cplusplus)
+}
+#endif
+
 #endif
 
 #ifdef RAYLIB_LIBRETRO_VFS_IMPLEMENTATION
 #ifndef RAYLIB_LIBRETRO_VFS_IMPLEMENTATION_ONCE
 #define RAYLIB_LIBRETRO_VFS_IMPLEMENTATION_ONCE
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
 static const char *raylib_libretro_vfs_get_path(struct retro_vfs_file_handle *stream) {
     if (stream == NULL) {
@@ -685,6 +697,10 @@ int raylib_libretro_vfs_closedir(struct retro_vfs_dir_handle *dirstream) {
     MemFree(dirstream);
     return 0;
 }
+
+#if defined(__cplusplus)
+}
+#endif
 
 #endif
 #endif

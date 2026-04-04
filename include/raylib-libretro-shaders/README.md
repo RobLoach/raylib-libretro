@@ -6,6 +6,8 @@ By Anata on raylib Discord.
 
 ## Scanlines
 
+This is the standard scanline shader from the raylib example.
+
 - https://github.com/raysan5/raylib/blob/master/examples/shaders/resources/shaders/glsl100/scanlines.fs
 - https://github.com/raysan5/raylib/blob/master/examples/shaders/resources/shaders/glsl120/scanlines.fs
 - https://github.com/raysan5/raylib/blob/master/examples/shaders/resources/shaders/glsl330/scanlines.fs

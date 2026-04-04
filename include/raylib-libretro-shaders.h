@@ -11,6 +11,10 @@
 
 #define RAYLIB_LIBRETRO_SHADERS_MAX 2
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 const char* GetShaderCodeScanLines(void);
 const char* GetShaderCodeCRT(void);
 Shader LoadShaderCRT(void);
@@ -19,23 +23,30 @@ void UnloadShaders(void);
 void UpdateShaders(void);
 void BeginLibretroShader(void);
 void EndLibretroShader(void);
-void DrawShadersGui(Rectangle rect);
+
+#if defined(__cplusplus)
+}
+#endif
 
 #endif // RAYLIB_LIBRETRO_SHADERS_H
 
 #ifdef RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
 
-Shader raylib_libretro_shaders[RAYLIB_LIBRETRO_SHADERS_MAX];
-int raylib_libretro_shader_current = 0;
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+static Shader raylib_libretro_shaders[RAYLIB_LIBRETRO_SHADERS_MAX];
+static int raylib_libretro_shader_current = 0;
 
 const char* GetShaderCodeScanLines(void) {
     return
 #if GLSL_VERSION == 100
-#include "shaders/scanlines-glsl100.txt"
+#include "raylib-libretro-shaders/scanlines-glsl100.txt"
 #elif GLSL_VERSION == 120
-#include "shaders/scanlines-glsl120.txt"
+#include "raylib-libretro-shaders/scanlines-glsl120.txt"
 #elif GLSL_VERSION == 330
-#include "shaders/scanlines-glsl330.txt"
+#include "raylib-libretro-shaders/scanlines-glsl330.txt"
 #else
     ""
 #endif
@@ -45,11 +56,11 @@ const char* GetShaderCodeScanLines(void) {
 const char* GetShaderCodeCRT(void) {
     return
 #if GLSL_VERSION == 100
-#include "shaders/crt-glsl100.txt"
+#include "raylib-libretro-shaders/crt-glsl100.txt"
 #elif GLSL_VERSION == 120
-#include "shaders/crt-glsl120.txt"
+#include "raylib-libretro-shaders/crt-glsl120.txt"
 #elif GLSL_VERSION == 330
-#include "shaders/crt-glsl330.txt"
+#include "raylib-libretro-shaders/crt-glsl330.txt"
 #else
     ""
 #endif
@@ -65,7 +76,8 @@ Shader LoadShaderCRT(void) {
     float cornersmooth      = 35.0f;
     float curvature         = 1.0f;
     float border            = 1.0f;
-    SetShaderValue(shader, GetShaderLocation(shader, "resolution"),        &((Vector2){GetScreenWidth(), GetScreenHeight()}), SHADER_UNIFORM_VEC2);
+    Vector2 resolution = { (float)GetScreenWidth(), (float)GetScreenHeight() };
+    SetShaderValue(shader, GetShaderLocation(shader, "resolution"),        &resolution, SHADER_UNIFORM_VEC2);
     SetShaderValue(shader, GetShaderLocation(shader, "Brightness"),        &brightness,        SHADER_UNIFORM_FLOAT);
     SetShaderValue(shader, GetShaderLocation(shader, "ScanlineIntensity"), &scanlineIntensity, SHADER_UNIFORM_FLOAT);
     SetShaderValue(shader, GetShaderLocation(shader, "CurvatureRadius"),   &curvatureRadius,   SHADER_UNIFORM_FLOAT);
@@ -89,13 +101,14 @@ void UnloadShaders(void) {
 
 void UpdateShaders(void) {
     if (IsKeyPressed(KEY_F10)) {
-        if (++raylib_libretro_shader_current > RAYLIB_LIBRETRO_SHADERS_MAX) {
+        if (raylib_libretro_shader_current++ >= RAYLIB_LIBRETRO_SHADERS_MAX) {
             raylib_libretro_shader_current = 0;
         }
     }
 
     if (IsWindowResized()) {
-        SetShaderValue(raylib_libretro_shaders[0], GetShaderLocation(raylib_libretro_shaders[0], "resolution"), &((Vector2){GetScreenWidth(), GetScreenHeight()}), SHADER_UNIFORM_VEC2);
+        Vector2 resolution = { (float)GetScreenWidth(), (float)GetScreenHeight() };
+        SetShaderValue(raylib_libretro_shaders[0], GetShaderLocation(raylib_libretro_shaders[0], "resolution"), &resolution, SHADER_UNIFORM_VEC2);
     }
 }
 
@@ -111,8 +124,8 @@ void EndLibretroShader(void) {
     }
 }
 
-void DrawShadersGui(Rectangle rect) {
-    GuiToggleGroup(rect, "Pixel Perfect;CRT;Scanlines", &raylib_libretro_shader_current);
+#if defined(__cplusplus)
 }
+#endif
 
 #endif // RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
