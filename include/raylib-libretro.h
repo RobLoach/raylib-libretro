@@ -60,12 +60,19 @@ static void DrawLibretroV(Vector2 position, Color tint);
 static void DrawLibretroTexture(int posX, int posY, Color tint);
 static void DrawLibretroPro(Rectangle destRec, Color tint);
 static const char* GetLibretroName();                    // Get the name of the loaded libretro core.
+static const char* GetLibretroVersion();                 // Get the version of the loaded libretro core.
 static unsigned GetLibretroWidth();                      // Get the desired width of the libretro core.
 static unsigned GetLibretroHeight();                     // Get the desired height of the libretro core.
+static unsigned GetLibretroRotation();                   // Get the current screen rotation (0=0°, 1=90°, 2=180°, 3=270°).
 static Texture2D GetLibretroTexture();                   // Retrieve the texture used to render the libretro state.
 static bool DoesLibretroCoreNeedContent();               // Determine whether or not the loaded core require content.
+static void ResetLibretro();                             // Reset the currently loaded libretro core.
 static void UnloadLibretroGame();                        // Unload the game that's currently loaded.
 static void CloseLibretro();                             // Close the initialized libretro core.
+static void SetLibretroVolume(float volume);             // Set the audio volume (0.0 - 1.0).
+static float GetLibretroVolume();                        // Get the current audio volume.
+static bool SetLibretroCoreOption(const char* key, const char* value);  // Set a core option by key.
+static const char* GetLibretroCoreOption(const char* key);              // Get a core option value by key. Returns NULL if not found.
 void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
 bool SetLibretroSerializedData(void* data, unsigned int size);
 
@@ -108,6 +115,10 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #define LIBRETRO_AUDIO_RING_BUFFER_SIZE 8192
 // Single-sample accumulation buffer size (stereo frames)
 #define LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
+// Core options/variables storage limits
+#define LIBRETRO_MAX_CORE_VARIABLES 128
+#define LIBRETRO_CORE_VARIABLE_KEY_LEN 64
+#define LIBRETRO_CORE_VARIABLE_VALUE_LEN 256
 
 // Dynamic loading methods.
 #define LoadLibretroMethodHandle(V, S) do {\
@@ -194,6 +205,15 @@ typedef struct rLibretro {
     retro_keyboard_event_t keyboard_event;
     struct retro_vfs_interface vfs_interface;
     // struct retro_game_info_ext game_info_ext;
+
+    // Core variables/options
+    char variableKeys[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_KEY_LEN];
+    char variableValues[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUE_LEN];
+    unsigned variableCount;
+    bool variablesDirty; // Whether or not the variables have been changed since last RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE call.
+
+    // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
+    unsigned rotation;
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -204,6 +224,45 @@ extern "C" {            // Prevents name mangling of functions
  * The global libretro core object.
  */
 static rLibretro LibretroCore = {0};
+
+static void LibretroInitCoreVariable(const char *key, const char *defaultValue) {
+    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
+        if (TextIsEqual(LibretroCore.variableKeys[i], key)) {
+            return; // Already registered; don't overwrite user-set value.
+        }
+    }
+    if (LibretroCore.variableCount >= LIBRETRO_MAX_CORE_VARIABLES) {
+        TraceLog(LOG_WARNING, "LIBRETRO: Core variable limit reached, ignoring: %s", key);
+        return;
+    }
+    snprintf(LibretroCore.variableKeys[LibretroCore.variableCount], LIBRETRO_CORE_VARIABLE_KEY_LEN, "%s", key);
+    snprintf(LibretroCore.variableValues[LibretroCore.variableCount], LIBRETRO_CORE_VARIABLE_VALUE_LEN, "%s", defaultValue ? defaultValue : "");
+    LibretroCore.variableCount++;
+}
+
+static const char *LibretroGetCoreVariable(const char *key) {
+    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
+        if (TextIsEqual(LibretroCore.variableKeys[i], key)) {
+            return LibretroCore.variableValues[i];
+        }
+    }
+    return NULL;
+}
+
+static bool SetLibretroCoreOption(const char *key, const char *value) {
+    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
+        if (TextIsEqual(LibretroCore.variableKeys[i], key)) {
+            snprintf(LibretroCore.variableValues[i], LIBRETRO_CORE_VARIABLE_VALUE_LEN, "%s", value);
+            LibretroCore.variablesDirty = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+static const char *GetLibretroCoreOption(const char *key) {
+    return LibretroGetCoreVariable(key);
+}
 
 static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
     int type = LibretroMapRetroLogLevelToTraceLogType(level);
@@ -324,8 +383,12 @@ static void LibretroPerfLog() {
 static bool LibretroSetEnvironment(unsigned cmd, void * data) {
     switch (cmd) {
         case RETRO_ENVIRONMENT_SET_ROTATION: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_ROTATION not implemented");
-            return false;
+            if (data == NULL) {
+                return false;
+            }
+            LibretroCore.rotation = *(const unsigned *)data;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_ROTATION: %u (%u°)", LibretroCore.rotation, LibretroCore.rotation * 90);
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_OVERSCAN: {
@@ -431,42 +494,53 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
-            struct retro_variable * var = (struct retro_variable *)data;
             if (data == NULL) {
-                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VARIABLE no data provided");
                 return false;
             }
-
-            // Override some default variables.
-            if (TextIsEqual(var->key, "fceumm_sndvolume")) {
-                var->value = "10";
+            struct retro_variable *var = (struct retro_variable *)data;
+            if (var->key == NULL) {
+                return false;
+            }
+            const char *value = LibretroGetCoreVariable(var->key);
+            if (value != NULL) {
+                var->value = value;
                 return true;
             }
-
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VARIABLE requested: %s", var->key);
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VARIABLE unknown key: %s", var->key);
             return false;
         }
 
         case RETRO_ENVIRONMENT_SET_VARIABLES: {
-            // Adds a variable definition.
             if (data == NULL) {
-                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_VARIABLES no data provided");
                 return false;
             }
-
-            const struct retro_variable * var = (const struct retro_variable *)data;
-            // TODO: RETRO_ENVIRONMENT_SET_VARIABLES
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_VARIABLES");
-            TraceLog(LOG_INFO, "    > Key:   %s", var->key);
-            TraceLog(LOG_INFO, "    > Value: %s", var->value);
+            const struct retro_variable *var = (const struct retro_variable *)data;
+            for (; var->key != NULL; var++) {
+                // Description format: "Desc text; option1|option2|...". Default is the first option.
+                char defaultVal[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+                if (var->value != NULL) {
+                    const char *semi = strchr(var->value, ';');
+                    if (semi != NULL) {
+                        const char *opts = semi + 1;
+                        while (*opts == ' ') opts++;
+                        const char *pipe = strchr(opts, '|');
+                        size_t len = pipe ? (size_t)(pipe - opts) : strlen(opts);
+                        if (len >= LIBRETRO_CORE_VARIABLE_VALUE_LEN) len = LIBRETRO_CORE_VARIABLE_VALUE_LEN - 1;
+                        memcpy(defaultVal, opts, len);
+                    }
+                }
+                LibretroInitCoreVariable(var->key, defaultVal);
+            }
             return true;
         }
 
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: {
-            bool* var = (bool*)data;
-            *var = false;
-
-            // TODO: RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE
+            if (data == NULL) {
+                return false;
+            }
+            bool *updated = (bool *)data;
+            *updated = LibretroCore.variablesDirty;
+            LibretroCore.variablesDirty = false;
             return true;
         }
 
@@ -749,18 +823,35 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION not implemented");
-            return false;
+            unsigned *version = (unsigned *)data;
+            *version = 2;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS not implemented");
-            return false;
+            if (data == NULL) {
+                return false;
+            }
+            const struct retro_core_option_definition *opts = (const struct retro_core_option_definition *)data;
+            for (; opts->key != NULL; opts++) {
+                const char *def = opts->default_value;
+                if (def == NULL && opts->values[0].value != NULL) {
+                    def = opts->values[0].value;
+                }
+                LibretroInitCoreVariable(opts->key, def ? def : "");
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL not implemented");
-            return false;
+            if (data == NULL) {
+                return false;
+            }
+            const struct retro_core_options_intl *intl = (const struct retro_core_options_intl *)data;
+            if (intl->us == NULL) {
+                return false;
+            }
+            return LibretroSetEnvironment(RETRO_ENVIRONMENT_SET_CORE_OPTIONS, (void *)intl->us);
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: {
@@ -831,13 +922,33 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2 not implemented");
-            return false;
+            if (data == NULL) {
+                return false;
+            }
+            const struct retro_core_options_v2 *opts = (const struct retro_core_options_v2 *)data;
+            if (opts->definitions == NULL) {
+                return false;
+            }
+            const struct retro_core_option_v2_definition *def = opts->definitions;
+            for (; def->key != NULL; def++) {
+                const char *defaultVal = def->default_value;
+                if (defaultVal == NULL && def->values[0].value != NULL) {
+                    defaultVal = def->values[0].value;
+                }
+                LibretroInitCoreVariable(def->key, defaultVal ? defaultVal : "");
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL not implemented");
-            return false;
+            if (data == NULL) {
+                return false;
+            }
+            const struct retro_core_options_v2_intl *intl = (const struct retro_core_options_v2_intl *)data;
+            if (intl->us == NULL) {
+                return false;
+            }
+            return LibretroSetEnvironment(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, (void *)intl->us);
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: {
@@ -846,8 +957,14 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_VARIABLE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_VARIABLE not implemented");
-            return false;
+            if (data == NULL) {
+                return false;
+            }
+            const struct retro_variable *var = (const struct retro_variable *)data;
+            if (var->key == NULL || var->value == NULL) {
+                return false;
+            }
+            return SetLibretroCoreOption(var->key, var->value);
         }
 
         case RETRO_ENVIRONMENT_GET_THROTTLE_STATE: {
@@ -1302,6 +1419,7 @@ static void LibretroInitAudio() {
     int channels = 2;
     LibretroCore.audioStream = LoadAudioStream((unsigned int)LibretroCore.sampleRate, sampleSize, channels);
     SetAudioStreamCallback(LibretroCore.audioStream, LibretroAudioStreamCallback);
+    SetAudioStreamVolume(LibretroCore.audioStream, LibretroCore.volume);
     PlayAudioStream(LibretroCore.audioStream);
 
     // Let the core know that the audio device has been initialized.
@@ -1555,6 +1673,19 @@ static void DrawLibretroTint(Color tint) {
 
 static void DrawLibretro() {
     DrawLibretroTint(WHITE);
+}
+
+static void SetLibretroVolume(float volume) {
+    LibretroCore.volume = volume;
+    SetAudioStreamVolume(LibretroCore.audioStream, volume);
+}
+
+static float GetLibretroVolume() {
+    return LibretroCore.volume;
+}
+
+static unsigned GetLibretroRotation() {
+    return LibretroCore.rotation;
 }
 
 static unsigned GetLibretroWidth() {
