@@ -270,13 +270,20 @@ struct retro_vfs_file_handle* raylib_libretro_vfs_open(const char *path, unsigne
     }
 
     TextCopy(handle->path, path);
-    handle->data = LoadFileData(path, &handle->dataSize);
-    if (handle->data == NULL) {
-        MemFree(handle);
-        TraceLog(LOG_ERROR, "LIBRETRO: File not found: %s", path);
-        return NULL;
-    }
+    handle->mode = mode;
+    handle->hints = hints;
     handle->position = 0;
+    handle->dataSize = 0;
+    handle->data = NULL;
+
+    if (mode & RETRO_VFS_FILE_ACCESS_READ) {
+        handle->data = LoadFileData(path, &handle->dataSize);
+        if (handle->data == NULL) {
+            MemFree(handle);
+            TraceLog(LOG_ERROR, "LIBRETRO: File not found: %s", path);
+            return NULL;
+        }
+    }
 
     return handle;
 }
@@ -292,6 +299,7 @@ int raylib_libretro_vfs_close(struct retro_vfs_file_handle *stream) {
     }
 
     MemFree(stream);
+    return 0;
 }
 
 int64_t raylib_libretro_vfs_size(struct retro_vfs_file_handle *stream) {
@@ -404,6 +412,7 @@ int64_t raylib_libretro_vfs_read(struct retro_vfs_file_handle *stream, void *s, 
         bytesRead++;
     }
 
+    stream->position += bytesRead;
     return bytesRead;
 }
 
@@ -485,7 +494,7 @@ int raylib_libretro_vfs_stat(const char *path, int32_t *size) {
     bool fileExists = FileExists(path);
     int fileLength = GetFileLength(path);
 
-    if (fileExists && fileLength > 0) {
+    if (fileExists && fileLength >= 0) {
         if (size != NULL) {
             *size = (int32_t)fileLength;
         }
@@ -557,7 +566,6 @@ struct retro_vfs_dir_handle *raylib_libretro_vfs_opendir(const char *dir, bool i
 
     handle->directoryFiles = LoadDirectoryFiles(handle->path);
     handle->directoryFilesIndex = -1;
-    raylib_libretro_vfs_readdir(handle);
 
     return handle;
 }
@@ -633,7 +641,7 @@ const char *raylib_libretro_vfs_dirent_get_name(struct retro_vfs_dir_handle *dir
         return NULL;
     }
 
-    return dirstream->directoryFiles.paths[dirstream->directoryFilesIndex];
+    return GetFileName(dirstream->directoryFiles.paths[dirstream->directoryFilesIndex]);
 }
 
 /**
@@ -650,12 +658,11 @@ bool raylib_libretro_vfs_dirent_is_dir(struct retro_vfs_dir_handle *dirstream) {
         return false;
     }
 
-    const char* dir = raylib_libretro_vfs_dirent_get_name(dirstream);
-    if (dir == NULL) {
+    if (dirstream->directoryFilesIndex < 0 || dirstream->directoryFilesIndex >= dirstream->directoryFiles.count) {
         return false;
     }
 
-    return DirectoryExists(dir);
+    return DirectoryExists(dirstream->directoryFiles.paths[dirstream->directoryFilesIndex]);
 }
 
 /**
