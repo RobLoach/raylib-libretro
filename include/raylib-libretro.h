@@ -73,8 +73,8 @@ static void SetLibretroVolume(float volume);             // Set the audio volume
 static float GetLibretroVolume();                        // Get the current audio volume.
 static bool SetLibretroCoreOption(const char* key, const char* value);  // Set a core option by key.
 static const char* GetLibretroCoreOption(const char* key);              // Get a core option value by key. Returns NULL if not found.
-void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
-bool SetLibretroSerializedData(void* data, unsigned int size);
+static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
+static bool SetLibretroSerializedData(void* data, unsigned int size);
 
 static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
@@ -215,6 +215,11 @@ typedef struct rLibretro {
 
     // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
     unsigned rotation;
+
+    // Single-sample audio accumulation buffer (avoids static locals).
+    int16_t singleSampleBuffer[LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
+    size_t singleSampleCount;
+    int audioDropWarnCount;
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -285,6 +290,8 @@ static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
     }
 }
 
+static void LibretroInitAudio();  // Forward declaration.
+
 static void LibretroInitVideo() {
     // Unload the existing texture if it exists already.
     UnloadTexture(LibretroCore.texture);
@@ -292,7 +299,6 @@ static void LibretroInitVideo() {
     // Build the rendering image.
     Image image = GenImageColor(LibretroCore.width, LibretroCore.height, BLACK);
     ImageFormat(&image, LibretroMapRetroPixelFormatToPixelFormat(LibretroCore.pixelFormat));
-    ImageMipmaps(&image);
 
     // Create the texture.
     LibretroCore.texture = LoadTextureFromImage(image);
@@ -666,12 +672,18 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY: {
+            if (data == NULL) {
+                return false;
+            }
             const char** dir = (const char**)data;
             *dir = GetWorkingDirectory();
             return true;
         }
 
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: {
+            if (data == NULL) {
+                return false;
+            }
             const char** dir = (const char**)data;
             *dir = GetWorkingDirectory();
             return true;
@@ -683,6 +695,8 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const struct retro_system_av_info av = *(const struct retro_system_av_info *)data;
+            bool sampleRateChanged = (av.timing.sample_rate != LibretroCore.sampleRate);
+            bool dimsChanged = (av.geometry.base_width != LibretroCore.width || av.geometry.base_height != LibretroCore.height);
             LibretroCore.width = av.geometry.base_width;
             LibretroCore.height = av.geometry.base_height;
             LibretroCore.fps = (unsigned int)av.timing.fps;
@@ -693,6 +707,19 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 LibretroCore.height,
                 LibretroCore.fps
             );
+            if (dimsChanged) {
+                LibretroInitVideo();
+            }
+            if (sampleRateChanged) {
+                StopAudioStream(LibretroCore.audioStream);
+                UnloadAudioStream(LibretroCore.audioStream);
+                MemFree(LibretroCore.audioRingBuffer);
+                LibretroCore.audioRingBuffer = NULL;
+                LibretroCore.audioRingAvailable = 0;
+                LibretroCore.audioRingWritePos = 0;
+                LibretroInitAudio();
+            }
+            SetTargetFPS(LibretroCore.fps);
             return true;
         }
 
@@ -1444,8 +1471,7 @@ static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames) {
     size_t frames_to_write = (frames < available_space) ? frames : available_space;
 
     if (frames_to_write == 0) {
-        static int drop_warn_count = 0;
-        if (drop_warn_count++ < 3) {
+        if (LibretroCore.audioDropWarnCount++ < 3) {
             TraceLog(LOG_WARNING, "LIBRETRO: Audio ring buffer full, dropping %zu frames", frames);
         }
         return 0;
@@ -1467,17 +1493,14 @@ static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames) {
  * Accumulate single-sample callbacks into a buffer before flushing to the ring buffer.
  */
 static void LibretroAudioSample(int16_t left, int16_t right) {
-    static int16_t single_sample_buffer[LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
-    static size_t single_sample_count = 0;
-
-    if (single_sample_count >= LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE) {
-        LibretroAudioSampleBatch(single_sample_buffer, single_sample_count);
-        single_sample_count = 0;
+    if (LibretroCore.singleSampleCount >= LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE) {
+        LibretroAudioSampleBatch(LibretroCore.singleSampleBuffer, LibretroCore.singleSampleCount);
+        LibretroCore.singleSampleCount = 0;
     }
 
-    single_sample_buffer[single_sample_count * 2]     = left;
-    single_sample_buffer[single_sample_count * 2 + 1] = right;
-    single_sample_count++;
+    LibretroCore.singleSampleBuffer[LibretroCore.singleSampleCount * 2]     = left;
+    LibretroCore.singleSampleBuffer[LibretroCore.singleSampleCount * 2 + 1] = right;
+    LibretroCore.singleSampleCount++;
 }
 
 static void LibretroInitAudio() {
@@ -1875,7 +1898,7 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_TAB:
             return KEY_TAB;
         case RETROK_CLEAR:
-            return KEY_PAUSE;
+            return 0;
         case RETROK_RETURN:
             return KEY_ENTER;
         case RETROK_PAUSE:
@@ -2282,7 +2305,7 @@ static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *in
     }
 }
 
-void* GetLibretroSerializedData(unsigned int* size) {
+static void* GetLibretroSerializedData(unsigned int* size) {
     if (!IsLibretroGameReady()) {
         return NULL;
     }
@@ -2312,7 +2335,7 @@ void* GetLibretroSerializedData(unsigned int* size) {
     return NULL;
 }
 
-bool SetLibretroSerializedData(void* data, unsigned int size) {
+static bool SetLibretroSerializedData(void* data, unsigned int size) {
     if (!IsLibretroGameReady()) {
         return false;
     }
