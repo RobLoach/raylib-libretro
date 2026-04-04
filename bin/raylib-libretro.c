@@ -27,11 +27,15 @@
 **********************************************************************************************/
 
 #include "raylib.h"
+
 #define RAYLIB_LIBRETRO_IMPLEMENTATION
 #include "raylib-libretro.h"
 
 #define RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
 #include "../include/raylib-libretro-shaders.h"
+
+#define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
+#include "../include/raylib-libretro-menu.h"
 
 int main(int argc, char* argv[]) {
     // Create the window and audio.
@@ -55,12 +59,16 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    InitLibretroMenu();
+
     while (!WindowShouldClose()) {
         // Update the shaders.
         UpdateLibretroShaders(GetFrameTime());
 
         // Run a frame of the core.
         UpdateLibretro();
+
+        UpdateLibretroMenu();
 
         // Check if the core asks to be shutdown.
         if (LibretroShouldClose()) {
@@ -76,6 +84,8 @@ int main(int argc, char* argv[]) {
             BeginLibretroShader();
             DrawLibretro();
             EndLibretroShader();
+
+            DrawLibretroMenu();
         }
         EndDrawing();
 
@@ -119,6 +129,8 @@ int main(int argc, char* argv[]) {
     // Unload the game and close the core.
     UnloadLibretroGame();
     CloseLibretro();
+
+    CloseLibretroMenu();
 
     UnloadLibretroShaders();
     CloseAudioDevice();
