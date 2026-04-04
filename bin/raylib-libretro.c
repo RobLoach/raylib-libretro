@@ -29,8 +29,9 @@
 #include "raylib.h"
 #define RAYLIB_LIBRETRO_IMPLEMENTATION
 #include "raylib-libretro.h"
-#include "../src/shaders.h"
 #include "../src/menu.h"
+#define RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
+#include "../include/raylib-libretro-shaders.h"
 
 int main(int argc, char* argv[]) {
     // Ensure proper amount of arguments.
@@ -78,15 +79,9 @@ int main(int argc, char* argv[]) {
         {
             ClearBackground(BLACK);
 
-            if (currentShader > 0) {
-                BeginShaderMode(shaders[currentShader - 1]);
-            }
-
+            BeginLibretroShader();
             DrawLibretro();
-
-            if (currentShader > 0) {
-                EndShaderMode();
-            }
+            EndLibretroShader();
 
             UpdateMenu();
         }

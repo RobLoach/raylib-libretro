@@ -18,7 +18,6 @@
 #define RAYLIB_LIBRETRO_VFS_SEEK_END  2       /* Set file pointer to EOF plus "offset" */
 #endif
 
-
 struct retro_vfs_file_handle {
     unsigned char* data;
     char path[RAYLIB_LIBRETRO_VFS_MAX_PATH];

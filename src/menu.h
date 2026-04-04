@@ -10,7 +10,7 @@
 #include "../examples/custom_file_dialog/gui_window_file_dialog.h"
 
 #include "../include/raylib-libretro.h"
-#include "shaders.h"
+#include "../include/raylib-libretro-shaders.h"
 
 bool menuActive = true;
 GuiWindowFileDialogState openFileDialog;
@@ -241,10 +241,7 @@ void UpdateMenu() {
 
         // Shaders
         if (IsLibretroGameReady()) {
-            //GuiSetTooltip("Change shader (F10)");
-            Rectangle shaderRect = (Rectangle){padding, GetScreenHeight() - padding - buttonHeight, buttonWidth, buttonHeight};
-            currentShader = GuiToggleGroup(shaderRect, "Pixel Perfect;CRT;Scanlines", &currentShader);
-            //GuiClearTooltip();
+            DrawShadersGui((Rectangle){padding, GetScreenHeight() - padding - buttonHeight, buttonWidth, buttonHeight});
         }
     }
 
