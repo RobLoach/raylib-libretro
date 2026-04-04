@@ -2,7 +2,7 @@
 
 ## CRT Shader
 
-By Anata on raylib Discord.
+By Anata on raylib Discord, tweaked accordingly.
 
 ## Scanlines
 

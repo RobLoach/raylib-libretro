@@ -50,8 +50,8 @@ typedef enum LibretroShaderType {
 #define RAYLIB_LIBRETRO_SHADERS_MAX (LIBRETRO_SHADER_TYPE_COUNT - 1)
 
 typedef struct ShaderCRTParams {
-    float brightness;           // Overall brightness multiplier  (default: 1.0)
-    float scanlineIntensity;    // Dot mask spacing intensity     (default: 0.5)
+    float brightness;           // Overall brightness multiplier  (default: 1.2)
+    float scanlineIntensity;    // Dot mask spacing intensity     (default: 2.0)
     float curvatureRadius;      // Barrel distortion strength     (default: 0.4)
     float cornerSize;           // Rounded corner radius percent  (default: 5.0)
     float cornerSmooth;         // Corner anti-alias softness     (default: 35.0)
@@ -69,7 +69,7 @@ typedef struct ShaderCRTParams {
 
 typedef struct ShaderScanlinesParams {
     float frequency;    // Lines per screen height       (default: 150.0)
-    float opacity;      // Darkness of the dark bands    (default: 0.35)
+    float opacity;      // Darkness of the dark bands    (default: 0.5)
     float offset;       // Vertical scroll offset (0..1) (default: 0.0)
     float time;         // Accumulated time — internal
     int loc_frequency;
@@ -326,8 +326,8 @@ LibretroShaderState GetLibretroShaderDefaults(LibretroShaderType type) {
     state.type = type;
     switch (type) {
         case LIBRETRO_SHADER_CRT:
-            state.params.crt.brightness        = 1.0f;
-            state.params.crt.scanlineIntensity = 0.5f;
+            state.params.crt.brightness        = 1.2f;
+            state.params.crt.scanlineIntensity = 2.0f;
             state.params.crt.curvatureRadius   = 0.4f;
             state.params.crt.cornerSize        = 5.0f;
             state.params.crt.cornerSmooth      = 35.0f;
@@ -336,7 +336,7 @@ LibretroShaderState GetLibretroShaderDefaults(LibretroShaderType type) {
             break;
         case LIBRETRO_SHADER_SCANLINES:
             state.params.scanlines.frequency = 150.0f;
-            state.params.scanlines.opacity   = 0.35f;
+            state.params.scanlines.opacity   = 0.5f;
             state.params.scanlines.offset    = 0.0f;
             state.params.scanlines.time      = 0.0f;
             break;
