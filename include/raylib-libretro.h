@@ -257,7 +257,7 @@ static void LibretroInitVideo() {
  * @return retro_time_t The current time in milliseconds.
  */
 static retro_time_t LibretroGetTimeUSEC() {
-    return (retro_time_t)(GetTime() * 1000.0);
+    return (retro_time_t)(GetTime() * 1000000.0);
 }
 
 /**
@@ -335,7 +335,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 
         case RETRO_ENVIRONMENT_GET_CAN_DUPE: {
             bool* var = (bool*)data;
-            *var = false;
+            *var = true;
             return true;
         }
 
@@ -1002,13 +1002,13 @@ void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *input_,
     {
        for (w = 0; w < width; w++)
        {
-            uint8_t b   = (input[w] >> 16) & 0xff;
+            uint8_t r   = (input[w] >> 16) & 0xff;
             uint8_t g   = (input[w] >> 8) & 0xff;
-            uint8_t r   = (input[w]) & 0xff;
+            uint8_t b   = (input[w]) & 0xff;
             uint8_t a   = 0xff;
 
             // Force the alpha channel
-            output[w]    = (a << 24) | (r << 16) | (g << 8) | b;
+            output[w]    = (a << 24) | (b << 16) | (g << 8) | r;
        }
     }
 }
@@ -1107,22 +1107,17 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
         }
 
         case RETRO_DEVICE_POINTER: {
-            // TODO: Map the pointer coordinates correctly.
-            float max = 0x7fff;
             switch (id) {
                 case RETRO_DEVICE_ID_POINTER_X:
-                    return (float)(GetMouseX() + GetScreenWidth()) / (GetScreenWidth() * 2.0f) * (float)GetScreenWidth();
+                    return (int16_t)(((float)GetMouseX() / (float)GetScreenWidth()) * 2.0f - 1.0f) * 0x7fff;
                 case RETRO_DEVICE_ID_POINTER_Y:
-                    return (float)(GetMouseY() + GetScreenHeight()) / (GetScreenHeight() * 2.0f) * (float)GetScreenHeight();
+                    return (int16_t)(((float)GetMouseY() / (float)GetScreenHeight()) * 2.0f - 1.0f) * 0x7fff;
                 case RETRO_DEVICE_ID_POINTER_PRESSED:
                     return IsMouseButtonDown(MOUSE_LEFT_BUTTON);
             }
             return 0;
         }
 
-        case RETRO_DEVICE_ID_JOYPAD_MASK: {
-
-        }
     }
 
     return 0;
@@ -1563,7 +1558,6 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level) {
  * Map a libretro retro_key to a raylib KeyboardKey.
  */
 static int LibretroMapRetroKeyToKeyboardKey(int key) {
-    // TODO: Fix key mappings usings KEY_APOSTROPHE.
     switch (key){
         case RETROK_BACKSPACE:
             return KEY_BACKSPACE;
@@ -1582,23 +1576,23 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_EXCLAIM:
             return KEY_ONE;
         case RETROK_QUOTEDBL:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_HASH:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_DOLLAR:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_AMPERSAND:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_QUOTE:
             return KEY_APOSTROPHE;
         case RETROK_LEFTPAREN:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_RIGHTPAREN:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_ASTERISK:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_PLUS:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_COMMA:
             return KEY_COMMA;
         case RETROK_MINUS:
@@ -1628,31 +1622,31 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_9:
             return KEY_NINE;
         case RETROK_COLON:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_SEMICOLON:
             return KEY_SEMICOLON;
         case RETROK_LESS:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_EQUALS:
-            return KEY_APOSTROPHE;
+            return KEY_EQUAL;
         case RETROK_GREATER:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_QUESTION:
-            return KEY_SLASH;
+            return 0;
         case RETROK_AT:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_LEFTBRACKET:
-            return KEY_APOSTROPHE;
+            return KEY_LEFT_BRACKET;
         case RETROK_BACKSLASH:
-            return KEY_APOSTROPHE;
+            return KEY_BACKSLASH;
         case RETROK_RIGHTBRACKET:
-            return KEY_APOSTROPHE;
+            return KEY_RIGHT_BRACKET;
         case RETROK_CARET:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_UNDERSCORE:
-            return KEY_MINUS;
+            return 0;
         case RETROK_BACKQUOTE:
-            return KEY_APOSTROPHE;
+            return KEY_GRAVE;
         case RETROK_a:
             return KEY_A;
         case RETROK_b:
@@ -1706,11 +1700,11 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_z:
             return KEY_Z;
         case RETROK_LEFTBRACE:
-            return KEY_APOSTROPHE;
+            return KEY_LEFT_BRACKET;
         case RETROK_BAR:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_RIGHTBRACE:
-            return KEY_APOSTROPHE;
+            return KEY_RIGHT_BRACKET;
         case RETROK_TILDE:
             return KEY_GRAVE;
         case RETROK_DELETE:
@@ -1792,11 +1786,11 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_F12:
             return KEY_F12;
         case RETROK_F13:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_F14:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_F15:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_NUMLOCK:
             return KEY_NUM_LOCK;
         case RETROK_CAPSLOCK:
@@ -1824,27 +1818,27 @@ static int LibretroMapRetroKeyToKeyboardKey(int key) {
         case RETROK_RSUPER:
             return KEY_RIGHT_SUPER;
         case RETROK_MODE:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_COMPOSE:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_HELP:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_PRINT:
             return KEY_PRINT_SCREEN;
         case RETROK_SYSREQ:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_BREAK:
-            return KEY_APOSTROPHE;
+            return KEY_PAUSE;
         case RETROK_MENU:
-            return KEY_APOSTROPHE;
+            return KEY_MENU;
         case RETROK_POWER:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_EURO:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_UNDO:
-            return KEY_APOSTROPHE;
+            return 0;
         case RETROK_OEM_102:
-            return KEY_APOSTROPHE;
+            return 0;
     }
 
     return 0;
