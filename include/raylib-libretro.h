@@ -104,6 +104,11 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #define RAYLIB_LIBRETRO_VFS_IMPLEMENTATION
 #include "raylib-libretro-vfs.h"
 
+// Audio ring buffer size in stereo frames
+#define LIBRETRO_AUDIO_RING_BUFFER_SIZE 8192
+// Single-sample accumulation buffer size (stereo frames)
+#define LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
+
 // Dynamic loading methods.
 #define LoadLibretroMethodHandle(V, S) do {\
     function_t func = dylib_proc(LibretroCore.handle, #S); \
@@ -176,9 +181,10 @@ typedef struct rLibretro {
 
     // Audio
     AudioStream audioStream;
-    int16_t *audioBuffer;
-    size_t audioFrames;
-    float raylibAudioData[64];
+    float *audioRingBuffer;
+    size_t audioRingBufferSize;
+    size_t audioRingWritePos;
+    size_t audioRingAvailable;
 
     // Callbacks
     retro_keyboard_event_t keyboard_event;
@@ -1121,48 +1127,92 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
     return 0;
 }
 
-static size_t LibretroAudioWrite(const int16_t *data, size_t frames) {
-    if (data == NULL) {
+/**
+ * Audio stream callback: pulls from the ring buffer into raylib's audio system.
+ */
+static void LibretroAudioStreamCallback(void *audioData, unsigned int frameCount) {
+    float *output = (float *)audioData;
+
+    if (!LibretroCore.audioRingBuffer || LibretroCore.audioRingAvailable == 0) {
+        memset(output, 0, frameCount * 2 * sizeof(float));
+        return;
+    }
+
+    size_t frames_to_read = frameCount;
+    if (frames_to_read > LibretroCore.audioRingAvailable) {
+        size_t silence_frames = frames_to_read - LibretroCore.audioRingAvailable;
+        memset(output + LibretroCore.audioRingAvailable * 2, 0, silence_frames * 2 * sizeof(float));
+        frames_to_read = LibretroCore.audioRingAvailable;
+    }
+
+    size_t read_pos = (LibretroCore.audioRingWritePos + LibretroCore.audioRingBufferSize - LibretroCore.audioRingAvailable) % LibretroCore.audioRingBufferSize;
+    for (size_t i = 0; i < frames_to_read; i++) {
+        size_t idx = (read_pos + i) % LibretroCore.audioRingBufferSize;
+        output[i * 2]     = LibretroCore.audioRingBuffer[idx * 2];
+        output[i * 2 + 1] = LibretroCore.audioRingBuffer[idx * 2 + 1];
+    }
+
+    LibretroCore.audioRingAvailable -= frames_to_read;
+}
+
+/**
+ * Write a batch of int16_t stereo frames into the ring buffer.
+ */
+static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames) {
+    if (!data || frames == 0 || !LibretroCore.audioRingBuffer) return 0;
+
+    size_t available_space = LibretroCore.audioRingBufferSize - LibretroCore.audioRingAvailable;
+    size_t frames_to_write = (frames < available_space) ? frames : available_space;
+
+    if (frames_to_write == 0) {
+        static int drop_warn_count = 0;
+        if (drop_warn_count++ < 3) {
+            TraceLog(LOG_WARNING, "LIBRETRO: Audio ring buffer full, dropping %zu frames", frames);
+        }
         return 0;
     }
 
-    // UpdateAudioStream(LibretroCore.audioStream, data, frames);
+    for (size_t i = 0; i < frames_to_write; i++) {
+        size_t idx = (LibretroCore.audioRingWritePos + i) % LibretroCore.audioRingBufferSize;
+        LibretroCore.audioRingBuffer[idx * 2]     = (float)data[i * 2]     / 32768.0f;
+        LibretroCore.audioRingBuffer[idx * 2 + 1] = (float)data[i * 2 + 1] / 32768.0f;
+    }
 
-    // LibretroCore.audioBuffer = data;
-    // LibretroCore.audioFrames = frames;
+    LibretroCore.audioRingWritePos = (LibretroCore.audioRingWritePos + frames_to_write) % LibretroCore.audioRingBufferSize;
+    LibretroCore.audioRingAvailable += frames_to_write;
 
-    //     // TODO: Fix Audio being choppy since it doesn't append to the buffer.
-        //if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
-            // for (size_t i = 0; i < frames; i++) {
-            //     LibretroCore.raylibAudioData[i] = (float)data[i];
-            // }
-        if (IsAudioStreamProcessed(LibretroCore.audioStream)) {
-            UpdateAudioStream(LibretroCore.audioStream, data, frames);
-        }
-    // }
-
-    return frames;
+    return frames_to_write;
 }
 
+/**
+ * Accumulate single-sample callbacks into a buffer before flushing to the ring buffer.
+ */
 static void LibretroAudioSample(int16_t left, int16_t right) {
-    int16_t buf[2] = {left, right};
-    LibretroAudioWrite(buf, 1);
-}
+    static int16_t single_sample_buffer[LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
+    static size_t single_sample_count = 0;
 
-static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames) {
-    return LibretroAudioWrite(data, frames);
+    if (single_sample_count >= LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE) {
+        LibretroAudioSampleBatch(single_sample_buffer, single_sample_count);
+        single_sample_count = 0;
+    }
+
+    single_sample_buffer[single_sample_count * 2]     = left;
+    single_sample_buffer[single_sample_count * 2 + 1] = right;
+    single_sample_count++;
 }
 
 static void LibretroInitAudio() {
-    // Set the audio stream buffer size.
-    int sampleSize = 16;
+    // Allocate the ring buffer (stereo float samples).
+    LibretroCore.audioRingBufferSize = LIBRETRO_AUDIO_RING_BUFFER_SIZE;
+    LibretroCore.audioRingBuffer = (float *)MemAlloc(LibretroCore.audioRingBufferSize * 2 * sizeof(float));
+    LibretroCore.audioRingWritePos = 0;
+    LibretroCore.audioRingAvailable = 0;
+
+    // Create the audio stream: 32-bit float, stereo, pulled via callback.
+    int sampleSize = 32;
     int channels = 2;
-
-    // Create the audio stream.
-    SetAudioStreamBufferSizeDefault(sizeof(uint16_t));
     LibretroCore.audioStream = LoadAudioStream((unsigned int)LibretroCore.sampleRate, sampleSize, channels);
-
-    //SetAudioStreamCallback(LibretroCore.audioStream, LibretroAudioCallback);
+    SetAudioStreamCallback(LibretroCore.audioStream, LibretroAudioStreamCallback);
     PlayAudioStream(LibretroCore.audioStream);
 
     // Let the core know that the audio device has been initialized.
@@ -1170,7 +1220,8 @@ static void LibretroInitAudio() {
         LibretroCore.audio_callback.set_state(true);
     }
 
-    TraceLog(LOG_INFO, "LIBRETRO: Audio stream initialized (%i Hz, %i bit)", sampleSize, (int)LibretroCore.sampleRate);
+    TraceLog(LOG_INFO, "LIBRETRO: Audio stream initialized (%i Hz, %i-bit float, ring buffer %i frames)",
+        (int)LibretroCore.sampleRate, sampleSize, (int)LibretroCore.audioRingBufferSize);
 }
 
 static bool LibretroInitAudioVideo() {
@@ -1444,6 +1495,9 @@ static void ResetLibretro() {
     }
 }
 
+/**
+ * Unload the active libretro game.
+ */
 static void UnloadLibretroGame() {
     if (LibretroCore.retro_unload_game != NULL) {
         LibretroCore.retro_unload_game();
@@ -1468,6 +1522,10 @@ static void CloseLibretro() {
     // Stop, close and unload all raylib objects.
     StopAudioStream(LibretroCore.audioStream);
     UnloadAudioStream(LibretroCore.audioStream);
+    if (LibretroCore.audioRingBuffer != NULL) {
+        MemFree(LibretroCore.audioRingBuffer);
+        LibretroCore.audioRingBuffer = NULL;
+    }
     UnloadTexture(LibretroCore.texture);
 
     // Close the dynamically loaded handle.
