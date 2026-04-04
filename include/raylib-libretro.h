@@ -727,9 +727,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: {
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_GET_INPUT_BITMASKS not supported");
-            // TODO: Add RETRO_ENVIRONMENT_GET_INPUT_BITMASKS support
-            return false;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: {
@@ -1065,26 +1063,45 @@ static void LibretroInputPoll() {
 }
 
 static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index, unsigned id) {
-    // Force player 1 to use the keyboard.
-    if (device == RETRO_DEVICE_JOYPAD && port == 0) {
-        device = RETRO_DEVICE_KEYBOARD;
-        id = LibretroMapRetroJoypadButtonToRetroKey(id);
-        if (id == RETROK_UNKNOWN) {
-            return 0;
-        }
-    }
-
     switch (device) {
         case RETRO_DEVICE_KEYBOARD: {
-            id = LibretroMapRetroKeyToKeyboardKey(id);
-            if (id > 0) {
-                return (int)IsKeyDown(id);
+            int raylibKey = LibretroMapRetroKeyToKeyboardKey(id);
+            if (raylibKey > 0) {
+                return (int)IsKeyDown(raylibKey);
             }
             return 0;
         }
         case RETRO_DEVICE_JOYPAD: {
-            id = LibretroMapRetroJoypadButtonToGamepadButton(id);
-            return (int)IsGamepadButtonDown(port - 1, id);
+            // Return a bitmask of all buttons when requested.
+            if (id == RETRO_DEVICE_ID_JOYPAD_MASK) {
+                int16_t mask = 0;
+                for (int btn = 0; btn < 16; btn++) {
+                    if (LibretroInputState(port, RETRO_DEVICE_JOYPAD, index, btn)) {
+                        mask |= (1 << btn);
+                    }
+                }
+                return mask;
+            }
+
+            // Port 0: gamepad if available, otherwise keyboard.
+            if (port == 0) {
+                if (IsGamepadAvailable(0)) {
+                    int gamepadButton = LibretroMapRetroJoypadButtonToGamepadButton(id);
+                    if (gamepadButton != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gamepadButton)) {
+                        return 1;
+                    }
+                }
+                int retroKey = LibretroMapRetroJoypadButtonToRetroKey(id);
+                if (retroKey == RETROK_UNKNOWN) {
+                    return 0;
+                }
+                int raylibKey = LibretroMapRetroKeyToKeyboardKey(retroKey);
+                return (raylibKey > 0) ? (int)IsKeyDown(raylibKey) : 0;
+            }
+
+            // Port 1+: map to gamepad (port 1 → gamepad 0).
+            int gamepadButton = LibretroMapRetroJoypadButtonToGamepadButton(id);
+            return (int)IsGamepadButtonDown(port - 1, gamepadButton);
         }
         case RETRO_DEVICE_MOUSE: {
             switch (id) {
@@ -1102,6 +1119,40 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                     return GetMouseWheelMove() > 0;
                 case RETRO_DEVICE_ID_MOUSE_WHEELDOWN:
                     return GetMouseWheelMove() < 0;
+                case RETRO_DEVICE_ID_MOUSE_HORIZ_WHEELUP:
+                    return GetMouseWheelMoveV().x > 0;
+                case RETRO_DEVICE_ID_MOUSE_HORIZ_WHEELDOWN:
+                    return GetMouseWheelMoveV().x < 0;
+                case RETRO_DEVICE_ID_MOUSE_BUTTON_4:
+                    return IsMouseButtonDown(MOUSE_BUTTON_SIDE);
+                case RETRO_DEVICE_ID_MOUSE_BUTTON_5:
+                    return IsMouseButtonDown(MOUSE_BUTTON_EXTRA);
+            }
+            return 0;
+        }
+
+        case RETRO_DEVICE_ANALOG: {
+            switch (index) {
+                case RETRO_DEVICE_INDEX_ANALOG_LEFT: {
+                    int axis = (id == RETRO_DEVICE_ID_ANALOG_X) ? GAMEPAD_AXIS_LEFT_X : GAMEPAD_AXIS_LEFT_Y;
+                    return (int16_t)(GetGamepadAxisMovement(port, axis) * 0x7fff);
+                }
+                case RETRO_DEVICE_INDEX_ANALOG_RIGHT: {
+                    int axis = (id == RETRO_DEVICE_ID_ANALOG_X) ? GAMEPAD_AXIS_RIGHT_X : GAMEPAD_AXIS_RIGHT_Y;
+                    return (int16_t)(GetGamepadAxisMovement(port, axis) * 0x7fff);
+                }
+                case RETRO_DEVICE_INDEX_ANALOG_BUTTON: {
+                    if (id == RETRO_DEVICE_ID_JOYPAD_L2) {
+                        float value = GetGamepadAxisMovement(port, GAMEPAD_AXIS_LEFT_TRIGGER);
+                        return (int16_t)((value + 1.0f) * 0.5f * 0x7fff);
+                    }
+                    if (id == RETRO_DEVICE_ID_JOYPAD_R2) {
+                        float value = GetGamepadAxisMovement(port, GAMEPAD_AXIS_RIGHT_TRIGGER);
+                        return (int16_t)((value + 1.0f) * 0.5f * 0x7fff);
+                    }
+                    int gamepadButton = LibretroMapRetroJoypadButtonToGamepadButton(id);
+                    return IsGamepadButtonDown(port, gamepadButton) ? 0x7fff : 0;
+                }
             }
             return 0;
         }
