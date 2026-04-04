@@ -402,8 +402,15 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: {
-            // TODO: RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS not implemented");
+            if (data == NULL) {
+                return false;
+            }
+            // TODO: Implement RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS
+            const struct retro_input_descriptor *desc = (const struct retro_input_descriptor *)data;
+            for (; desc->description != NULL; desc++) {
+                TraceLog(LOG_INFO, "LIBRETRO: Input port %u device %u index %u id %u: %s",
+                    desc->port, desc->device, desc->index, desc->id, desc->description);
+            }
             return false;
         }
 
@@ -503,6 +510,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             *capabilities = (1 << RETRO_DEVICE_JOYPAD) |
                 (1 << RETRO_DEVICE_MOUSE) |
                 (1 << RETRO_DEVICE_KEYBOARD) |
+                (1 << RETRO_DEVICE_ANALOG) |
                 (1 << RETRO_DEVICE_POINTER);
             return true;
         }
@@ -589,7 +597,17 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CONTROLLER_INFO not implemented");
+            if (data == NULL) {
+                return false;
+            }
+            // TODO: Implement RETRO_ENVIRONMENT_SET_CONTROLLER_INFO
+            const struct retro_controller_info *info = (const struct retro_controller_info *)data;
+            for (unsigned port = 0; info[port].types != NULL; port++) {
+                TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_CONTROLLER_INFO port %u (%u types)", port, info[port].num_types);
+                for (unsigned i = 0; i < info[port].num_types; i++) {
+                    TraceLog(LOG_INFO, "    > [%u] %s (id: %u)", i, info[port].types[i].desc, info[port].types[i].id);
+                }
+            }
             return false;
         }
 
@@ -778,9 +796,8 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS: {
-            // TODO: RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS: Add support for more users.
             unsigned * maxUsers = (unsigned *)data;
-            *maxUsers = 1;
+            *maxUsers = 4;
             return true;
         }
 
@@ -875,6 +892,16 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 
         case RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY: {
             TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE not implemented");
+            return false;
+        }
+
+        case RETRO_ENVIRONMENT_GET_NETPLAY_CLIENT_INDEX: {
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_NETPLAY_CLIENT_INDEX not implemented");
             return false;
         }
     }
