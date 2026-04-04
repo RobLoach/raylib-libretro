@@ -210,10 +210,17 @@ static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
 
     va_list va;
     va_start(va, fmt);
-    const char* message = TextReplace(TextFormat(fmt, va), "\n", "");
+    char message[1024];
+    vsnprintf(message, sizeof(message), fmt, va);
     va_end(va);
 
-    if (TextLength(message) > 0) {
+    // Strip trailing newlines/carriage returns.
+    int len = (int)strlen(message);
+    while (len > 0 && (message[len - 1] == '\n' || message[len - 1] == '\r')) {
+        message[--len] = '\0';
+    }
+
+    if (len > 0) {
         TraceLog(type, "LIBRETRO: %s", message);
     }
 }
