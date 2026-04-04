@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
     InitAudioDevice();
 
     // Load the shaders and the menu.
-    LoadShaders();
+    LoadLibretroShaders();
 
     // Parse the command line arguments.
     if (argc > 1) {
@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
 
     while (!WindowShouldClose()) {
         // Update the shaders.
-        UpdateShaders();
+        UpdateLibretroShaders(GetFrameTime());
 
         // Run a frame of the core.
         UpdateLibretro();
@@ -120,7 +120,7 @@ int main(int argc, char* argv[]) {
     UnloadLibretroGame();
     CloseLibretro();
 
-    UnloadShaders();
+    UnloadLibretroShaders();
     CloseAudioDevice();
     CloseWindow();
 
