@@ -66,7 +66,9 @@ int main(int argc, char* argv[]) {
         UpdateLibretroShaders(GetFrameTime());
 
         // Run a frame of the core.
-        UpdateLibretro();
+        if (!IsLibretroMenuActive()) {
+            UpdateLibretro();
+        }
 
         UpdateLibretroMenu();
 
@@ -81,9 +83,16 @@ int main(int argc, char* argv[]) {
         {
             ClearBackground(BLACK);
 
-            BeginLibretroShader();
-            DrawLibretro();
-            EndLibretroShader();
+            if (IsLibretroMenuActive()) {
+                BeginLibretroShader();
+                DrawLibretroTint(ColorAlpha(WHITE, 0.1f));
+                EndShaderMode();
+            }
+            else {
+                BeginLibretroShader();
+                DrawLibretro();
+                EndLibretroShader();
+            }
 
             DrawLibretroMenu();
         }

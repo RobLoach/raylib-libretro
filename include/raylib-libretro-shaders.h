@@ -210,6 +210,7 @@ void CycleLibretroShaderReverse(void);
 
 /* Activate a specific shader type. LIBRETRO_SHADER_NONE = pass-through. */
 void SetActiveLibretroShader(LibretroShaderType type);
+void BeginLibretroShaderGreyscale(void);
 
 /* Returns the currently active shader type. */
 LibretroShaderType GetActiveLibretroShaderType(void);
@@ -702,6 +703,10 @@ void BeginLibretroShader(void) {
 void EndLibretroShader(void) {
     if (rlsh_current != LIBRETRO_SHADER_NONE)
         EndShaderMode();
+}
+
+void BeginLibretroShaderGreyscale(void) {
+    BeginShaderMode(rlsh_shaders[LIBRETRO_SHADER_GRAYSCALE-1].shader);
 }
 
 #if defined(__cplusplus)

@@ -38,14 +38,22 @@
 
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
 
+typedef enum LibretroMenuStyle {
+    LIBRETRO_MENU_STYLE_DEFAULT,
+    LIBRETRO_MENU_STYLE_DRACULA,
+} LibretroMenuStyle;
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
 
 bool InitLibretroMenu(void);
+bool IsLibretroMenuReady(void);
 void CloseLibretroMenu(void);
 void UpdateLibretroMenu(void);
 void DrawLibretroMenu(void);
+bool IsLibretroMenuActive(void);
+void SetLibretroMenuStyle(LibretroMenuStyle style);
 
 #if defined(__cplusplus)
 }
@@ -69,84 +77,210 @@ void DrawLibretroMenu(void);
 #define NK_CONSOLE_FREE nk_raylib_mfree
 #include "../vendor/nuklear_console/nuklear_console.h"
 
+typedef struct LibretroMenu {
+    struct nk_context* ctx;
+    Font font;
+    nk_console* console;
+    bool active;
+    struct nk_rect lastBounds;
+} LibretroMenu;
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
 
-/**
- * The Nuklear Context.
- */
-struct nk_context* ctx = NULL;
-Font font;
-nk_console* console = NULL;
+static LibretroMenu menu = {0};
+
+bool IsLibretroMenuReady(void) {
+    return menu.ctx != NULL;
+}
+
+void SetLibretroMenuStyle(LibretroMenuStyle style) {
+    if (!IsLibretroMenuReady()) {
+        return;
+    }
+
+    struct nk_color table[NK_COLOR_COUNT];
+    switch (style) {
+        case LIBRETRO_MENU_STYLE_DRACULA:{
+            struct nk_color background = nk_rgba(40, 42, 54, 0);
+            struct nk_color currentline = nk_rgba(68, 71, 90, 255);
+            struct nk_color foreground = nk_rgba(248, 248, 242, 255);
+            struct nk_color comment = nk_rgba(98, 114, 164, 255);
+            /* struct nk_color cyan = nk_rgba(139, 233, 253, 255); */
+            /* struct nk_color green = nk_rgba(80, 250, 123, 255); */
+            /* struct nk_color orange = nk_rgba(255, 184, 108, 255); */
+            struct nk_color pink = nk_rgba(255, 121, 198, 255);
+            struct nk_color purple = nk_rgba(189, 147, 249, 255);
+            /* struct nk_color red = nk_rgba(255, 85, 85, 255); */
+            /* struct nk_color yellow = nk_rgba(241, 250, 140, 255); */
+            table[NK_COLOR_TEXT] = foreground;
+            table[NK_COLOR_WINDOW] = background;
+            table[NK_COLOR_HEADER] = currentline;
+            table[NK_COLOR_BORDER] = currentline;
+            table[NK_COLOR_BUTTON] = currentline;
+            table[NK_COLOR_BUTTON_HOVER] = comment;
+            table[NK_COLOR_BUTTON_ACTIVE] = purple;
+            table[NK_COLOR_TOGGLE] = currentline;
+            table[NK_COLOR_TOGGLE_HOVER] = comment;
+            table[NK_COLOR_TOGGLE_CURSOR] = pink;
+            table[NK_COLOR_SELECT] = currentline;
+            table[NK_COLOR_SELECT_ACTIVE] = comment;
+            table[NK_COLOR_SLIDER] = background;
+            table[NK_COLOR_SLIDER_CURSOR] = currentline;
+            table[NK_COLOR_SLIDER_CURSOR_HOVER] = comment;
+            table[NK_COLOR_SLIDER_CURSOR_ACTIVE] = comment;
+            table[NK_COLOR_PROPERTY] = currentline;
+            table[NK_COLOR_EDIT] = currentline;
+            table[NK_COLOR_EDIT_CURSOR] = foreground;
+            table[NK_COLOR_COMBO] = currentline;
+            table[NK_COLOR_CHART] = currentline;
+            table[NK_COLOR_CHART_COLOR] = comment;
+            table[NK_COLOR_CHART_COLOR_HIGHLIGHT] = purple;
+            table[NK_COLOR_SCROLLBAR] = background;
+            table[NK_COLOR_SCROLLBAR_CURSOR] = currentline;
+            table[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = comment;
+            table[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = purple;
+            table[NK_COLOR_TAB_HEADER] = currentline;
+            table[NK_COLOR_KNOB] = table[NK_COLOR_SLIDER];
+            table[NK_COLOR_KNOB_CURSOR] = table[NK_COLOR_SLIDER_CURSOR];
+            table[NK_COLOR_KNOB_CURSOR_HOVER] = table[NK_COLOR_SLIDER_CURSOR_HOVER];
+            table[NK_COLOR_KNOB_CURSOR_ACTIVE] = table[NK_COLOR_SLIDER_CURSOR_ACTIVE];
+            nk_style_from_table(menu.ctx, table);
+            break;
+        }
+        case LIBRETRO_MENU_STYLE_DEFAULT:
+        default:
+            nk_style_default(menu.ctx);
+            break;
+    }
+}
+
+bool IsLibretroMenuActive(void) {
+    return menu.active;
+}
 
 bool InitLibretroMenu(void) {
-    font = LoadFontFromNuklear(32);
-    if (!IsFontValid(font)) {
+    menu = (LibretroMenu){0};
+    menu.font = LoadFontFromNuklear(52);
+    if (!IsFontValid(menu.font)) {
         return false;
     }
 
-    ctx = InitNuklearEx(font, 32.0f);
-    if (!ctx) {
-        UnloadFont(font);
+    menu.ctx = InitNuklearEx(menu.font, 26.0f);
+    //menu.ctx = InitNuklear(32);
+    if (!menu.ctx) {
+        UnloadFont(menu.font);
         return false;
     }
 
-    console = nk_console_init(ctx);
-    if (!console) {
-        UnloadFont(font);
-        UnloadNuklear(ctx);
+    menu.console = nk_console_init(menu.ctx);
+    if (!menu.console) {
+        UnloadFont(menu.font);
+        UnloadNuklear(menu.ctx);
         return false;
     }
 
     // Build the Menu
-    nk_console_button(console, "New Game");
-    nk_console* options = nk_console_button(console, "Options");
+    nk_console_button(menu.console, "Load Game");
+    nk_console* options = nk_console_button(menu.console, "Options");
     {
         nk_console_button(options, "Some cool option!");
         nk_console_button(options, "Option #2");
         nk_console_button_onclick(options, "Back", &nk_console_button_back);
     }
-    nk_console_button(console, "Load Game");
-    nk_console_button(console, "Save Game");
+    nk_console_button(menu.console, "Settings");
+    nk_console_button(menu.console, "Save State");
+    nk_console_button(menu.console, "Load State");
+    nk_console_button(menu.console, "Quit");
+
+    SetLibretroMenuStyle(LIBRETRO_MENU_STYLE_DRACULA);
+    menu.active = true;
 }
 
 void CloseLibretroMenu(void) {
-    if (ctx == NULL) {
+    if (menu.ctx == NULL) {
         return;
     }
 
-    if (console != NULL) {
-        nk_console_free(console);
-        console = NULL;
+    if (menu.console != NULL) {
+        nk_console_free(menu.console);
+        menu.console = NULL;
     }
-    if (ctx != NULL) {
-        UnloadNuklear(ctx);
-        ctx = NULL;
+    if (menu.ctx != NULL) {
+        UnloadNuklear(menu.ctx);
+        menu.ctx = NULL;
     }
 
-    if (IsFontValid(font)) {
-        UnloadFont(font);
-        font.recs = NULL;
+    if (IsFontValid(menu.font)) {
+        UnloadFont(menu.font);
+        menu.font.recs = NULL;
     }
 }
 
 void UpdateLibretroMenu(void) {
-    if (ctx == NULL) {
+    if (menu.ctx == NULL) {
         return;
     }
-    UpdateNuklear(ctx);
 
+    // Toggle the menu
+    if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsKeyReleased(KEY_F1)) {
+        menu.active = !menu.active;
+    }
 
-    // Render the console in a window
-    nk_console_render_window(console, "raylib-libretro", nk_rect(0, 0, NK_MAX(GetScreenWidth() / 3.5f, 300), GetScreenHeight()), NK_WINDOW_TITLE);
+    if (!menu.active) {
+        return;
+    }
+
+    // Render the console centered in the screen, using last frame's bounds for height
+    struct nk_rect windowPos;
+
+    // Scale it appropriately.
+    if (GetScreenWidth() > 1280 && GetScreenHeight() > 720) {
+        SetNuklearScaling(menu.ctx, 2.0f);
+        windowPos.w = NK_MAX(GetScreenWidth() / 3.0f, 640);
+    }
+    else {
+        SetNuklearScaling(menu.ctx, 1.0f);
+        windowPos.w = NK_MAX(GetScreenWidth() / 3.0f, 360);
+    }
+
+    UpdateNuklear(menu.ctx);
+
+    windowPos.h = menu.lastBounds.h > 0 ? menu.lastBounds.h : (float)GetScreenHeight();
+    if (windowPos.h > GetScreenHeight()) {
+        windowPos.h = GetScreenHeight();
+        windowPos.y = 0;
+    }
+    else {
+        windowPos.y = (float)GetScreenHeight() * 0.5f - windowPos.h * 0.5f;
+    }
+    windowPos.x = (float)GetScreenWidth() * 0.5f - windowPos.w * 0.5f;
+
+    if (GetNuklearScaling(menu.ctx) != 1.0f) {
+        windowPos.x /= GetNuklearScaling(menu.ctx);
+        windowPos.y /= GetNuklearScaling(menu.ctx);
+        windowPos.w /= GetNuklearScaling(menu.ctx);
+        windowPos.h /= GetNuklearScaling(menu.ctx);
+    }
+
+    menu.lastBounds = nk_console_render_window(menu.console, "raylib-libretro", windowPos, NK_WINDOW_SCROLL_AUTO_HIDE);
+    if (GetNuklearScaling(menu.ctx) != 1.0f) {
+        menu.lastBounds.x *= GetNuklearScaling(menu.ctx);
+        menu.lastBounds.y *= GetNuklearScaling(menu.ctx);
+        menu.lastBounds.w *= GetNuklearScaling(menu.ctx);
+        menu.lastBounds.h *= GetNuklearScaling(menu.ctx);
+    }
 }
 
 void DrawLibretroMenu(void) {
-    if (ctx == NULL) {
+    if (menu.ctx == NULL) {
         return;
     }
-    DrawNuklear(ctx);
+    if (!menu.active) {
+        return;
+    }
+    DrawNuklear(menu.ctx);
 }
 
 #if defined(__cplusplus)
