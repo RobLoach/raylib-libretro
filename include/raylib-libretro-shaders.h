@@ -44,7 +44,8 @@ typedef enum LibretroShaderType {
     LIBRETRO_SHADER_BLOOM            = 6,    // Additive glow around bright areas
     LIBRETRO_SHADER_GRAYSCALE        = 7,    // Monochrome with optional tint
     LIBRETRO_SHADER_NTSC             = 8,    // NTSC composite: chroma bleed, dot crawl
-    LIBRETRO_SHADER_TYPE_COUNT       = 9
+    LIBRETRO_SHADER_XBRZ             = 9,    // xBRZ 4x edge-directed upscale
+    LIBRETRO_SHADER_TYPE_COUNT       = 10
 } LibretroShaderType;
 
 #define RAYLIB_LIBRETRO_SHADERS_MAX (LIBRETRO_SHADER_TYPE_COUNT - 1)
@@ -127,12 +128,18 @@ typedef struct ShaderGrayscaleParams {
     int loc_lumaWeights;
 } ShaderGrayscaleParams;
 
+typedef struct ShaderXBRZParams {
+    float sourceWidth;   // Source texture width  (default: 256.0)
+    float sourceHeight;  // Source texture height (default: 240.0)
+    int loc_resolution;
+} ShaderXBRZParams;
+
 typedef struct ShaderNTSCParams {
-    float chromaBleed;      /* Horizontal color smear   (default: 0.008) */
-    float noiseAmount;      /* Random noise intensity   (default: 0.03)  */
-    float dotCrawlSpeed;    /* Chroma anim speed        (default: 1.0)   */
-    float sharpness;        /* Luma sharpening boost    (default: 0.5)   */
-    float time;             /* Accumulated time — internal                */
+    float chromaBleed;      // Horizontal color smear   (default: 0.008)
+    float noiseAmount;      // Random noise intensity   (default: 0.03)
+    float dotCrawlSpeed;    // Chroma anim speed        (default: 1.0)
+    float sharpness;        // Luma sharpening boost    (default: 0.5)
+    float time;             // Accumulated time — internal
     int loc_chromaBleed;
     int loc_noiseAmount;
     int loc_dotCrawlSpeed;
@@ -156,6 +163,7 @@ typedef struct LibretroShaderState {
         ShaderBloomParams          bloom;
         ShaderGrayscaleParams      grayscale;
         ShaderNTSCParams           ntsc;
+        ShaderXBRZParams           xbrz;
     } params;
 } LibretroShaderState;
 
@@ -313,6 +321,15 @@ const char* GetLibretroShaderCode(LibretroShaderType type) {
 #include "raylib-libretro-shaders/ntsc-glsl100.txt"
 #endif
         ;
+        case LIBRETRO_SHADER_XBRZ: return
+#if GLSL_VERSION == 330
+#include "raylib-libretro-shaders/xbrz-glsl330.txt"
+#elif GLSL_VERSION == 120
+#include "raylib-libretro-shaders/xbrz-glsl120.txt"
+#else
+#include "raylib-libretro-shaders/xbrz-glsl100.txt"
+#endif
+        ;
         default: return "";
     }
 }
@@ -372,6 +389,10 @@ LibretroShaderState GetLibretroShaderDefaults(LibretroShaderType type) {
             state.params.ntsc.dotCrawlSpeed = 1.0f;
             state.params.ntsc.sharpness     = 0.5f;
             state.params.ntsc.time          = 0.0f;
+            break;
+        case LIBRETRO_SHADER_XBRZ:
+            state.params.xbrz.sourceWidth  = 256.0f;
+            state.params.xbrz.sourceHeight = 240.0f;
             break;
         default: break;
     }
@@ -515,6 +536,14 @@ LibretroShaderState LoadLibretroShaderEx(LibretroShaderType type, const void *pa
             rlsh_set_resolution(state.shader, p->loc_resolution);
         } break;
 
+        case LIBRETRO_SHADER_XBRZ: {
+            ShaderXBRZParams *p = &state.params.xbrz;
+            if (params) *p = *(const ShaderXBRZParams *)params;
+            p->loc_resolution = GetShaderLocation(state.shader, "resolution");
+            Vector2 res = { p->sourceWidth, p->sourceHeight };
+            SetShaderValue(state.shader, p->loc_resolution, &res, SHADER_UNIFORM_VEC2);
+        } break;
+
         default: break;
     }
     return state;
@@ -605,6 +634,13 @@ void UpdateLibretroShader(LibretroShaderState *state, float dt) {
             SetShaderValue(state->shader, p->loc_time,          &p->time,          SHADER_UNIFORM_FLOAT);
         } break;
 
+        case LIBRETRO_SHADER_XBRZ: {
+            ShaderXBRZParams *p = &state->params.xbrz;
+            // xBRZ needs the proper texture width/height.
+            Vector2 res = { (float)GetLibretroWidth(), (float)GetLibretroHeight() };
+            SetShaderValue(state->shader, p->loc_resolution, &res, SHADER_UNIFORM_VEC2);
+        } break;
+
         default: break;
     }
 }
@@ -635,6 +671,7 @@ const char* GetLibretroShaderName(LibretroShaderType type) {
         case LIBRETRO_SHADER_BLOOM:           return "Bloom";
         case LIBRETRO_SHADER_GRAYSCALE:       return "Grayscale";
         case LIBRETRO_SHADER_NTSC:            return "NTSC";
+        case LIBRETRO_SHADER_XBRZ:            return "xBRZ";
         default:                              return "Unknown";
     }
 }
