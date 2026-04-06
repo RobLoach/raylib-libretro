@@ -72,6 +72,7 @@ void SetLibretroMenuStyle(LibretroMenuStyle style);
 #define NK_GAMEPAD_IMPLEMENTATION
 #include "../vendor/nuklear_gamepad/nuklear_gamepad.h"
 
+#define CVECTOR_H "../vendor/c-vector/cvector.h"
 #define NK_CONSOLE_IMPLEMENTATION
 #define NK_CONSOLE_MALLOC nk_raylib_malloc
 #define NK_CONSOLE_FREE nk_raylib_mfree
