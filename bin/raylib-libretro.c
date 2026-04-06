@@ -46,6 +46,13 @@ int main(int argc, char* argv[]) {
 
     // Load the shaders and the menu.
     LoadLibretroShaders();
+    LibretroMenu* menu = InitLibretroMenu();
+    if (!menu) {
+        TraceLog(LOG_ERROR, "Failed to initialize menu");
+        UnloadLibretroShaders();
+        CloseAudioDevice();
+        CloseWindow();
+    }
 
     // Parse the command line arguments.
     if (argc > 1) {
@@ -54,19 +61,17 @@ int main(int argc, char* argv[]) {
             // Load the given game.
             const char* gameFile = (argc > 2) ? argv[2] : NULL;
             if (LoadLibretroGame(gameFile)) {
-                // TODO: Quit?
+                menu->active = false;
             }
         }
     }
-
-    InitLibretroMenu();
 
     while (!WindowShouldClose()) {
         // Update the shaders.
         UpdateLibretroShaders(GetFrameTime());
 
         // Run a frame of the core.
-        if (!IsLibretroMenuActive()) {
+        if (!menu->active) {
             UpdateLibretro();
         }
 
@@ -83,7 +88,7 @@ int main(int argc, char* argv[]) {
         {
             ClearBackground(BLACK);
 
-            if (IsLibretroMenuActive()) {
+            if (menu->active) {
                 BeginLibretroShader();
                 DrawLibretroTint(ColorAlpha(WHITE, 0.1f));
                 EndShaderMode();

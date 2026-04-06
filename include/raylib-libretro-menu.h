@@ -37,23 +37,30 @@
 #define RAYLIB_LIBRETRO_MENU_H
 
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
+#include "../vendor/nuklear_console/nuklear_console.h"
 
 typedef enum LibretroMenuStyle {
     LIBRETRO_MENU_STYLE_DEFAULT,
     LIBRETRO_MENU_STYLE_DRACULA,
 } LibretroMenuStyle;
 
+typedef struct LibretroMenu {
+    struct nk_context* ctx;
+    Font font;
+    nk_console* console;
+    bool active;
+    struct nk_rect lastBounds;
+} LibretroMenu;
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
 
-bool InitLibretroMenu(void);
+LibretroMenu* InitLibretroMenu(void);
 bool IsLibretroMenuReady(void);
 void CloseLibretroMenu(void);
 void UpdateLibretroMenu(void);
 void DrawLibretroMenu(void);
-bool IsLibretroMenuActive(void);
-void SetLibretroMenuStyle(LibretroMenuStyle style);
 
 #if defined(__cplusplus)
 }
@@ -78,19 +85,15 @@ void SetLibretroMenuStyle(LibretroMenuStyle style);
 #define NK_CONSOLE_FREE nk_raylib_mfree
 #include "../vendor/nuklear_console/nuklear_console.h"
 
-typedef struct LibretroMenu {
-    struct nk_context* ctx;
-    Font font;
-    nk_console* console;
-    bool active;
-    struct nk_rect lastBounds;
-} LibretroMenu;
-
 #if defined(__cplusplus)
 extern "C" {
 #endif
 
 static LibretroMenu menu = {0};
+
+LibretroMenu* GetLibretroMenu(void) {
+    return &menu;
+}
 
 bool IsLibretroMenuReady(void) {
     return menu.ctx != NULL;
@@ -157,29 +160,25 @@ void SetLibretroMenuStyle(LibretroMenuStyle style) {
     }
 }
 
-bool IsLibretroMenuActive(void) {
-    return menu.active;
-}
-
-bool InitLibretroMenu(void) {
+LibretroMenu* InitLibretroMenu(void) {
     menu = (LibretroMenu){0};
     menu.font = LoadFontFromNuklear(52);
     if (!IsFontValid(menu.font)) {
-        return false;
+        return NULL;
     }
 
     menu.ctx = InitNuklearEx(menu.font, 26.0f);
     //menu.ctx = InitNuklear(32);
     if (!menu.ctx) {
         UnloadFont(menu.font);
-        return false;
+        return NULL;
     }
 
     menu.console = nk_console_init(menu.ctx);
     if (!menu.console) {
         UnloadFont(menu.font);
         UnloadNuklear(menu.ctx);
-        return false;
+        return NULL;
     }
 
     // Build the Menu
@@ -197,6 +196,8 @@ bool InitLibretroMenu(void) {
 
     SetLibretroMenuStyle(LIBRETRO_MENU_STYLE_DRACULA);
     menu.active = true;
+
+    return &menu;
 }
 
 void CloseLibretroMenu(void) {
