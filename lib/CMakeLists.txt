@@ -12,14 +12,15 @@ add_library(raylib-libretro-static STATIC
 target_link_libraries(raylib-libretro-static PUBLIC
     raylib
     raylib-libretro-h
-    ${WASMTIME_LIB}
+    wasmtime_c_api
     pthread
     dl
     m
 )
 target_include_directories(raylib-libretro-static PUBLIC
     ../vendor/libretro-common/include
-    ${WASMTIME_INCLUDE_DIR}
 )
+# Ensure the Cargo build of Wasmtime completes before this library is linked.
+add_dependencies(raylib-libretro-static wasmtime_cargo_build)
 install(TARGETS raylib-libretro-static DESTINATION lib)
 install(FILES ../include/raylib-libretro.h DESTINATION include)
