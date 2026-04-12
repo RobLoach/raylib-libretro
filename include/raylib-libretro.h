@@ -4,9 +4,8 @@
 *
 *   DEPENDENCIES:
 *            - raylib
-*            - dl: dylib_proc(), dylib_error()
+*            - Wasmtime C API (wasm-c-api): wasm_engine_new(), wasm_func_new(), etc.
 *            - libretro-common
-*              - dynamic/dylib.h
 *              - features/features_cpu.h
 *              - libretro.h
 *
@@ -106,8 +105,10 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #include <stdarg.h>
 #include <stdlib.h>
 
+// wasm-c-api (Wasmtime)
+#include <wasm.h>
+
 // libretro-common
-#include <dynamic/dylib.h>
 #include <features/features_cpu.h>
 
 #define RAYLIB_LIBRETRO_VFS_IMPLEMENTATION
@@ -122,20 +123,30 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #define LIBRETRO_CORE_VARIABLE_KEY_LEN 64
 #define LIBRETRO_CORE_VARIABLE_VALUE_LEN 256
 
-// Dynamic loading methods.
-#define LoadLibretroMethodHandle(V, S) do {\
-    function_t func = dylib_proc(LibretroCore.handle, #S); \
-    memcpy(&V, &func, sizeof(func)); \
-    if (!func) { \
-        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load symbol '" #S "' ", dylib_error()); \
+// WASM export loading: find the named export, assign the static wrapper to the struct field.
+#define LoadWasmMethod(S) do { \
+    _wasm_##S = LibretroFindWasmExport(#S); \
+    if (!_wasm_##S) { \
+        TraceLog(LOG_ERROR, "LIBRETRO: WASM export not found: " #S); \
         return false; \
-    }\
-} while (0)
-#define LoadLibretroMethod(S) LoadLibretroMethodHandle(LibretroCore.S, S)
+    } \
+    LibretroCore.S = _wasm_call_##S; \
+} while(0)
+
+// Optional WASM export: does not fail if the export is absent (used for retro_set_* no-ops).
+#define LoadWasmMethodOptional(S) do { \
+    _wasm_##S = LibretroFindWasmExport(#S); \
+    LibretroCore.S = _wasm_call_##S; \
+} while(0)
 
 typedef struct rLibretro {
-    // Dynamic library symbols.
-    void *handle;
+    // WASM runtime objects (replace native dylib handle).
+    wasm_engine_t   *wasm_engine;
+    wasm_store_t    *wasm_store;
+    wasm_module_t   *wasm_module;
+    wasm_instance_t *wasm_instance;
+    wasm_memory_t   *wasm_memory;
+    wasm_extern_vec_t wasm_exports;
     void (*retro_init)(void);
     void (*retro_deinit)(void);
     unsigned (*retro_api_version)(void);
@@ -1619,6 +1630,423 @@ static bool DoesLibretroCoreNeedContent() {
     return !LibretroCore.supportNoGame;
 }
 
+// =============================================================================
+// WASM (wasm-c-api / Wasmtime) infrastructure
+// =============================================================================
+
+/**
+ * Find a named export in the instantiated WASM module and return it as a
+ * wasm_func_t*, or NULL if the export does not exist or is not a function.
+ */
+static wasm_func_t* LibretroFindWasmExport(const char* name) {
+    wasm_exporttype_vec_t export_types;
+    wasm_module_exports(LibretroCore.wasm_module, &export_types);
+    size_t name_len = strlen(name);
+    for (size_t i = 0; i < export_types.size; i++) {
+        const wasm_name_t *en = wasm_exporttype_name(export_types.data[i]);
+        if (en->size == name_len && memcmp(en->data, name, name_len) == 0) {
+            wasm_exporttype_vec_delete(&export_types);
+            if (i < LibretroCore.wasm_exports.size) {
+                return wasm_extern_as_func(LibretroCore.wasm_exports.data[i]);
+            }
+            return NULL;
+        }
+    }
+    wasm_exporttype_vec_delete(&export_types);
+    return NULL;
+}
+
+// WASM heap allocators — use the core's exported malloc/free.
+static wasm_func_t *_wasm_malloc = NULL;
+static wasm_func_t *_wasm_free   = NULL;
+
+static uint32_t LibretroWasmMalloc(size_t size) {
+    wasm_val_t args_arr[1] = {{ .kind = WASM_I32, .of.i32 = (int32_t)size }};
+    wasm_val_t result_arr[1];
+    wasm_val_vec_t args    = { .size = 1, .data = args_arr };
+    wasm_val_vec_t results = { .size = 1, .data = result_arr };
+    wasm_func_call(_wasm_malloc, &args, &results);
+    return (uint32_t)result_arr[0].of.i32;
+}
+
+static void LibretroWasmFree(uint32_t ptr) {
+    if (!ptr) return;
+    wasm_val_t args_arr[1] = {{ .kind = WASM_I32, .of.i32 = (int32_t)ptr }};
+    wasm_val_vec_t args    = { .size = 1, .data = args_arr };
+    wasm_val_vec_t results = WASM_EMPTY_VEC;
+    wasm_func_call(_wasm_free, &args, &results);
+}
+
+// =============================================================================
+// WASM import host callbacks (called by the WASM core during retro_run, etc.)
+// These replace the retro_set_* callback registration mechanism.
+// =============================================================================
+
+static wasm_trap_t* wasm_import_video_refresh(
+        const wasm_val_vec_t *args, wasm_val_vec_t *results) {
+    (void)results;
+    int32_t data_offset = args->data[0].of.i32;
+    unsigned width  = (unsigned)args->data[1].of.i32;
+    unsigned height = (unsigned)args->data[2].of.i32;
+    size_t   pitch  = (size_t)  args->data[3].of.i32;
+    const void *data = (data_offset != 0)
+        ? (wasm_memory_data(LibretroCore.wasm_memory) + data_offset)
+        : NULL;
+    LibretroVideoRefresh(data, width, height, pitch);
+    return NULL;
+}
+
+static wasm_trap_t* wasm_import_audio_sample(
+        const wasm_val_vec_t *args, wasm_val_vec_t *results) {
+    (void)results;
+    LibretroAudioSample((int16_t)args->data[0].of.i32,
+                        (int16_t)args->data[1].of.i32);
+    return NULL;
+}
+
+static wasm_trap_t* wasm_import_audio_sample_batch(
+        const wasm_val_vec_t *args, wasm_val_vec_t *results) {
+    int32_t  data_offset = args->data[0].of.i32;
+    size_t   frames      = (size_t)args->data[1].of.i32;
+    const int16_t *data  = (const int16_t *)
+        (wasm_memory_data(LibretroCore.wasm_memory) + data_offset);
+    size_t written = LibretroAudioSampleBatch(data, frames);
+    results->data[0].kind   = WASM_I32;
+    results->data[0].of.i32 = (int32_t)written;
+    return NULL;
+}
+
+static wasm_trap_t* wasm_import_input_poll(
+        const wasm_val_vec_t *args, wasm_val_vec_t *results) {
+    (void)args;
+    (void)results;
+    LibretroInputPoll();
+    return NULL;
+}
+
+static wasm_trap_t* wasm_import_input_state(
+        const wasm_val_vec_t *args, wasm_val_vec_t *results) {
+    int16_t state = LibretroInputState(
+        (unsigned)args->data[0].of.i32,
+        (unsigned)args->data[1].of.i32,
+        (unsigned)args->data[2].of.i32,
+        (unsigned)args->data[3].of.i32
+    );
+    results->data[0].kind   = WASM_I32;
+    results->data[0].of.i32 = (int32_t)state;
+    return NULL;
+}
+
+static wasm_trap_t* wasm_import_environment(
+        const wasm_val_vec_t *args, wasm_val_vec_t *results) {
+    unsigned cmd         = (unsigned)args->data[0].of.i32;
+    int32_t  data_offset = args->data[1].of.i32;
+    void *data_ptr = (data_offset != 0)
+        ? (wasm_memory_data(LibretroCore.wasm_memory) + data_offset)
+        : NULL;
+    bool ok = LibretroSetEnvironment(cmd, data_ptr);
+    results->data[0].kind   = WASM_I32;
+    results->data[0].of.i32 = ok ? 1 : 0;
+    return NULL;
+}
+
+// =============================================================================
+// Static wasm_func_t* pointers and C-callable wrappers for all libretro exports
+// =============================================================================
+
+// --- retro_init ---
+static wasm_func_t *_wasm_retro_init = NULL;
+static void _wasm_call_retro_init(void) {
+    wasm_val_vec_t args = WASM_EMPTY_VEC, results = WASM_EMPTY_VEC;
+    wasm_func_call(_wasm_retro_init, &args, &results);
+}
+
+// --- retro_deinit ---
+static wasm_func_t *_wasm_retro_deinit = NULL;
+static void _wasm_call_retro_deinit(void) {
+    wasm_val_vec_t args = WASM_EMPTY_VEC, results = WASM_EMPTY_VEC;
+    wasm_func_call(_wasm_retro_deinit, &args, &results);
+}
+
+// --- retro_api_version ---
+static wasm_func_t *_wasm_retro_api_version = NULL;
+static unsigned _wasm_call_retro_api_version(void) {
+    wasm_val_t result_arr[1];
+    wasm_val_vec_t args    = WASM_EMPTY_VEC;
+    wasm_val_vec_t results = { .size = 1, .data = result_arr };
+    wasm_func_call(_wasm_retro_api_version, &args, &results);
+    return (unsigned)result_arr[0].of.i32;
+}
+
+// --- retro_get_system_info (struct-pointer output; string fields are WASM offsets) ---
+static wasm_func_t *_wasm_retro_get_system_info = NULL;
+static void _wasm_call_retro_get_system_info(struct retro_system_info *info) {
+    uint32_t wasm_ptr = LibretroWasmMalloc(sizeof(struct retro_system_info));
+    wasm_val_t args_arr[1] = {{ .kind = WASM_I32, .of.i32 = (int32_t)wasm_ptr }};
+    wasm_val_vec_t args    = { .size = 1, .data = args_arr };
+    wasm_val_vec_t results = WASM_EMPTY_VEC;
+    wasm_func_call(_wasm_retro_get_system_info, &args, &results);
+    byte_t *mem = wasm_memory_data(LibretroCore.wasm_memory);
+    memcpy(info, mem + wasm_ptr, sizeof(*info));
+    // Remap embedded string offsets to host pointers.
+    if (info->library_name)
+        info->library_name     = (const char *)(mem + (uint32_t)(uintptr_t)info->library_name);
+    if (info->library_version)
+        info->library_version  = (const char *)(mem + (uint32_t)(uintptr_t)info->library_version);
+    if (info->valid_extensions)
+        info->valid_extensions = (const char *)(mem + (uint32_t)(uintptr_t)info->valid_extensions);
+    LibretroWasmFree(wasm_ptr);
+}
+
+// --- retro_get_system_av_info (struct-pointer output) ---
+static wasm_func_t *_wasm_retro_get_system_av_info = NULL;
+static void _wasm_call_retro_get_system_av_info(struct retro_system_av_info *info) {
+    uint32_t wasm_ptr = LibretroWasmMalloc(sizeof(struct retro_system_av_info));
+    wasm_val_t args_arr[1] = {{ .kind = WASM_I32, .of.i32 = (int32_t)wasm_ptr }};
+    wasm_val_vec_t args    = { .size = 1, .data = args_arr };
+    wasm_val_vec_t results = WASM_EMPTY_VEC;
+    wasm_func_call(_wasm_retro_get_system_av_info, &args, &results);
+    memcpy(info, wasm_memory_data(LibretroCore.wasm_memory) + wasm_ptr, sizeof(*info));
+    LibretroWasmFree(wasm_ptr);
+}
+
+// --- retro_set_* (no-ops: callbacks are wired as WASM imports at instantiation) ---
+static wasm_func_t *_wasm_retro_set_environment = NULL;
+static void _wasm_call_retro_set_environment(retro_environment_t cb) { (void)cb; }
+
+static wasm_func_t *_wasm_retro_set_video_refresh = NULL;
+static void _wasm_call_retro_set_video_refresh(retro_video_refresh_t cb) { (void)cb; }
+
+static wasm_func_t *_wasm_retro_set_audio_sample = NULL;
+static void _wasm_call_retro_set_audio_sample(retro_audio_sample_t cb) { (void)cb; }
+
+static wasm_func_t *_wasm_retro_set_audio_sample_batch = NULL;
+static void _wasm_call_retro_set_audio_sample_batch(retro_audio_sample_batch_t cb) { (void)cb; }
+
+static wasm_func_t *_wasm_retro_set_input_poll = NULL;
+static void _wasm_call_retro_set_input_poll(retro_input_poll_t cb) { (void)cb; }
+
+static wasm_func_t *_wasm_retro_set_input_state = NULL;
+static void _wasm_call_retro_set_input_state(retro_input_state_t cb) { (void)cb; }
+
+// --- retro_set_controller_port_device ---
+static wasm_func_t *_wasm_retro_set_controller_port_device = NULL;
+static void _wasm_call_retro_set_controller_port_device(unsigned port, unsigned device) {
+    if (!_wasm_retro_set_controller_port_device) return;
+    wasm_val_t args_arr[2] = {
+        { .kind = WASM_I32, .of.i32 = (int32_t)port },
+        { .kind = WASM_I32, .of.i32 = (int32_t)device }
+    };
+    wasm_val_vec_t args    = { .size = 2, .data = args_arr };
+    wasm_val_vec_t results = WASM_EMPTY_VEC;
+    wasm_func_call(_wasm_retro_set_controller_port_device, &args, &results);
+}
+
+// --- retro_reset ---
+static wasm_func_t *_wasm_retro_reset = NULL;
+static void _wasm_call_retro_reset(void) {
+    wasm_val_vec_t args = WASM_EMPTY_VEC, results = WASM_EMPTY_VEC;
+    wasm_func_call(_wasm_retro_reset, &args, &results);
+}
+
+// --- retro_run ---
+static wasm_func_t *_wasm_retro_run = NULL;
+static void _wasm_call_retro_run(void) {
+    wasm_val_vec_t args = WASM_EMPTY_VEC, results = WASM_EMPTY_VEC;
+    wasm_func_call(_wasm_retro_run, &args, &results);
+}
+
+// --- retro_serialize_size ---
+static wasm_func_t *_wasm_retro_serialize_size = NULL;
+static size_t _wasm_call_retro_serialize_size(void) {
+    wasm_val_t result_arr[1];
+    wasm_val_vec_t args    = WASM_EMPTY_VEC;
+    wasm_val_vec_t results = { .size = 1, .data = result_arr };
+    wasm_func_call(_wasm_retro_serialize_size, &args, &results);
+    return (size_t)(uint32_t)result_arr[0].of.i32;
+}
+
+// --- retro_serialize (core writes state into a WASM buffer; host reads it back) ---
+static wasm_func_t *_wasm_retro_serialize = NULL;
+static bool _wasm_call_retro_serialize(void *data, size_t size) {
+    uint32_t wasm_ptr = LibretroWasmMalloc(size);
+    byte_t *mem = wasm_memory_data(LibretroCore.wasm_memory);
+    wasm_val_t args_arr[2] = {
+        { .kind = WASM_I32, .of.i32 = (int32_t)wasm_ptr },
+        { .kind = WASM_I32, .of.i32 = (int32_t)size }
+    };
+    wasm_val_t result_arr[1];
+    wasm_val_vec_t args    = { .size = 2, .data = args_arr };
+    wasm_val_vec_t results = { .size = 1, .data = result_arr };
+    wasm_func_call(_wasm_retro_serialize, &args, &results);
+    bool ok = result_arr[0].of.i32 != 0;
+    if (ok) memcpy(data, mem + wasm_ptr, size);
+    LibretroWasmFree(wasm_ptr);
+    return ok;
+}
+
+// --- retro_unserialize (host writes state into WASM buffer; core reads it) ---
+static wasm_func_t *_wasm_retro_unserialize = NULL;
+static bool _wasm_call_retro_unserialize(const void *data, size_t size) {
+    uint32_t wasm_ptr = LibretroWasmMalloc(size);
+    byte_t *mem = wasm_memory_data(LibretroCore.wasm_memory);
+    memcpy(mem + wasm_ptr, data, size);
+    wasm_val_t args_arr[2] = {
+        { .kind = WASM_I32, .of.i32 = (int32_t)wasm_ptr },
+        { .kind = WASM_I32, .of.i32 = (int32_t)size }
+    };
+    wasm_val_t result_arr[1];
+    wasm_val_vec_t args    = { .size = 2, .data = args_arr };
+    wasm_val_vec_t results = { .size = 1, .data = result_arr };
+    wasm_func_call(_wasm_retro_unserialize, &args, &results);
+    LibretroWasmFree(wasm_ptr);
+    return result_arr[0].of.i32 != 0;
+}
+
+// --- retro_cheat_reset ---
+static wasm_func_t *_wasm_retro_cheat_reset = NULL;
+static void _wasm_call_retro_cheat_reset(void) {
+    wasm_val_vec_t args = WASM_EMPTY_VEC, results = WASM_EMPTY_VEC;
+    wasm_func_call(_wasm_retro_cheat_reset, &args, &results);
+}
+
+// --- retro_cheat_set ---
+static wasm_func_t *_wasm_retro_cheat_set = NULL;
+static void _wasm_call_retro_cheat_set(unsigned index, bool enabled, const char *code) {
+    size_t code_len = strlen(code) + 1;
+    uint32_t wasm_str = LibretroWasmMalloc(code_len);
+    byte_t *mem = wasm_memory_data(LibretroCore.wasm_memory);
+    memcpy(mem + wasm_str, code, code_len);
+    wasm_val_t args_arr[3] = {
+        { .kind = WASM_I32, .of.i32 = (int32_t)index },
+        { .kind = WASM_I32, .of.i32 = enabled ? 1 : 0 },
+        { .kind = WASM_I32, .of.i32 = (int32_t)wasm_str }
+    };
+    wasm_val_vec_t args    = { .size = 3, .data = args_arr };
+    wasm_val_vec_t results = WASM_EMPTY_VEC;
+    wasm_func_call(_wasm_retro_cheat_set, &args, &results);
+    LibretroWasmFree(wasm_str);
+}
+
+// --- retro_load_game (serialises retro_game_info path/data into WASM memory) ---
+static wasm_func_t *_wasm_retro_load_game = NULL;
+static bool _wasm_call_retro_load_game(const struct retro_game_info *game) {
+    byte_t *mem;
+    uint32_t path_wasm = 0, data_wasm = 0, game_wasm = 0;
+    if (game) {
+        if (game->path) {
+            size_t plen = strlen(game->path) + 1;
+            path_wasm = LibretroWasmMalloc(plen);
+            mem = wasm_memory_data(LibretroCore.wasm_memory);
+            memcpy(mem + path_wasm, game->path, plen);
+        }
+        if (game->data && game->size > 0) {
+            data_wasm = LibretroWasmMalloc(game->size);
+            mem = wasm_memory_data(LibretroCore.wasm_memory);
+            memcpy(mem + data_wasm, game->data, game->size);
+        }
+        struct retro_game_info wasm_game;
+        wasm_game.path = (const char *)(uintptr_t)path_wasm;
+        wasm_game.data = (const void *)(uintptr_t)data_wasm;
+        wasm_game.size = game->size;
+        wasm_game.meta = NULL;
+        game_wasm = LibretroWasmMalloc(sizeof(struct retro_game_info));
+        mem = wasm_memory_data(LibretroCore.wasm_memory);
+        memcpy(mem + game_wasm, &wasm_game, sizeof(wasm_game));
+    }
+    wasm_val_t args_arr[1] = {{ .kind = WASM_I32, .of.i32 = (int32_t)game_wasm }};
+    wasm_val_t result_arr[1];
+    wasm_val_vec_t args    = { .size = 1, .data = args_arr };
+    wasm_val_vec_t results = { .size = 1, .data = result_arr };
+    wasm_func_call(_wasm_retro_load_game, &args, &results);
+    bool ok = result_arr[0].of.i32 != 0;
+    if (game_wasm) LibretroWasmFree(game_wasm);
+    if (data_wasm) LibretroWasmFree(data_wasm);
+    if (path_wasm) LibretroWasmFree(path_wasm);
+    return ok;
+}
+
+// --- retro_load_game_special ---
+static wasm_func_t *_wasm_retro_load_game_special = NULL;
+static bool _wasm_call_retro_load_game_special(
+        unsigned game_type, const struct retro_game_info *info, size_t num_info) {
+    byte_t *mem;
+    uint32_t arr_wasm = LibretroWasmMalloc(sizeof(struct retro_game_info) * num_info);
+    for (size_t i = 0; i < num_info; i++) {
+        uint32_t path_wasm = 0, data_wasm = 0;
+        if (info[i].path) {
+            size_t plen = strlen(info[i].path) + 1;
+            path_wasm = LibretroWasmMalloc(plen);
+            mem = wasm_memory_data(LibretroCore.wasm_memory);
+            memcpy(mem + path_wasm, info[i].path, plen);
+        }
+        if (info[i].data && info[i].size > 0) {
+            data_wasm = LibretroWasmMalloc(info[i].size);
+            mem = wasm_memory_data(LibretroCore.wasm_memory);
+            memcpy(mem + data_wasm, info[i].data, info[i].size);
+        }
+        struct retro_game_info wgi;
+        wgi.path = (const char *)(uintptr_t)path_wasm;
+        wgi.data = (const void *)(uintptr_t)data_wasm;
+        wgi.size = info[i].size;
+        wgi.meta = NULL;
+        mem = wasm_memory_data(LibretroCore.wasm_memory);
+        memcpy(mem + arr_wasm + i * sizeof(struct retro_game_info), &wgi, sizeof(wgi));
+    }
+    wasm_val_t args_arr[3] = {
+        { .kind = WASM_I32, .of.i32 = (int32_t)game_type },
+        { .kind = WASM_I32, .of.i32 = (int32_t)arr_wasm },
+        { .kind = WASM_I32, .of.i32 = (int32_t)num_info }
+    };
+    wasm_val_t result_arr[1];
+    wasm_val_vec_t args    = { .size = 3, .data = args_arr };
+    wasm_val_vec_t results = { .size = 1, .data = result_arr };
+    wasm_func_call(_wasm_retro_load_game_special, &args, &results);
+    LibretroWasmFree(arr_wasm);
+    return result_arr[0].of.i32 != 0;
+}
+
+// --- retro_unload_game ---
+static wasm_func_t *_wasm_retro_unload_game = NULL;
+static void _wasm_call_retro_unload_game(void) {
+    wasm_val_vec_t args = WASM_EMPTY_VEC, results = WASM_EMPTY_VEC;
+    wasm_func_call(_wasm_retro_unload_game, &args, &results);
+}
+
+// --- retro_get_region ---
+static wasm_func_t *_wasm_retro_get_region = NULL;
+static unsigned _wasm_call_retro_get_region(void) {
+    wasm_val_t result_arr[1];
+    wasm_val_vec_t args    = WASM_EMPTY_VEC;
+    wasm_val_vec_t results = { .size = 1, .data = result_arr };
+    wasm_func_call(_wasm_retro_get_region, &args, &results);
+    return (unsigned)result_arr[0].of.i32;
+}
+
+// --- retro_get_memory_data (returns a host pointer into WASM linear memory) ---
+static wasm_func_t *_wasm_retro_get_memory_data = NULL;
+static void* _wasm_call_retro_get_memory_data(unsigned id) {
+    wasm_val_t args_arr[1] = {{ .kind = WASM_I32, .of.i32 = (int32_t)id }};
+    wasm_val_t result_arr[1];
+    wasm_val_vec_t args    = { .size = 1, .data = args_arr };
+    wasm_val_vec_t results = { .size = 1, .data = result_arr };
+    wasm_func_call(_wasm_retro_get_memory_data, &args, &results);
+    uint32_t wasm_ptr = (uint32_t)result_arr[0].of.i32;
+    if (wasm_ptr == 0) return NULL;
+    return (void *)(wasm_memory_data(LibretroCore.wasm_memory) + wasm_ptr);
+}
+
+// --- retro_get_memory_size ---
+static wasm_func_t *_wasm_retro_get_memory_size = NULL;
+static size_t _wasm_call_retro_get_memory_size(unsigned id) {
+    wasm_val_t args_arr[1] = {{ .kind = WASM_I32, .of.i32 = (int32_t)id }};
+    wasm_val_t result_arr[1];
+    wasm_val_vec_t args    = { .size = 1, .data = args_arr };
+    wasm_val_vec_t results = { .size = 1, .data = result_arr };
+    wasm_func_call(_wasm_retro_get_memory_size, &args, &results);
+    return (size_t)(uint32_t)result_arr[0].of.i32;
+}
+
 static bool InitLibretro(const char* core) {
     // Ensure the core exists.
     if (!FileExists(core)) {
@@ -1626,19 +2054,177 @@ static bool InitLibretro(const char* core) {
         return false;
     }
 
-    if (LibretroCore.handle != NULL) {
+    if (LibretroCore.wasm_engine != NULL) {
         CloseLibretro();
     }
 
-    // Open the dynamic library.
-    LibretroCore.handle = dylib_load(core);
-    if (!LibretroCore.handle) {
-        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load provided library");
+    // 1. Load the WASM binary from disk.
+    int wasm_data_size;
+    unsigned char *wasm_data = LoadFileData(core, &wasm_data_size);
+    if (!wasm_data || wasm_data_size <= 0) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to read WASM file: %s", core);
+        return false;
+    }
+    wasm_byte_vec_t binary = { .size = (size_t)wasm_data_size, .data = (wasm_byte_t *)wasm_data };
+
+    // 2. Create engine and store.
+    LibretroCore.wasm_engine = wasm_engine_new();
+    LibretroCore.wasm_store  = wasm_store_new(LibretroCore.wasm_engine);
+
+    // 3. Validate and compile the module.
+    if (!wasm_module_validate(LibretroCore.wasm_store, &binary)) {
+        TraceLog(LOG_ERROR, "LIBRETRO: WASM module validation failed");
+        UnloadFileData(wasm_data);
+        CloseLibretro();
+        return false;
+    }
+    LibretroCore.wasm_module = wasm_module_new(LibretroCore.wasm_store, &binary);
+    UnloadFileData(wasm_data);
+    if (!LibretroCore.wasm_module) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to compile WASM module");
+        CloseLibretro();
         return false;
     }
 
-    // Find the libretro API version.
-    LoadLibretroMethod(retro_api_version);
+    // 4. Build host import functions (callbacks provided to the WASM core).
+    //    Import order must match the module's import section exactly.
+
+    // video_refresh: [i32, i32, i32, i32] -> []
+    wasm_valtype_t *vr_p[4] = { wasm_valtype_new(WASM_I32), wasm_valtype_new(WASM_I32),
+                                  wasm_valtype_new(WASM_I32), wasm_valtype_new(WASM_I32) };
+    wasm_valtype_vec_t vr_params, vr_rets;
+    wasm_valtype_vec_new(&vr_params, 4, vr_p);
+    wasm_valtype_vec_new_empty(&vr_rets);
+    wasm_functype_t *ft_video_refresh = wasm_functype_new(&vr_params, &vr_rets);
+    wasm_func_t *f_video_refresh = wasm_func_new(LibretroCore.wasm_store,
+        ft_video_refresh, wasm_import_video_refresh);
+
+    // audio_sample: [i32, i32] -> []
+    wasm_valtype_t *as_p[2] = { wasm_valtype_new(WASM_I32), wasm_valtype_new(WASM_I32) };
+    wasm_valtype_vec_t as_params, as_rets;
+    wasm_valtype_vec_new(&as_params, 2, as_p);
+    wasm_valtype_vec_new_empty(&as_rets);
+    wasm_functype_t *ft_audio_sample = wasm_functype_new(&as_params, &as_rets);
+    wasm_func_t *f_audio_sample = wasm_func_new(LibretroCore.wasm_store,
+        ft_audio_sample, wasm_import_audio_sample);
+
+    // audio_sample_batch: [i32, i32] -> [i32]
+    wasm_valtype_t *asb_p[2] = { wasm_valtype_new(WASM_I32), wasm_valtype_new(WASM_I32) };
+    wasm_valtype_t *asb_r[1] = { wasm_valtype_new(WASM_I32) };
+    wasm_valtype_vec_t asb_params, asb_rets;
+    wasm_valtype_vec_new(&asb_params, 2, asb_p);
+    wasm_valtype_vec_new(&asb_rets, 1, asb_r);
+    wasm_functype_t *ft_audio_sample_batch = wasm_functype_new(&asb_params, &asb_rets);
+    wasm_func_t *f_audio_sample_batch = wasm_func_new(LibretroCore.wasm_store,
+        ft_audio_sample_batch, wasm_import_audio_sample_batch);
+
+    // input_poll: [] -> []
+    wasm_valtype_vec_t ip_params, ip_rets;
+    wasm_valtype_vec_new_empty(&ip_params);
+    wasm_valtype_vec_new_empty(&ip_rets);
+    wasm_functype_t *ft_input_poll = wasm_functype_new(&ip_params, &ip_rets);
+    wasm_func_t *f_input_poll = wasm_func_new(LibretroCore.wasm_store,
+        ft_input_poll, wasm_import_input_poll);
+
+    // input_state: [i32, i32, i32, i32] -> [i32]
+    wasm_valtype_t *is_p[4] = { wasm_valtype_new(WASM_I32), wasm_valtype_new(WASM_I32),
+                                  wasm_valtype_new(WASM_I32), wasm_valtype_new(WASM_I32) };
+    wasm_valtype_t *is_r[1] = { wasm_valtype_new(WASM_I32) };
+    wasm_valtype_vec_t is_params, is_rets;
+    wasm_valtype_vec_new(&is_params, 4, is_p);
+    wasm_valtype_vec_new(&is_rets, 1, is_r);
+    wasm_functype_t *ft_input_state = wasm_functype_new(&is_params, &is_rets);
+    wasm_func_t *f_input_state = wasm_func_new(LibretroCore.wasm_store,
+        ft_input_state, wasm_import_input_state);
+
+    // environment: [i32, i32] -> [i32]
+    wasm_valtype_t *env_p[2] = { wasm_valtype_new(WASM_I32), wasm_valtype_new(WASM_I32) };
+    wasm_valtype_t *env_r[1] = { wasm_valtype_new(WASM_I32) };
+    wasm_valtype_vec_t env_params, env_rets;
+    wasm_valtype_vec_new(&env_params, 2, env_p);
+    wasm_valtype_vec_new(&env_rets, 1, env_r);
+    wasm_functype_t *ft_environment = wasm_functype_new(&env_params, &env_rets);
+    wasm_func_t *f_environment = wasm_func_new(LibretroCore.wasm_store,
+        ft_environment, wasm_import_environment);
+
+    wasm_extern_t *imports_arr[] = {
+        wasm_func_as_extern(f_video_refresh),
+        wasm_func_as_extern(f_audio_sample),
+        wasm_func_as_extern(f_audio_sample_batch),
+        wasm_func_as_extern(f_input_poll),
+        wasm_func_as_extern(f_input_state),
+        wasm_func_as_extern(f_environment),
+    };
+    wasm_extern_vec_t imports_vec = { .size = 6, .data = imports_arr };
+
+    // 5. Instantiate the module.
+    wasm_trap_t *trap = NULL;
+    LibretroCore.wasm_instance = wasm_instance_new(
+        LibretroCore.wasm_store, LibretroCore.wasm_module, &imports_vec, &trap);
+
+    // Import funcs/types may be freed after instantiation.
+    wasm_functype_delete(ft_video_refresh);
+    wasm_functype_delete(ft_audio_sample);
+    wasm_functype_delete(ft_audio_sample_batch);
+    wasm_functype_delete(ft_input_poll);
+    wasm_functype_delete(ft_input_state);
+    wasm_functype_delete(ft_environment);
+    wasm_func_delete(f_video_refresh);
+    wasm_func_delete(f_audio_sample);
+    wasm_func_delete(f_audio_sample_batch);
+    wasm_func_delete(f_input_poll);
+    wasm_func_delete(f_input_state);
+    wasm_func_delete(f_environment);
+
+    if (!LibretroCore.wasm_instance) {
+        if (trap) {
+            wasm_message_t msg;
+            wasm_trap_message(trap, &msg);
+            TraceLog(LOG_ERROR, "LIBRETRO: WASM instantiation failed: %.*s",
+                (int)msg.size, msg.data);
+            wasm_byte_vec_delete(&msg);
+            wasm_trap_delete(trap);
+        } else {
+            TraceLog(LOG_ERROR, "LIBRETRO: WASM instantiation failed");
+        }
+        CloseLibretro();
+        return false;
+    }
+
+    // 6. Retrieve all exports.
+    wasm_instance_exports(LibretroCore.wasm_instance, &LibretroCore.wasm_exports);
+
+    // 7. Find the linear memory export.
+    wasm_exporttype_vec_t export_types;
+    wasm_module_exports(LibretroCore.wasm_module, &export_types);
+    for (size_t i = 0; i < export_types.size; i++) {
+        const wasm_externtype_t *et = wasm_exporttype_type(export_types.data[i]);
+        if (wasm_externtype_kind(et) == WASM_EXTERN_MEMORY &&
+                i < LibretroCore.wasm_exports.size) {
+            LibretroCore.wasm_memory =
+                wasm_extern_as_memory(LibretroCore.wasm_exports.data[i]);
+            break;
+        }
+    }
+    wasm_exporttype_vec_delete(&export_types);
+
+    if (!LibretroCore.wasm_memory) {
+        TraceLog(LOG_ERROR, "LIBRETRO: WASM module does not export linear memory");
+        CloseLibretro();
+        return false;
+    }
+
+    // 8. Find the core's malloc/free exports for host-side WASM memory management.
+    _wasm_malloc = LibretroFindWasmExport("malloc");
+    _wasm_free   = LibretroFindWasmExport("free");
+    if (!_wasm_malloc || !_wasm_free) {
+        TraceLog(LOG_ERROR, "LIBRETRO: WASM module must export malloc and free");
+        CloseLibretro();
+        return false;
+    }
+
+    // 9. Verify API version.
+    LoadWasmMethod(retro_api_version);
     LibretroCore.apiVersion = LibretroCore.retro_api_version();
     TraceLog(LOG_INFO, "LIBRETRO: API version: %i", LibretroCore.apiVersion);
     if (LibretroCore.apiVersion != 1) {
@@ -1647,13 +2233,16 @@ static bool InitLibretro(const char* core) {
         return false;
     }
 
-    // Retrieve the libretro core system information.
-    LoadLibretroMethod(retro_get_system_info);
+    // 10. Retrieve system information.
+    LoadWasmMethod(retro_get_system_info);
     struct retro_system_info systemInfo;
     LibretroCore.retro_get_system_info(&systemInfo);
-    TextCopy(LibretroCore.libraryName, systemInfo.library_name);
-    TextCopy(LibretroCore.libraryVersion, systemInfo.library_version);
-    TextCopy(LibretroCore.validExtensions, systemInfo.valid_extensions);
+    TextCopy(LibretroCore.libraryName,
+        systemInfo.library_name     ? systemInfo.library_name     : "");
+    TextCopy(LibretroCore.libraryVersion,
+        systemInfo.library_version  ? systemInfo.library_version  : "");
+    TextCopy(LibretroCore.validExtensions,
+        systemInfo.valid_extensions ? systemInfo.valid_extensions : "");
     LibretroCore.needFullpath = systemInfo.need_fullpath;
     LibretroCore.blockExtract = systemInfo.block_extract;
     TraceLog(LOG_INFO, "LIBRETRO: Core loaded successfully");
@@ -1663,52 +2252,35 @@ static bool InitLibretro(const char* core) {
         TraceLog(LOG_INFO, "    > Extensions:   %s", LibretroCore.validExtensions);
     }
 
-    // TODO: Add ability to peek inside the core to grab data.
-    /*
-    if (peek) {
-        CloseLibretro();
-        return true;
-    }
-    */
+    // 11. Load all remaining libretro exports.
+    LoadWasmMethod(retro_init);
+    LoadWasmMethod(retro_deinit);
+    LoadWasmMethod(retro_get_system_av_info);
+    LoadWasmMethod(retro_reset);
+    LoadWasmMethod(retro_run);
+    LoadWasmMethod(retro_serialize_size);
+    LoadWasmMethod(retro_serialize);
+    LoadWasmMethod(retro_unserialize);
+    LoadWasmMethod(retro_cheat_reset);
+    LoadWasmMethod(retro_cheat_set);
+    LoadWasmMethod(retro_load_game);
+    LoadWasmMethod(retro_load_game_special);
+    LoadWasmMethod(retro_unload_game);
+    LoadWasmMethod(retro_get_region);
+    LoadWasmMethod(retro_get_memory_data);
+    LoadWasmMethod(retro_get_memory_size);
+    // retro_set_* are no-ops (callbacks are wired as WASM imports above).
+    LoadWasmMethodOptional(retro_set_environment);
+    LoadWasmMethodOptional(retro_set_video_refresh);
+    LoadWasmMethodOptional(retro_set_audio_sample);
+    LoadWasmMethodOptional(retro_set_audio_sample_batch);
+    LoadWasmMethodOptional(retro_set_input_poll);
+    LoadWasmMethodOptional(retro_set_input_state);
+    LoadWasmMethodOptional(retro_set_controller_port_device);
 
-    // Load all other libretro methods.
-    LoadLibretroMethod(retro_init);
-    LoadLibretroMethod(retro_deinit);
-    LoadLibretroMethod(retro_set_environment);
-    LoadLibretroMethod(retro_set_video_refresh);
-    LoadLibretroMethod(retro_set_audio_sample);
-    LoadLibretroMethod(retro_set_audio_sample_batch);
-    LoadLibretroMethod(retro_set_input_poll);
-    LoadLibretroMethod(retro_set_input_state);
-    LoadLibretroMethod(retro_get_system_av_info);
-    LoadLibretroMethod(retro_set_controller_port_device);
-    LoadLibretroMethod(retro_reset);
-    LoadLibretroMethod(retro_run);
-    LoadLibretroMethod(retro_serialize_size);
-    LoadLibretroMethod(retro_serialize);
-    LoadLibretroMethod(retro_unserialize);
-    LoadLibretroMethod(retro_cheat_reset);
-    LoadLibretroMethod(retro_cheat_set);
-    LoadLibretroMethod(retro_load_game);
-    LoadLibretroMethod(retro_load_game_special);
-    LoadLibretroMethod(retro_unload_game);
-    LoadLibretroMethod(retro_get_region);
-    LoadLibretroMethod(retro_get_memory_data);
-    LoadLibretroMethod(retro_get_memory_size);
-
-    // Initialize the core.
+    // 12. Initialise the core.
     LibretroCore.shutdown = false;
     LibretroCore.volume = 1.0f;
-
-    // Set up the callbacks.
-    LibretroCore.retro_set_video_refresh(LibretroVideoRefresh);
-    LibretroCore.retro_set_input_poll(LibretroInputPoll);
-    LibretroCore.retro_set_input_state(LibretroInputState);
-    LibretroCore.retro_set_audio_sample(LibretroAudioSample);
-    LibretroCore.retro_set_audio_sample_batch(LibretroAudioSampleBatch);
-    LibretroCore.retro_set_environment(LibretroSetEnvironment);
-
-    // Initialize the core.
     LibretroCore.retro_init();
     return true;
 }
@@ -1859,14 +2431,19 @@ static void CloseLibretro() {
     }
     UnloadTexture(LibretroCore.texture);
 
-    // Close the dynamically loaded handle.
-    if (LibretroCore.handle != NULL) {
-        dylib_close(LibretroCore.handle);
-        LibretroCore.handle = NULL;
-    }
-
     // Free the frame conversion buffer.
     MemFree(LibretroCore.frameBuffer);
+
+    // Release WASM runtime objects.
+    wasm_extern_vec_delete(&LibretroCore.wasm_exports);
+    if (LibretroCore.wasm_instance) wasm_instance_delete(LibretroCore.wasm_instance);
+    if (LibretroCore.wasm_module)   wasm_module_delete(LibretroCore.wasm_module);
+    if (LibretroCore.wasm_store)    wasm_store_delete(LibretroCore.wasm_store);
+    if (LibretroCore.wasm_engine)   wasm_engine_delete(LibretroCore.wasm_engine);
+
+    // Clear static WASM function pointer cache.
+    _wasm_malloc = NULL;
+    _wasm_free   = NULL;
 
     LibretroCore = (rLibretro){0};
 }
