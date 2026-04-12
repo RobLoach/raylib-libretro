@@ -26,6 +26,8 @@
 *
 **********************************************************************************************/
 
+#include "raylib.h"
+
 #define RAYLIB_APP_IMPLEMENTATION
 #include "raylib-app.h"
 
