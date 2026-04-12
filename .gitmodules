@@ -6,3 +6,19 @@
     path = vendor/raylib
     url = https://github.com/raysan5/raylib.git
     ignore = dirty
+[submodule "vendor/nuklear_console"]
+	path = vendor/nuklear_console
+	url = https://github.com/RobLoach/nuklear_console.git
+    ignore = dirty
+[submodule "vendor/nuklear_gamepad"]
+	path = vendor/nuklear_gamepad
+	url = https://github.com/RobLoach/nuklear_gamepad.git
+    ignore = dirty
+[submodule "vendor/raylib-nuklear"]
+	path = vendor/raylib-nuklear
+	url = https://github.com/RobLoach/raylib-nuklear.git
+    ignore = dirty
+[submodule "vendor/c-vector"]
+	path = vendor/c-vector
+	url = https://github.com/eteran/c-vector.git
+    ignore = dirty

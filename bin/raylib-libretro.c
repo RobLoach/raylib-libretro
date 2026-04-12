@@ -27,11 +27,15 @@
 **********************************************************************************************/
 
 #include "raylib.h"
+
 #define RAYLIB_LIBRETRO_IMPLEMENTATION
 #include "raylib-libretro.h"
 
 #define RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
 #include "../include/raylib-libretro-shaders.h"
+
+#define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
+#include "../include/raylib-libretro-menu.h"
 
 int main(int argc, char* argv[]) {
     // Create the window and audio.
@@ -42,6 +46,13 @@ int main(int argc, char* argv[]) {
 
     // Load the shaders and the menu.
     LoadLibretroShaders();
+    LibretroMenu* menu = InitLibretroMenu();
+    if (!menu) {
+        TraceLog(LOG_ERROR, "Failed to initialize menu");
+        UnloadLibretroShaders();
+        CloseAudioDevice();
+        CloseWindow();
+    }
 
     // Parse the command line arguments.
     if (argc > 1) {
@@ -50,7 +61,7 @@ int main(int argc, char* argv[]) {
             // Load the given game.
             const char* gameFile = (argc > 2) ? argv[2] : NULL;
             if (LoadLibretroGame(gameFile)) {
-                // TODO: Quit?
+                menu->active = false;
             }
         }
     }
@@ -60,7 +71,11 @@ int main(int argc, char* argv[]) {
         UpdateLibretroShaders(GetFrameTime());
 
         // Run a frame of the core.
-        UpdateLibretro();
+        if (!menu->active) {
+            UpdateLibretro();
+        }
+
+        UpdateLibretroMenu();
 
         // Check if the core asks to be shutdown.
         if (LibretroShouldClose()) {
@@ -73,9 +88,18 @@ int main(int argc, char* argv[]) {
         {
             ClearBackground(BLACK);
 
-            BeginLibretroShader();
-            DrawLibretro();
-            EndLibretroShader();
+            if (menu->active) {
+                BeginLibretroShader();
+                DrawLibretroTint(ColorAlpha(WHITE, 0.1f));
+                EndShaderMode();
+            }
+            else {
+                BeginLibretroShader();
+                DrawLibretro();
+                EndLibretroShader();
+            }
+
+            DrawLibretroMenu();
         }
         EndDrawing();
 
@@ -119,6 +143,8 @@ int main(int argc, char* argv[]) {
     // Unload the game and close the core.
     UnloadLibretroGame();
     CloseLibretro();
+
+    CloseLibretroMenu();
 
     UnloadLibretroShaders();
     CloseAudioDevice();
