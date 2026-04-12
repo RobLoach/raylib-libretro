@@ -26,60 +26,83 @@
 *
 **********************************************************************************************/
 
-#include "raylib.h"
+#define RAYLIB_APP_IMPLEMENTATION
+#include "raylib-app.h"
 
 #define RAYLIB_LIBRETRO_IMPLEMENTATION
 #include "raylib-libretro.h"
 
-int main(int argc, char* argv[]) {
-    // Ensure proper amount of arguments.
+typedef struct {
+    const char* corePath;
+    const char* gamePath;
+} AppData;
+
+bool Init(void** userData, int argc, char** argv) {
     if (argc <= 1) {
         TraceLog(LOG_ERROR, "Usage: %s <core> [game]", argv[0]);
-        return 1;
+        return false;
     }
 
-    // Create the window and audio.
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(800, 600, "raylib-libretro - basic window");
+    AppData* data = (AppData*)MemAlloc(sizeof(AppData));
+    data->corePath = argv[1];
+    data->gamePath = (argc > 2) ? argv[2] : NULL;
+    *userData = data;
+
     InitAudioDevice();
 
     // Initialize the given core.
-    if (!InitLibretro(argv[1])) {
+    if (!InitLibretro(data->corePath)) {
         TraceLog(LOG_ERROR, "Failed to initialize libretro core");
         CloseAudioDevice();
-        CloseWindow();
-        return 1;
+        return false;
     }
 
     // Load the given game.
-    const char* gameFile = (argc > 2) ? argv[2] : NULL;
-    if (!LoadLibretroGame(gameFile)) {
+    if (!LoadLibretroGame(data->gamePath)) {
         TraceLog(LOG_ERROR, "Failed to initialize libretro content");
         CloseLibretro();
         CloseAudioDevice();
-        CloseWindow();
-        return 1;
+        return false;
     }
 
-    while (!WindowShouldClose() && !LibretroShouldClose()) {
-        // Run a frame of the core.
-        UpdateLibretro();
+    // Resize the window and set the title to match the loaded core.
+    SetWindowSize((int)GetLibretroWidth(), (int)GetLibretroHeight());
+    SetWindowTitle(GetLibretroName());
 
-        // Render the libretro core.
-        BeginDrawing();
-        {
-            ClearBackground(BLACK);
-            DrawLibretro();
-        }
-        EndDrawing();
-    }
+    return true;
+}
 
+bool UpdateDrawFrame(void* userData) {
+    // Run a frame of the core.
+    UpdateLibretro();
+
+    // Render the libretro core.
+    BeginDrawing();
+        ClearBackground(BLACK);
+        DrawLibretro();
+    EndDrawing();
+
+    return !LibretroShouldClose();
+}
+
+void Close(void* userData) {
     // Unload the game first, and then close the core.
     UnloadLibretroGame();
     CloseLibretro();
 
     CloseAudioDevice();
-    CloseWindow();
+    MemFree(userData);
+}
 
-    return 0;
+App Main() {
+    return (App){
+        .title = "raylib-libretro",
+        .width = 800,
+        .height = 600,
+        .init = Init,
+        .update = UpdateDrawFrame,
+        .close = Close,
+        .fps = 60,
+        .configFlags = FLAG_WINDOW_RESIZABLE,
+    };
 }
