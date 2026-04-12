@@ -29,6 +29,13 @@ set(WASMTIME_LIB "${wasmtime_SOURCE_DIR}/lib/libwasmtime.a")
 add_subdirectory(include)
 add_subdirectory(lib)
 
+# Libretro WASM cores
+option(DOWNLOAD_LIBRETRO_CORES
+    "Download pre-built WASM libretro cores from retroarch-emscripten-build" ON)
+if(DOWNLOAD_LIBRETRO_CORES)
+    include(cmake/LibretroCores.cmake)
+endif()
+
 # Example
 option(BUILD_RAYLIB_LIBRETRO_EXAMPLE "Build Examples" ON)
 if (BUILD_RAYLIB_LIBRETRO_EXAMPLE)
