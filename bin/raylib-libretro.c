@@ -164,7 +164,7 @@ void Close(void* userData) {
 
     UnloadLibretroShaders();
     CloseAudioDevice();
-    MemFree(userData);
+    MemFree(data);
 }
 
 App Main() {
