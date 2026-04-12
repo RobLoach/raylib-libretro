@@ -28,6 +28,9 @@
 
 #include "raylib.h"
 
+#define RAYLIB_APP_IMPLEMENTATION
+#include "raylib-app.h"
+
 #define RAYLIB_LIBRETRO_IMPLEMENTATION
 #include "raylib-libretro.h"
 
@@ -37,21 +40,26 @@
 #define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
 #include "../include/raylib-libretro-menu.h"
 
-int main(int argc, char* argv[]) {
-    // Create the window and audio.
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
-    InitWindow(800, 600, "raylib-libretro");
+typedef struct {
+    LibretroMenu* menu;
+} AppData;
+
+bool Init(void** userData, int argc, char** argv) {
     SetWindowMinSize(400, 300);
+
+    AppData* data = (AppData*)MemAlloc(sizeof(AppData));
+    *userData = data;
+
     InitAudioDevice();
 
     // Load the shaders and the menu.
     LoadLibretroShaders();
-    LibretroMenu* menu = InitLibretroMenu();
-    if (!menu) {
+    data->menu = InitLibretroMenu();
+    if (!data->menu) {
         TraceLog(LOG_ERROR, "Failed to initialize menu");
         UnloadLibretroShaders();
         CloseAudioDevice();
-        CloseWindow();
+        return false;
     }
 
     // Parse the command line arguments.
@@ -61,84 +69,94 @@ int main(int argc, char* argv[]) {
             // Load the given game.
             const char* gameFile = (argc > 2) ? argv[2] : NULL;
             if (LoadLibretroGame(gameFile)) {
-                menu->active = false;
+                data->menu->active = false;
             }
         }
     }
 
-    while (!WindowShouldClose()) {
-        // Update the shaders.
-        UpdateLibretroShaders(GetFrameTime());
+    return true;
+}
 
-        // Run a frame of the core.
-        if (!menu->active) {
-            UpdateLibretro();
+bool UpdateDrawFrame(void* userData) {
+    AppData* data = (AppData*)userData;
+
+    // Update the shaders.
+    UpdateLibretroShaders(GetFrameTime());
+
+    // Run a frame of the core.
+    if (!data->menu->active) {
+        UpdateLibretro();
+    }
+
+    UpdateLibretroMenu();
+
+    // Check if the core asks to be shutdown.
+    if (LibretroShouldClose()) {
+        UnloadLibretroGame();
+        CloseLibretro();
+    }
+
+    // Render the libretro core.
+    BeginDrawing();
+    {
+        ClearBackground(BLACK);
+
+        if (data->menu->active) {
+            BeginLibretroShader();
+            DrawLibretroTint(ColorAlpha(WHITE, 0.1f));
+            EndShaderMode();
+        }
+        else {
+            BeginLibretroShader();
+            DrawLibretro();
+            EndLibretroShader();
         }
 
-        UpdateLibretroMenu();
+        DrawLibretroMenu();
+    }
+    EndDrawing();
 
-        // Check if the core asks to be shutdown.
-        if (LibretroShouldClose()) {
-            UnloadLibretroGame();
-            CloseLibretro();
-        }
+    // Fullscreen
+    if (IsKeyReleased(KEY_F11)) {
+        ToggleFullscreen();
+    }
 
-        // Render the libretro core.
-        BeginDrawing();
-        {
-            ClearBackground(BLACK);
-
-            if (menu->active) {
-                BeginLibretroShader();
-                DrawLibretroTint(ColorAlpha(WHITE, 0.1f));
-                EndShaderMode();
-            }
-            else {
-                BeginLibretroShader();
-                DrawLibretro();
-                EndLibretroShader();
-            }
-
-            DrawLibretroMenu();
-        }
-        EndDrawing();
-
-        // Fullscreen
-        if (IsKeyReleased(KEY_F11)) {
-            ToggleFullscreen();
-        }
-
-        // Screenshot
-        else if (IsKeyReleased(KEY_F8)) {
-            for (int i = 1; i < 1000; i++) {
-                const char* screenshotName = TextFormat("screenshot-%i.png", i);
-                if (!FileExists(screenshotName)) {
-                    TakeScreenshot(screenshotName);
-                    break;
-                }
-            }
-        }
-
-        // Save State
-        else if (IsKeyReleased(KEY_F2)) {
-            unsigned int size;
-            void* data = GetLibretroSerializedData(&size);
-            if (data != NULL) {
-                SaveFileData(TextFormat("save_%s.sav", GetLibretroName()), data, (int)size);
-                MemFree(data);
-            }
-        }
-
-        // Load State
-        else if (IsKeyReleased(KEY_F4)) {
-            int dataSize;
-            void* data = LoadFileData(TextFormat("save_%s.sav", GetLibretroName()), &dataSize);
-            if (data != NULL) {
-                SetLibretroSerializedData(data, (unsigned int)dataSize);
-                MemFree(data);
+    // Screenshot
+    else if (IsKeyReleased(KEY_F8)) {
+        for (int i = 1; i < 1000; i++) {
+            const char* screenshotName = TextFormat("screenshot-%i.png", i);
+            if (!FileExists(screenshotName)) {
+                TakeScreenshot(screenshotName);
+                break;
             }
         }
     }
+
+    // Save State
+    else if (IsKeyReleased(KEY_F2)) {
+        unsigned int size;
+        void* saveData = GetLibretroSerializedData(&size);
+        if (saveData != NULL) {
+            SaveFileData(TextFormat("save_%s.sav", GetLibretroName()), saveData, (int)size);
+            MemFree(saveData);
+        }
+    }
+
+    // Load State
+    else if (IsKeyReleased(KEY_F4)) {
+        int dataSize;
+        void* saveData = LoadFileData(TextFormat("save_%s.sav", GetLibretroName()), &dataSize);
+        if (saveData != NULL) {
+            SetLibretroSerializedData(saveData, (unsigned int)dataSize);
+            MemFree(saveData);
+        }
+    }
+
+    return true;
+}
+
+void Close(void* userData) {
+    AppData* data = (AppData*)userData;
 
     // Unload the game and close the core.
     UnloadLibretroGame();
@@ -148,7 +166,17 @@ int main(int argc, char* argv[]) {
 
     UnloadLibretroShaders();
     CloseAudioDevice();
-    CloseWindow();
+    MemFree(data);
+}
 
-    return 0;
+App Main() {
+    return (App){
+        .title = "raylib-libretro",
+        .width = 800,
+        .height = 600,
+        .init = Init,
+        .update = UpdateDrawFrame,
+        .close = Close,
+        .configFlags = FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT,
+    };
 }
