@@ -7,6 +7,7 @@ target_link_libraries(raylib-libretro PUBLIC
 )
 target_include_directories(raylib-libretro PUBLIC
     ../vendor/raygui/src
+    ../vendor/raylib-app
 )
 install(TARGETS raylib-libretro DESTINATION bin)
 install(FILES ../README.md DESTINATION share/raylib-libretro)
