@@ -12,14 +12,10 @@ add_library(raylib-libretro-static STATIC
 target_link_libraries(raylib-libretro-static PUBLIC
     raylib
     raylib-libretro-h
-    ${WASMTIME_LIB}
-    pthread
-    dl
-    m
+    wasmtime_c_api
 )
 target_include_directories(raylib-libretro-static PUBLIC
     ../vendor/libretro-common/include
-    ${WASMTIME_INCLUDE_DIR}
 )
 install(TARGETS raylib-libretro-static DESTINATION lib)
 install(FILES ../include/raylib-libretro.h DESTINATION include)
