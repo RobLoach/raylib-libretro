@@ -50,6 +50,7 @@ typedef struct LibretroMenu {
     nk_console* console;
     bool active;
     struct nk_rect lastBounds;
+    nk_bool fullscreen;
 } LibretroMenu;
 
 #if defined(__cplusplus)
@@ -160,6 +161,12 @@ void SetLibretroMenuStyle(LibretroMenuStyle style) {
     }
 }
 
+static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    (void)user_data;
+    ToggleFullscreen();
+}
+
 LibretroMenu* InitLibretroMenu(void) {
     menu = (LibretroMenu){0};
     menu.font = LoadFontFromNuklear(52);
@@ -183,13 +190,14 @@ LibretroMenu* InitLibretroMenu(void) {
 
     // Build the Menu
     nk_console_button(menu.console, "Load Game");
-    nk_console* options = nk_console_button(menu.console, "Options");
+    nk_console_button(menu.console, "Options");
+    menu.fullscreen = (nk_bool)IsWindowFullscreen();
+    nk_console* settings = nk_console_button(menu.console, "Settings");
     {
-        nk_console_button(options, "Some cool option!");
-        nk_console_button(options, "Option #2");
-        nk_console_button_onclick(options, "Back", &nk_console_button_back);
+        nk_console* fullscreenCheckbox = nk_console_checkbox(settings, "Fullscreen", &menu.fullscreen);
+        nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
+        nk_console_button_onclick(settings, "Back", &nk_console_button_back);
     }
-    nk_console_button(menu.console, "Settings");
     nk_console_button(menu.console, "Save State");
     nk_console_button(menu.console, "Load State");
     nk_console_button(menu.console, "Quit");
@@ -233,6 +241,9 @@ void UpdateLibretroMenu(void) {
     if (!menu.active) {
         return;
     }
+
+    // Keep fullscreen checkbox in sync with the actual window state (e.g. F11 presses).
+    menu.fullscreen = (nk_bool)IsWindowFullscreen();
 
     // Render the console centered in the screen, using last frame's bounds for height
     struct nk_rect windowPos;
