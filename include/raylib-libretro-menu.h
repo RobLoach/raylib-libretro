@@ -190,14 +190,14 @@ LibretroMenu* InitLibretroMenu(void) {
 
     // Build the Menu
     nk_console_button(menu.console, "Load Game");
+    nk_console_button(menu.console, "Options");
     menu.fullscreen = (nk_bool)IsWindowFullscreen();
-    nk_console* options = nk_console_button(menu.console, "Options");
+    nk_console* settings = nk_console_button(menu.console, "Settings");
     {
-        nk_console* fullscreenCheckbox = nk_console_checkbox(options, "Fullscreen", &menu.fullscreen);
+        nk_console* fullscreenCheckbox = nk_console_checkbox(settings, "Fullscreen", &menu.fullscreen);
         nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
-        nk_console_button_onclick(options, "Back", &nk_console_button_back);
+        nk_console_button_onclick(settings, "Back", &nk_console_button_back);
     }
-    nk_console_button(menu.console, "Settings");
     nk_console_button(menu.console, "Save State");
     nk_console_button(menu.console, "Load State");
     nk_console_button(menu.console, "Quit");
