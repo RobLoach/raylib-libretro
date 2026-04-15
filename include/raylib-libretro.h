@@ -74,6 +74,8 @@ static void SetLibretroVolume(float volume);             // Set the audio volume
 static float GetLibretroVolume();                        // Get the current audio volume.
 static bool SetLibretroCoreOption(const char* key, const char* value);  // Set a core option by key.
 static const char* GetLibretroCoreOption(const char* key);              // Get a core option value by key. Returns NULL if not found.
+static bool SaveLibretroCoreOptions(void);  // Save current core's options to raylib-libretro.cfg (prefixed by core name).
+static bool LoadLibretroCoreOptions(void);  // Load current core's options from raylib-libretro.cfg.
 static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
 static bool SetLibretroSerializedData(void* data, unsigned int size);
 
@@ -121,6 +123,13 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #define LIBRETRO_MAX_CORE_VARIABLES 128
 #define LIBRETRO_CORE_VARIABLE_KEY_LEN 64
 #define LIBRETRO_CORE_VARIABLE_VALUE_LEN 256
+#define LIBRETRO_CORE_VARIABLE_LABEL_LEN 128   // human-readable option name
+#define LIBRETRO_CORE_VARIABLE_VALUES_LEN 512   // pipe-separated list of valid values
+#define LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN 256  // option info/description text
+
+// Shared config file used by SaveLibretroCoreOptions / LoadLibretroCoreOptions.
+// Keys are prefixed with the core name: "CoreName.key=value"
+#define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
 
 // Dynamic loading methods.
 #define LoadLibretroMethodHandle(V, S) do {\
@@ -211,7 +220,12 @@ typedef struct rLibretro {
     // Core variables/options
     char variableKeys[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_KEY_LEN];
     char variableValues[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUE_LEN];
+    char variableLabels[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_LABEL_LEN];
+    char variableValuesList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
+    char variableDisplayList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
+    char variableTooltips[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN];
     unsigned variableCount;
+    unsigned variableOptionsVersion; // 0=legacy SET_VARIABLES, 1=SET_CORE_OPTIONS, 2=SET_CORE_OPTIONS_V2
     bool variablesDirty; // Whether or not the variables have been changed since last RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE call.
 
     // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
@@ -232,7 +246,8 @@ extern "C" {
  */
 static rLibretro LibretroCore = {0};
 
-static void LibretroInitCoreVariable(const char *key, const char *defaultValue) {
+static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
+    const char *label, const char *valuesList, const char *displayList, const char *tooltip) {
     for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
         if (TextIsEqual(LibretroCore.variableKeys[i], key)) {
             return; // Already registered; don't overwrite user-set value.
@@ -242,8 +257,13 @@ static void LibretroInitCoreVariable(const char *key, const char *defaultValue) 
         TraceLog(LOG_WARNING, "LIBRETRO: Core variable limit reached, ignoring: %s", key);
         return;
     }
-    snprintf(LibretroCore.variableKeys[LibretroCore.variableCount], LIBRETRO_CORE_VARIABLE_KEY_LEN, "%s", key);
-    snprintf(LibretroCore.variableValues[LibretroCore.variableCount], LIBRETRO_CORE_VARIABLE_VALUE_LEN, "%s", defaultValue ? defaultValue : "");
+    unsigned n = LibretroCore.variableCount;
+    TextCopy(LibretroCore.variableKeys[n],        key);
+    TextCopy(LibretroCore.variableValues[n],      defaultValue  ? defaultValue  : "");
+    TextCopy(LibretroCore.variableLabels[n],      label         ? label         : "");
+    TextCopy(LibretroCore.variableValuesList[n],  valuesList    ? valuesList    : "");
+    TextCopy(LibretroCore.variableDisplayList[n], displayList   ? displayList   : "");
+    TextCopy(LibretroCore.variableTooltips[n],    tooltip       ? tooltip       : "");
     LibretroCore.variableCount++;
 }
 
@@ -269,6 +289,108 @@ static bool SetLibretroCoreOption(const char *key, const char *value) {
 
 static const char *GetLibretroCoreOption(const char *key) {
     return LibretroGetCoreVariable(key);
+}
+
+static bool SaveLibretroCoreOptions(void) {
+    if (LibretroCore.variableCount == 0) return false;
+    const char *coreName = LibretroCore.libraryName;
+    unsigned prefixLen = TextLength(coreName) + 1; // +1 for '.'
+
+    int newEntrySize = (int)LibretroCore.variableCount *
+        ((int)prefixLen + LIBRETRO_CORE_VARIABLE_KEY_LEN + LIBRETRO_CORE_VARIABLE_VALUE_LEN + 4);
+    int bufSize = newEntrySize + 65536; // 64 KB headroom for existing content
+    char *buf = (char*)MemAlloc(bufSize);
+    if (!buf) return false;
+    int pos = 0;
+
+    // Copy lines from existing file that belong to OTHER cores
+    if (FileExists(RAYLIB_LIBRETRO_CFG_FILE)) {
+        char *existing = LoadFileText(RAYLIB_LIBRETRO_CFG_FILE);
+        if (existing) {
+            char *line = existing;
+            while (*line) {
+                char *eol = line;
+                while (*eol && *eol != '\n') eol++;
+
+                // Check if this line starts with "{coreName}."
+                bool isOurs = false;
+                if ((int)(eol - line) > (int)prefixLen) {
+                    char prefix[200] = {0};
+                    unsigned pl = prefixLen - 1 < 199 ? prefixLen - 1 : 198;
+                    memcpy(prefix, line, pl);
+                    isOurs = TextIsEqual(prefix, coreName) && (line[pl] == '.');
+                }
+
+                if (!isOurs && pos + (int)(eol - line) + 2 < bufSize) {
+                    memcpy(buf + pos, line, (size_t)(eol - line));
+                    pos += (int)(eol - line);
+                    buf[pos++] = '\n';
+                }
+                line = *eol ? eol + 1 : eol;
+            }
+            UnloadFileText(existing);
+        }
+    }
+
+    // Append this core's current options
+    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
+        const char *entry = TextFormat("%s.%s=%s\n", coreName,
+            LibretroCore.variableKeys[i], LibretroCore.variableValues[i]);
+        int len = (int)TextLength(entry);
+        if (pos + len < bufSize) {
+            TextCopy(buf + pos, entry);
+            pos += len;
+        }
+    }
+    buf[pos] = '\0';
+
+    bool ok = SaveFileText(RAYLIB_LIBRETRO_CFG_FILE, buf);
+    MemFree(buf);
+    TraceLog(ok ? LOG_INFO : LOG_WARNING, "LIBRETRO: %s core options to %s",
+        ok ? "Saved" : "Failed to save", RAYLIB_LIBRETRO_CFG_FILE);
+    return ok;
+}
+
+static bool LoadLibretroCoreOptions(void) {
+    if (!FileExists(RAYLIB_LIBRETRO_CFG_FILE)) return false;
+    char *text = LoadFileText(RAYLIB_LIBRETRO_CFG_FILE);
+    if (!text) return false;
+    const char *coreName = LibretroCore.libraryName;
+    unsigned prefixLen = TextLength(coreName) + 1; // +1 for '.'
+
+    int loaded = 0;
+    char *line = text;
+    while (*line) {
+        char *eol = line;
+        while (*eol && *eol != '\n') eol++;
+
+        if ((int)(eol - line) > (int)prefixLen) {
+            // Check prefix: "{coreName}."
+            char prefix[200] = {0};
+            unsigned pl = prefixLen - 1 < 199 ? prefixLen - 1 : 198;
+            memcpy(prefix, line, pl);
+            if (TextIsEqual(prefix, coreName) && line[pl] == '.') {
+                const char *rest = line + prefixLen;
+                char *eq = (char*)rest;
+                while (eq < eol && *eq != '=') eq++;
+                if (eq < eol) {
+                    char key[LIBRETRO_CORE_VARIABLE_KEY_LEN]   = {0};
+                    char val[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+                    unsigned kl = (unsigned)(eq - rest);
+                    unsigned vl = (unsigned)(eol - eq - 1);
+                    if (kl >= LIBRETRO_CORE_VARIABLE_KEY_LEN)   kl = LIBRETRO_CORE_VARIABLE_KEY_LEN - 1;
+                    if (vl >= LIBRETRO_CORE_VARIABLE_VALUE_LEN) vl = LIBRETRO_CORE_VARIABLE_VALUE_LEN - 1;
+                    memcpy(key, rest, kl);
+                    memcpy(val, eq + 1, vl);
+                    if (SetLibretroCoreOption(key, val)) loaded++;
+                }
+            }
+        }
+        line = *eol ? eol + 1 : eol;
+    }
+    UnloadFileText(text);
+    TraceLog(LOG_INFO, "LIBRETRO: Loaded %d core option(s) from %s", loaded, RAYLIB_LIBRETRO_CFG_FILE);
+    return loaded > 0;
 }
 
 static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
@@ -537,22 +659,35 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_VARIABLES no data set");
                 return false;
             }
+            LibretroCore.variableOptionsVersion = 0;
             const struct retro_variable *var = (const struct retro_variable *)data;
             for (; var->key != NULL; var++) {
                 // Description format: "Desc text; option1|option2|...". Default is the first option.
                 char defaultVal[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+                char label[LIBRETRO_CORE_VARIABLE_LABEL_LEN] = {0};
+                char valuesList[LIBRETRO_CORE_VARIABLE_VALUES_LEN] = {0};
                 if (var->value != NULL) {
                     const char *semi = strchr(var->value, ';');
                     if (semi != NULL) {
+                        // Label: text before ';', right-trimmed
+                        size_t labelLen = (size_t)(semi - var->value);
+                        while (labelLen > 0 && var->value[labelLen - 1] == ' ') labelLen--;
+                        if (labelLen >= LIBRETRO_CORE_VARIABLE_LABEL_LEN) labelLen = LIBRETRO_CORE_VARIABLE_LABEL_LEN - 1;
+                        memcpy(label, var->value, labelLen);
+
+                        // Values list: text after ';', left-trimmed (already pipe-separated)
                         const char *opts = semi + 1;
                         while (*opts == ' ') opts++;
+                        TextCopy(valuesList, opts);
+
+                        // Default: first pipe token
                         const char *pipe = strchr(opts, '|');
                         size_t len = pipe ? (size_t)(pipe - opts) : strlen(opts);
                         if (len >= LIBRETRO_CORE_VARIABLE_VALUE_LEN) len = LIBRETRO_CORE_VARIABLE_VALUE_LEN - 1;
                         memcpy(defaultVal, opts, len);
                     }
                 }
-                LibretroInitCoreVariable(var->key, defaultVal);
+                LibretroInitCoreVariable(var->key, defaultVal, label, valuesList, valuesList, "");
             }
             return true;
         }
@@ -920,12 +1055,37 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS data missing");
                 return false;
             }
+            LibretroCore.variableOptionsVersion = 1;
             for (; opts->key != NULL; opts++) {
                 const char *def = opts->default_value;
                 if (def == NULL && opts->values[0].value != NULL) {
                     def = opts->values[0].value;
                 }
-                LibretroInitCoreVariable(opts->key, def ? def : "");
+
+                // Build pipe-separated values and display lists
+                char valuesList[LIBRETRO_CORE_VARIABLE_VALUES_LEN] = {0};
+                char displayList[LIBRETRO_CORE_VARIABLE_VALUES_LEN] = {0};
+                int vpos = 0, dpos = 0;
+                for (int j = 0; opts->values[j].value != NULL; j++) {
+                    const char *val = opts->values[j].value;
+                    const char *lbl = opts->values[j].label ? opts->values[j].label : val;
+                    const char *sep = j > 0 ? "|" : "";
+                    int slen = j > 0 ? 1 : 0;
+                    int vlen = (int)TextLength(val);
+                    int dlen = (int)TextLength(lbl);
+                    if (vpos + slen + vlen < LIBRETRO_CORE_VARIABLE_VALUES_LEN - 1) {
+                        if (slen) { valuesList[vpos++] = '|'; }
+                        TextCopy(valuesList + vpos, val); vpos += vlen;
+                    }
+                    if (dpos + slen + dlen < LIBRETRO_CORE_VARIABLE_VALUES_LEN - 1) {
+                        if (slen) { displayList[dpos++] = '|'; }
+                        TextCopy(displayList + dpos, lbl); dpos += dlen;
+                    }
+                }
+
+                LibretroInitCoreVariable(opts->key, def ? def : "",
+                    opts->desc, valuesList, displayList,
+                    opts->info ? opts->info : "");
             }
             return true;
         }
@@ -1029,13 +1189,42 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             if (opts->definitions == NULL) {
                 return false;
             }
+            LibretroCore.variableOptionsVersion = 2;
             const struct retro_core_option_v2_definition *def = opts->definitions;
             for (; def->key != NULL; def++) {
                 const char *defaultVal = def->default_value;
                 if (defaultVal == NULL && def->values[0].value != NULL) {
                     defaultVal = def->values[0].value;
                 }
-                LibretroInitCoreVariable(def->key, defaultVal ? defaultVal : "");
+
+                // Prefer categorized variants when available
+                const char *label   = (def->desc_categorized && def->desc_categorized[0])
+                                      ? def->desc_categorized : def->desc;
+                const char *tooltip = (def->info_categorized && def->info_categorized[0])
+                                      ? def->info_categorized : (def->info ? def->info : "");
+
+                // Build pipe-separated values and display lists
+                char valuesList[LIBRETRO_CORE_VARIABLE_VALUES_LEN] = {0};
+                char displayList[LIBRETRO_CORE_VARIABLE_VALUES_LEN] = {0};
+                int vpos = 0, dpos = 0;
+                for (int j = 0; def->values[j].value != NULL; j++) {
+                    const char *val = def->values[j].value;
+                    const char *lbl = def->values[j].label ? def->values[j].label : val;
+                    int slen = j > 0 ? 1 : 0;
+                    int vlen = (int)TextLength(val);
+                    int dlen = (int)TextLength(lbl);
+                    if (vpos + slen + vlen < LIBRETRO_CORE_VARIABLE_VALUES_LEN - 1) {
+                        if (slen) { valuesList[vpos++] = '|'; }
+                        TextCopy(valuesList + vpos, val); vpos += vlen;
+                    }
+                    if (dpos + slen + dlen < LIBRETRO_CORE_VARIABLE_VALUES_LEN - 1) {
+                        if (slen) { displayList[dpos++] = '|'; }
+                        TextCopy(displayList + dpos, lbl); dpos += dlen;
+                    }
+                }
+
+                LibretroInitCoreVariable(def->key, defaultVal ? defaultVal : "",
+                    label, valuesList, displayList, tooltip);
             }
             return true;
         }

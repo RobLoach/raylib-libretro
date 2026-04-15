@@ -66,9 +66,13 @@ bool Init(void** userData, int argc, char** argv) {
     if (argc > 1) {
         // Initialize the given core.
         if (InitLibretro(argv[1])) {
+            // Apply any previously saved options before the game starts.
+            LoadLibretroCoreOptions();
+
             // Load the given game.
             const char* gameFile = (argc > 2) ? argv[2] : NULL;
             if (LoadLibretroGame(gameFile)) {
+                BuildLibretroMenuOptions(data->menu);
                 data->menu->active = false;
             }
         }
@@ -157,6 +161,11 @@ bool UpdateDrawFrame(void* userData) {
 
 void Close(void* userData) {
     AppData* data = (AppData*)userData;
+
+    // Save core options before closing.
+    if (IsLibretroReady()) {
+        SaveLibretroCoreOptions();
+    }
 
     // Unload the game and close the core.
     UnloadLibretroGame();

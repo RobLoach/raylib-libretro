@@ -51,6 +51,8 @@ typedef struct LibretroMenu {
     bool active;
     struct nk_rect lastBounds;
     nk_bool fullscreen;
+    nk_console* optionsMenu;              // "Core Options" submenu node
+    int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
 } LibretroMenu;
 
 #if defined(__cplusplus)
@@ -62,6 +64,7 @@ bool IsLibretroMenuReady(void);
 void CloseLibretroMenu(void);
 void UpdateLibretroMenu(void);
 void DrawLibretroMenu(void);
+void BuildLibretroMenuOptions(LibretroMenu* menu); // Populate "Core Options" with comboboxes from the loaded core.
 
 #if defined(__cplusplus)
 }
@@ -190,7 +193,8 @@ LibretroMenu* InitLibretroMenu(void) {
 
     // Build the Menu
     nk_console_button(menu.console, "Load Game");
-    nk_console_button(menu.console, "Options");
+    menu.optionsMenu = nk_console_button(menu.console, "Core Options");
+    nk_console_button_onclick(menu.optionsMenu, "Back", &nk_console_button_back);
     menu.fullscreen = (nk_bool)IsWindowFullscreen();
     nk_console* settings = nk_console_button(menu.console, "Settings");
     {
@@ -206,6 +210,94 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.active = true;
 
     return &menu;
+}
+
+// Extract the Nth pipe-delimited token from str into out[outSize].
+static void LibretroMenuGetNthToken(const char* str, int n, char* out, int outSize) {
+    int idx = 0;
+    const char* p = str;
+    while (p && *p) {
+        const char* pipe = p;
+        while (*pipe && *pipe != '|') pipe++;
+        if (idx == n) {
+            int len = (int)(pipe - p);
+            if (len >= outSize) len = outSize - 1;
+            memcpy(out, p, (unsigned int)len);
+            out[len] = '\0';
+            return;
+        }
+        if (!*pipe) break;
+        p = pipe + 1;
+        idx++;
+    }
+    if (out && outSize > 0) out[0] = '\0';
+}
+
+// Called when a core option combobox selection changes.
+// user_data is the option index cast to (void*).
+static void LibretroMenuOptionChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    unsigned i = (unsigned)(uintptr_t)user_data;
+    char value[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+    LibretroMenuGetNthToken(LibretroCore.variableValuesList[i],
+                            menu.optionSelectedIndices[i],
+                            value, LIBRETRO_CORE_VARIABLE_VALUE_LEN);
+    if (TextLength(value) > 0) {
+        SetLibretroCoreOption(LibretroCore.variableKeys[i], value);
+        SaveLibretroCoreOptions();
+    }
+}
+
+void BuildLibretroMenuOptions(LibretroMenu* m) {
+    if (!m || !m->optionsMenu) return;
+
+    // Clear any previously built option children and restore Back button
+    nk_console_free_children(m->optionsMenu);
+    nk_console_button_onclick(m->optionsMenu, "Back", &nk_console_button_back);
+
+    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
+        if (TextLength(LibretroCore.variableValuesList[i]) == 0) continue;
+
+        // Resolve current selected index by matching variableValues[i] against valuesList
+        int selIdx = 0, tok = 0;
+        const char *cur = LibretroCore.variableValues[i];
+        const char *p = LibretroCore.variableValuesList[i];
+        while (p && *p) {
+            const char *pipe = p;
+            while (*pipe && *pipe != '|') pipe++;
+            int len = (int)(pipe - p);
+            char tokBuf[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+            if (len < LIBRETRO_CORE_VARIABLE_VALUE_LEN) {
+                memcpy(tokBuf, p, (unsigned int)len);
+            }
+            if (TextIsEqual(tokBuf, cur)) { selIdx = tok; break; }
+            if (!*pipe) break;
+            p = pipe + 1;
+            tok++;
+        }
+        m->optionSelectedIndices[i] = selIdx;
+
+        // Use display labels if available, otherwise fall back to raw values
+        const char *displayStr = TextLength(LibretroCore.variableDisplayList[i]) > 0
+            ? LibretroCore.variableDisplayList[i]
+            : LibretroCore.variableValuesList[i];
+
+        const char *label = TextLength(LibretroCore.variableLabels[i]) > 0
+            ? LibretroCore.variableLabels[i]
+            : LibretroCore.variableKeys[i];
+
+        nk_console* combo = nk_console_combobox(m->optionsMenu, label,
+                                                 displayStr, '|',
+                                                 &m->optionSelectedIndices[i]);
+
+        if (TextLength(LibretroCore.variableTooltips[i]) > 0) {
+            combo->tooltip = LibretroCore.variableTooltips[i];
+        }
+
+        nk_console_add_event_handler(combo, NK_CONSOLE_EVENT_CHANGED,
+                                     LibretroMenuOptionChanged,
+                                     (void*)(uintptr_t)i, NULL);
+    }
 }
 
 void CloseLibretroMenu(void) {
