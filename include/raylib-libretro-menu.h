@@ -37,23 +37,31 @@
 #define RAYLIB_LIBRETRO_MENU_H
 
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
+#include "../vendor/nuklear_console/nuklear_console.h"
 
 typedef enum LibretroMenuStyle {
     LIBRETRO_MENU_STYLE_DEFAULT,
     LIBRETRO_MENU_STYLE_DRACULA,
 } LibretroMenuStyle;
 
+typedef struct LibretroMenu {
+    struct nk_context* ctx;
+    Font font;
+    nk_console* console;
+    bool active;
+    struct nk_rect lastBounds;
+    nk_bool fullscreen;
+} LibretroMenu;
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
 
-bool InitLibretroMenu(void);
+LibretroMenu* InitLibretroMenu(void);
 bool IsLibretroMenuReady(void);
 void CloseLibretroMenu(void);
 void UpdateLibretroMenu(void);
 void DrawLibretroMenu(void);
-bool IsLibretroMenuActive(void);
-void SetLibretroMenuStyle(LibretroMenuStyle style);
 
 #if defined(__cplusplus)
 }
@@ -72,6 +80,7 @@ void SetLibretroMenuStyle(LibretroMenuStyle style);
 #define NK_GAMEPAD_IMPLEMENTATION
 #include "../vendor/nuklear_gamepad/nuklear_gamepad.h"
 
+#define CVECTOR_H "../vendor/c-vector/cvector.h"
 #define NK_CONSOLE_IMPLEMENTATION
 #define NK_CONSOLE_MALLOC nk_raylib_malloc
 #define NK_CONSOLE_FREE nk_raylib_mfree
@@ -94,6 +103,10 @@ extern "C" {
 #endif
 
 static LibretroMenu menu = {0};
+
+LibretroMenu* GetLibretroMenu(void) {
+    return &menu;
+}
 
 bool IsLibretroMenuReady(void) {
     return menu.ctx != NULL;
@@ -160,8 +173,10 @@ void SetLibretroMenuStyle(LibretroMenuStyle style) {
     }
 }
 
-bool IsLibretroMenuActive(void) {
-    return menu.active;
+static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    (void)user_data;
+    ToggleFullscreen();
 }
 
 void volumeChanged(nk_console* widget, void* user_data) {
@@ -179,36 +194,37 @@ void ClickedUnloadCore(nk_console* widget, void* user_data) {
 }
 
 
-bool InitLibretroMenu(void) {
+LibretroMenu* InitLibretroMenu(void) {
     menu = (LibretroMenu){0};
     menu.font = LoadFontFromNuklear(13);
     if (!IsFontValid(menu.font)) {
-        return false;
+        return NULL;
     }
 
     menu.ctx = InitNuklearEx(menu.font, 13.0f);
     //menu.ctx = InitNuklear(32);
     if (!menu.ctx) {
         UnloadFont(menu.font);
-        return false;
+        return NULL;
     }
 
     menu.console = nk_console_init(menu.ctx);
     if (!menu.console) {
         UnloadFont(menu.font);
         UnloadNuklear(menu.ctx);
-        return false;
+        return NULL;
     }
 
     // Build the Menu
     nk_console_button(menu.console, "Load Game");
-    nk_console* options = nk_console_button(menu.console, "Options");
+    nk_console_button(menu.console, "Options");
+    menu.fullscreen = (nk_bool)IsWindowFullscreen();
+    nk_console* settings = nk_console_button(menu.console, "Settings");
     {
-        nk_console_button(options, "Some cool option!");
-        nk_console_button(options, "Option #2");
-        nk_console_button_onclick(options, "Back", &nk_console_button_back);
+        nk_console* fullscreenCheckbox = nk_console_checkbox(settings, "Fullscreen", &menu.fullscreen);
+        nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
+        nk_console_button_onclick(settings, "Back", &nk_console_button_back);
     }
-    nk_console_button(menu.console, "Settings");
     nk_console_button(menu.console, "Save State");
     nk_console_button(menu.console, "Load State");
     nk_console_button(menu.console, "Quit");
@@ -231,6 +247,8 @@ bool InitLibretroMenu(void) {
 
     SetLibretroMenuStyle(LIBRETRO_MENU_STYLE_DRACULA);
     menu.active = true;
+
+    return &menu;
 }
 
 void CloseLibretroMenu(void) {
@@ -266,6 +284,9 @@ void UpdateLibretroMenu(void) {
     if (!menu.active) {
         return;
     }
+
+    // Keep fullscreen checkbox in sync with the actual window state (e.g. F11 presses).
+    menu.fullscreen = (nk_bool)IsWindowFullscreen();
 
     // Render the console centered in the screen, using last frame's bounds for height
     struct nk_rect windowPos;

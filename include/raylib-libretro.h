@@ -4,9 +4,10 @@
 *
 *   DEPENDENCIES:
 *            - raylib
-*            - dl
+*            - dl: dylib_proc(), dylib_error()
 *            - libretro-common
-*              - dynamic/dylib
+*              - dynamic/dylib.h
+*              - features/features_cpu.h
 *              - libretro.h
 *
 *   LICENSE: zlib/libpng
