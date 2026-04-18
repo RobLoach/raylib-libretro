@@ -77,12 +77,16 @@ void SetLibretroMenuStyle(LibretroMenuStyle style);
 #define NK_CONSOLE_FREE nk_raylib_mfree
 #include "../vendor/nuklear_console/nuklear_console.h"
 
+#include "raylib-libretro.h"
+
 typedef struct LibretroMenu {
+    float volume;
     struct nk_context* ctx;
     Font font;
     nk_console* console;
     bool active;
     struct nk_rect lastBounds;
+    int activeSaveState;
 } LibretroMenu;
 
 #if defined(__cplusplus)
@@ -160,14 +164,29 @@ bool IsLibretroMenuActive(void) {
     return menu.active;
 }
 
+void volumeChanged(nk_console* widget, void* user_data) {
+    SetLibretroVolume(menu.volume);
+}
+void ClickedResetGame(nk_console* widget, void* user_data) {
+    ResetLibretro();
+    menu.active = false;
+}
+void ClickedCloseGame(nk_console* widget, void* user_data) {
+    UnloadLibretroGame();
+}
+void ClickedUnloadCore(nk_console* widget, void* user_data) {
+    CloseLibretro();
+}
+
+
 bool InitLibretroMenu(void) {
     menu = (LibretroMenu){0};
-    menu.font = LoadFontFromNuklear(52);
+    menu.font = LoadFontFromNuklear(13);
     if (!IsFontValid(menu.font)) {
         return false;
     }
 
-    menu.ctx = InitNuklearEx(menu.font, 26.0f);
+    menu.ctx = InitNuklearEx(menu.font, 13.0f);
     //menu.ctx = InitNuklear(32);
     if (!menu.ctx) {
         UnloadFont(menu.font);
@@ -193,6 +212,22 @@ bool InitLibretroMenu(void) {
     nk_console_button(menu.console, "Save State");
     nk_console_button(menu.console, "Load State");
     nk_console_button(menu.console, "Quit");
+
+
+    nk_console* advanced = nk_console_button(menu.console, "Adavanced");
+    {
+
+        nk_console_add_event(
+            nk_console_knob_float(advanced, "Volume", 0.0f, &menu.volume, 1.0f, 0.05f, 1.0f),
+            NK_CONSOLE_EVENT_CHANGED, volumeChanged);
+        menu.volume = GetLibretroVolume();
+        nk_console_property_int(advanced, "Active State", 1, &menu.activeSaveState, 10, 1, 13.0f);
+        nk_console_button_onclick(advanced, "Reset", ClickedResetGame);
+        nk_console_button_onclick(advanced, "Close GAme", ClickedCloseGame);
+        nk_console_button_onclick(advanced, "Unload Core", ClickedUnloadCore);
+        nk_console_button_onclick(advanced, "Back", &nk_console_button_back);
+    }
+
 
     SetLibretroMenuStyle(LIBRETRO_MENU_STYLE_DRACULA);
     menu.active = true;
@@ -237,11 +272,11 @@ void UpdateLibretroMenu(void) {
 
     // Scale it appropriately.
     if (GetScreenWidth() > 1280 && GetScreenHeight() > 720) {
-        SetNuklearScaling(menu.ctx, 2.0f);
+        SetNuklearScaling(menu.ctx, 3.0f);
         windowPos.w = NK_MAX(GetScreenWidth() / 3.0f, 640);
     }
     else {
-        SetNuklearScaling(menu.ctx, 1.0f);
+        SetNuklearScaling(menu.ctx, 2.0f);
         windowPos.w = NK_MAX(GetScreenWidth() / 3.0f, 360);
     }
 

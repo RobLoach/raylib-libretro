@@ -190,6 +190,8 @@ typedef struct rLibretro {
 
     // Raylib objects used to play the libretro core.
     Texture texture;
+    Image frameBufferRenderer;
+    bool frameBufferRendererUsed;
 
     // Pre-allocated frame conversion buffer (avoids per-frame MemAlloc).
     void *frameBuffer;
@@ -295,6 +297,11 @@ static void LibretroInitAudio();  // Forward declaration.
 static void LibretroInitVideo() {
     // Unload the existing texture if it exists already.
     UnloadTexture(LibretroCore.texture);
+
+    if (IsImageValid(LibretroCore.frameBufferRenderer)) {
+        UnloadImage(LibretroCore.frameBufferRenderer);
+        LibretroCore.frameBufferRenderer.data = NULL;
+    }
 
     // Build the rendering image.
     Image image = GenImageColor(LibretroCore.width, LibretroCore.height, BLACK);
@@ -790,8 +797,21 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER not implemented");
-            return false;
+            if (!data) {
+                return false;
+            }
+            struct retro_framebuffer *framebuffer = (struct retro_framebuffer *)data;
+
+            if (!IsImageValid(LibretroCore.frameBufferRenderer)) {
+                LibretroCore.frameBufferRenderer = GenImageColor(GetLibretroWidth(), GetLibretroHeight(), BLACK);
+                ImageFormat(&LibretroCore.frameBufferRenderer, LibretroCore.texture.format);
+            }
+
+            framebuffer->data = LibretroCore.frameBufferRenderer.data;
+            framebuffer->format = LibretroCore.pixelFormat;
+            framebuffer->height = LibretroCore.frameBufferRenderer.height;
+            framebuffer->width = LibretroCore.frameBufferRenderer.width;
+            framebuffer->pitch = LibretroCore.frameBufferRenderer.width * 2; // TODO: Fix this to be the correct pitch
         }
 
         case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE: {
@@ -1215,6 +1235,11 @@ static void UpdateLibretro() {
 
     if (IsLibretroGameReady()) {
         LibretroCore.retro_run();
+    }
+
+    // Framebuffer REnderer
+    if (IsImageValid(LibretroCore.frameBufferRenderer)) {
+        UpdateTexture(LibretroCore.texture, LibretroCore.frameBufferRenderer.data);
     }
 }
 
@@ -1839,6 +1864,12 @@ static void UnloadLibretroGame() {
  * Close the libretro core.
  */
 static void CloseLibretro() {
+
+    if (IsImageValid(LibretroCore.frameBufferRenderer)) {
+        UnloadImage(LibretroCore.frameBufferRenderer);
+        LibretroCore.frameBufferRenderer.data = NULL;
+    }
+
     // Let the core know that the audio device has been deinitialized.
     if (LibretroCore.audio_callback.set_state != NULL) {
         LibretroCore.audio_callback.set_state(false);

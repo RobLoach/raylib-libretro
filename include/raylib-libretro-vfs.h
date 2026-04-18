@@ -336,6 +336,8 @@ int64_t raylib_libretro_vfs_size(struct retro_vfs_file_handle *stream) {
 int64_t raylib_libretro_vfs_truncate(struct retro_vfs_file_handle *stream, int64_t length) {
     TraceLog(LOG_ERROR, "LIBRETRO: raylib_libretro_vfs_truncate not implemented");
     return -1;
+
+    // TODO: Implememnt Truncate
 }
 
 /**
@@ -442,6 +444,12 @@ int64_t raylib_libretro_vfs_read(struct retro_vfs_file_handle *stream, void *s, 
 int64_t raylib_libretro_vfs_write(struct retro_vfs_file_handle *stream, const void *s, uint64_t len) {
     TraceLog(LOG_ERROR, "LIBRETRO: raylib_libretro_vfs_write not implemented");
     return -1;
+
+    if (stream == NULL) {
+        return -1;
+    }
+
+    // TODO: implement vfs_write
 }
 
 /**
@@ -468,8 +476,7 @@ int raylib_libretro_vfs_flush(struct retro_vfs_file_handle *stream) {
  * @since VFS API v1
  */
 int raylib_libretro_vfs_remove(const char *path) {
-    TraceLog(LOG_ERROR, "LIBRETRO: raylib_libretro_vfs_remove not implemented");
-    return -1;
+    return (FileRemove(path) == 0) ? 0 : -1;
 }
 
 /**
@@ -483,8 +490,7 @@ int raylib_libretro_vfs_remove(const char *path) {
  * @since VFS API v1
  */
 int raylib_libretro_vfs_rename(const char *old_path, const char *new_path) {
-    TraceLog(LOG_ERROR, "LIBRETRO: raylib_libretro_vfs_rename not implemented");
-    return -1;
+    return (FileRename(old_path, new_path) == 0) ? 0 : -1;
 }
 
 /**
