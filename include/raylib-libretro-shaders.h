@@ -9,10 +9,6 @@
 *   GLSL version is selected automatically based on PLATFORM_DESKTOP.
 *   Override with: #define GLSL_VERSION 100 / 120 / 330
 *
-*   CYCLING:
-*       Call UpdateLibretroShaders(dt) each frame. F10 cycles forward, F9 cycles backward.
-*       SHADER_NONE (0) is pass-through — no shader applied.
-*
 *   LICENSE: zlib/libpng
 *   Copyright (c) 2020 Rob Loach (@RobLoach)
 *
@@ -217,56 +213,56 @@ const char* GetLibretroShaderCode(LibretroShaderType type) {
     switch (type) {
         case LIBRETRO_SHADER_CRT: return
 #if GLSL_VERSION == 330
-#include "raylib-libretro-shaders/crt-glsl330.txt"
+#include "raylib-libretro-shaders/crt-glsl330.h"
 #elif GLSL_VERSION == 120
-#include "raylib-libretro-shaders/crt-glsl120.txt"
+#include "raylib-libretro-shaders/crt-glsl120.h"
 #else
-#include "raylib-libretro-shaders/crt-glsl100.txt"
+#include "raylib-libretro-shaders/crt-glsl100.h"
 #endif
         ;
         case LIBRETRO_SHADER_SCANLINES: return
 #if GLSL_VERSION == 330
-#include "raylib-libretro-shaders/scanlines-glsl330.txt"
+#include "raylib-libretro-shaders/scanlines-glsl330.h"
 #elif GLSL_VERSION == 120
-#include "raylib-libretro-shaders/scanlines-glsl120.txt"
+#include "raylib-libretro-shaders/scanlines-glsl120.h"
 #else
-#include "raylib-libretro-shaders/scanlines-glsl100.txt"
+#include "raylib-libretro-shaders/scanlines-glsl100.h"
 #endif
         ;
         case LIBRETRO_SHADER_VIGNETTE: return
 #if GLSL_VERSION == 330
-#include "raylib-libretro-shaders/vignette-glsl330.txt"
+#include "raylib-libretro-shaders/vignette-glsl330.h"
 #elif GLSL_VERSION == 120
-#include "raylib-libretro-shaders/vignette-glsl120.txt"
+#include "raylib-libretro-shaders/vignette-glsl120.h"
 #else
-#include "raylib-libretro-shaders/vignette-glsl100.txt"
+#include "raylib-libretro-shaders/vignette-glsl100.h"
 #endif
         ;
         case LIBRETRO_SHADER_GRAYSCALE: return
 #if GLSL_VERSION == 330
-#include "raylib-libretro-shaders/grayscale-glsl330.txt"
+#include "raylib-libretro-shaders/grayscale-glsl330.h"
 #elif GLSL_VERSION == 120
-#include "raylib-libretro-shaders/grayscale-glsl120.txt"
+#include "raylib-libretro-shaders/grayscale-glsl120.h"
 #else
-#include "raylib-libretro-shaders/grayscale-glsl100.txt"
+#include "raylib-libretro-shaders/grayscale-glsl100.h"
 #endif
         ;
         case LIBRETRO_SHADER_NTSC: return
 #if GLSL_VERSION == 330
-#include "raylib-libretro-shaders/ntsc-glsl330.txt"
+#include "raylib-libretro-shaders/ntsc-glsl330.h"
 #elif GLSL_VERSION == 120
-#include "raylib-libretro-shaders/ntsc-glsl120.txt"
+#include "raylib-libretro-shaders/ntsc-glsl120.h"
 #else
-#include "raylib-libretro-shaders/ntsc-glsl100.txt"
+#include "raylib-libretro-shaders/ntsc-glsl100.h"
 #endif
         ;
         case LIBRETRO_SHADER_XBRZ: return
 #if GLSL_VERSION == 330
-#include "raylib-libretro-shaders/xbrz-glsl330.txt"
+#include "raylib-libretro-shaders/xbrz-glsl330.h"
 #elif GLSL_VERSION == 120
-#include "raylib-libretro-shaders/xbrz-glsl120.txt"
+#include "raylib-libretro-shaders/xbrz-glsl120.h"
 #else
-#include "raylib-libretro-shaders/xbrz-glsl100.txt"
+#include "raylib-libretro-shaders/xbrz-glsl100.h"
 #endif
         ;
         default: return "";
