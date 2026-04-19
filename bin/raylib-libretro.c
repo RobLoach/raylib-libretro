@@ -66,9 +66,13 @@ bool Init(void** userData, int argc, char** argv) {
     if (argc > 1) {
         // Initialize the given core.
         if (InitLibretro(argv[1])) {
+            // Apply any previously saved options before the game starts.
+            LoadLibretroCoreOptions();
+
             // Load the given game.
             const char* gameFile = (argc > 2) ? argv[2] : NULL;
             if (LoadLibretroGame(gameFile)) {
+                BuildLibretroMenuOptions(data->menu);
                 data->menu->active = false;
             }
         }
@@ -80,8 +84,12 @@ bool Init(void** userData, int argc, char** argv) {
 bool UpdateDrawFrame(void* userData) {
     AppData* data = (AppData*)userData;
 
-    // Update the shaders.
+    // Update the shaders, then show OSD if a shader key was pressed.
+    LibretroShaderType shaderTypeBefore = GetActiveLibretroShaderType();
     UpdateLibretroShaders(GetFrameTime());
+    if (GetActiveLibretroShaderType() != shaderTypeBefore) {
+        ShowLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
+    }
 
     // Run a frame of the core.
     if (!data->menu->active) {
@@ -90,10 +98,13 @@ bool UpdateDrawFrame(void* userData) {
 
     UpdateLibretroMenu();
 
-    // Check if the core asks to be shutdown.
+    // Check if the core or menu asks to be shutdown.
     if (LibretroShouldClose()) {
         UnloadLibretroGame();
         CloseLibretro();
+    }
+    if (data->menu->shouldQuit) {
+        return false;
     }
 
     // Render the libretro core.
@@ -113,6 +124,7 @@ bool UpdateDrawFrame(void* userData) {
         }
 
         DrawLibretroMenu();
+        DrawLibretroMessage();
     }
     EndDrawing();
 
@@ -123,12 +135,16 @@ bool UpdateDrawFrame(void* userData) {
 
     // Screenshot
     else if (IsKeyReleased(KEY_F8)) {
+        const char* screenshotName = NULL;
         for (int i = 1; i < 1000; i++) {
-            const char* screenshotName = TextFormat("screenshot-%i.png", i);
+            screenshotName = TextFormat("screenshot-%i.png", i);
             if (!FileExists(screenshotName)) {
                 TakeScreenshot(screenshotName);
                 break;
             }
+        }
+        if (screenshotName) {
+            ShowLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0f);
         }
     }
 
@@ -139,6 +155,10 @@ bool UpdateDrawFrame(void* userData) {
         if (saveData != NULL) {
             SaveFileData(TextFormat("save_%s.sav", GetLibretroName()), saveData, (int)size);
             MemFree(saveData);
+            ShowLibretroMessage("State Saved", 2.0f);
+        }
+        else {
+            ShowLibretroMessage("Save State Failed", 2.0f);
         }
     }
 
@@ -149,6 +169,10 @@ bool UpdateDrawFrame(void* userData) {
         if (saveData != NULL) {
             SetLibretroSerializedData(saveData, (unsigned int)dataSize);
             MemFree(saveData);
+            ShowLibretroMessage("State Loaded", 2.0f);
+        }
+        else {
+            ShowLibretroMessage("Load State Failed", 2.0f);
         }
     }
 
@@ -157,6 +181,11 @@ bool UpdateDrawFrame(void* userData) {
 
 void Close(void* userData) {
     AppData* data = (AppData*)userData;
+
+    // Save core options before closing.
+    if (IsLibretroReady()) {
+        SaveLibretroCoreOptions();
+    }
 
     // Unload the game and close the core.
     UnloadLibretroGame();

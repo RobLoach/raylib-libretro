@@ -49,8 +49,14 @@ typedef struct LibretroMenu {
     Font font;
     nk_console* console;
     bool active;
-    struct nk_rect lastBounds;
+    bool shouldQuit;
     nk_bool fullscreen;
+    nk_console* optionsMenu;              // "Core Options" submenu node
+    nk_console* saveStateButton;
+    nk_console* loadStateButton;
+    int shaderSelectedIndex;              // tracks active shader for combobox sync
+    int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
+    nk_bool optionCheckboxValues[128];    // per-option checkbox state for enabled/disabled options
 } LibretroMenu;
 
 #if defined(__cplusplus)
@@ -62,12 +68,14 @@ bool IsLibretroMenuReady(void);
 void CloseLibretroMenu(void);
 void UpdateLibretroMenu(void);
 void DrawLibretroMenu(void);
+void BuildLibretroMenuOptions(LibretroMenu* menu); // Populate "Core Options" with comboboxes from the loaded core.
 
 #if defined(__cplusplus)
 }
 #endif
 
 #endif
+
 
 #ifdef RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
 #ifndef RAYLIB_LIBRETRO_MENU_IMPLEMENTATION_ONCE
@@ -90,7 +98,14 @@ void DrawLibretroMenu(void);
 extern "C" {
 #endif
 
+
 static LibretroMenu menu = {0};
+
+// Event handler for shader combobox change
+static void ShaderComboChanged(nk_console* widget, void* user_data) {
+    int* sel = (int*)user_data;
+    SetActiveLibretroShader((LibretroShaderType)(*sel));
+}
 
 LibretroMenu* GetLibretroMenu(void) {
     return &menu;
@@ -108,7 +123,7 @@ void SetLibretroMenuStyle(LibretroMenuStyle style) {
     struct nk_color table[NK_COLOR_COUNT];
     switch (style) {
         case LIBRETRO_MENU_STYLE_DRACULA:{
-            struct nk_color background = nk_rgba(40, 42, 54, 0);
+            struct nk_color background = nk_rgba(40, 42, 54, 128);
             struct nk_color currentline = nk_rgba(68, 71, 90, 255);
             struct nk_color foreground = nk_rgba(248, 248, 242, 255);
             struct nk_color comment = nk_rgba(98, 114, 164, 255);
@@ -165,16 +180,58 @@ static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
     ToggleFullscreen();
+    menu.fullscreen = IsWindowFullscreen();
+}
+
+static void LibretroMenuQuitClicked(nk_console* widget, void* user_data) {
+    (void)widget;
+    (void)user_data;
+    menu.shouldQuit = true;
+}
+
+static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
+    (void)widget;
+    (void)user_data;
+    if (!IsLibretroGameReady()) return;
+    unsigned int size;
+    void* saveData = GetLibretroSerializedData(&size);
+    if (saveData != NULL) {
+        SaveFileData(TextFormat("save_%s.sav", GetLibretroName()), saveData, (int)size);
+        MemFree(saveData);
+        ShowLibretroMessage("State Saved", 2.0f);
+        menu.active = false;
+    }
+    else {
+        ShowLibretroMessage("State Saved Failed", 2.0f);
+    }
+}
+
+static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
+    (void)widget;
+    (void)user_data;
+    if (!IsLibretroGameReady()) return;
+    int dataSize;
+    void* saveData = LoadFileData(TextFormat("save_%s.sav", GetLibretroName()), &dataSize);
+    if (saveData != NULL) {
+        SetLibretroSerializedData(saveData, (unsigned int)dataSize);
+        MemFree(saveData);
+        ShowLibretroMessage("Loaded State", 2.0f);
+        menu.active = false;
+    }
+    else {
+        ShowLibretroMessage("Load State failed", 2.0f);
+    }
 }
 
 LibretroMenu* InitLibretroMenu(void) {
+    int fontSize = 13 * 2;
     menu = (LibretroMenu){0};
-    menu.font = LoadFontFromNuklear(52);
+    menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
         return NULL;
     }
 
-    menu.ctx = InitNuklearEx(menu.font, 26.0f);
+    menu.ctx = InitNuklearEx(menu.font, (float)fontSize);
     //menu.ctx = InitNuklear(32);
     if (!menu.ctx) {
         UnloadFont(menu.font);
@@ -190,22 +247,161 @@ LibretroMenu* InitLibretroMenu(void) {
 
     // Build the Menu
     nk_console_button(menu.console, "Load Game");
-    nk_console_button(menu.console, "Options");
-    menu.fullscreen = (nk_bool)IsWindowFullscreen();
+    menu.optionsMenu = nk_console_button(menu.console, "Core Options");
+    nk_console_button_onclick(menu.optionsMenu, "Back", &nk_console_button_back);
     nk_console* settings = nk_console_button(menu.console, "Settings");
     {
+        // Back
+        nk_console_button_onclick(settings, "Back", &nk_console_button_back);
+
+        // Fullscreen
+        menu.fullscreen = (nk_bool)IsWindowFullscreen();
         nk_console* fullscreenCheckbox = nk_console_checkbox(settings, "Fullscreen", &menu.fullscreen);
         nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
-        nk_console_button_onclick(settings, "Back", &nk_console_button_back);
+
+        // Shaders
+        static char shaderNames[256] = {0};
+        if (shaderNames[0] == '\0') {
+            int offset = 0;
+            for (int i = 0; i < LIBRETRO_SHADER_TYPE_COUNT; ++i) {
+                const char* name = GetLibretroShaderName((LibretroShaderType)i);
+                int len = (int)strlen(name);
+                if (offset + len + 1 < (int)sizeof(shaderNames)) {
+                    if (i > 0) shaderNames[offset++] = '|';
+                    memcpy(shaderNames + offset, name, len);
+                    offset += len;
+                }
+            }
+        }
+        menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
+        nk_console* shaderCombo = nk_console_combobox(settings, "Shader", shaderNames, '|', &menu.shaderSelectedIndex);
+        nk_console_add_event_handler(shaderCombo, NK_CONSOLE_EVENT_CHANGED, &ShaderComboChanged, &menu.shaderSelectedIndex, NULL);
     }
-    nk_console_button(menu.console, "Save State");
-    nk_console_button(menu.console, "Load State");
-    nk_console_button(menu.console, "Quit");
+    menu.saveStateButton = nk_console_button(menu.console, "Save State");
+    nk_console_add_event(menu.saveStateButton, NK_CONSOLE_EVENT_CLICKED, LibretroMenuSaveStateClicked);
+    menu.loadStateButton = nk_console_button(menu.console, "Load State");
+    nk_console_add_event(menu.loadStateButton, NK_CONSOLE_EVENT_CLICKED, LibretroMenuLoadStateClicked);
+    nk_console* quitButton = nk_console_button(menu.console, "Quit");
+    nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, LibretroMenuQuitClicked);
 
     SetLibretroMenuStyle(LIBRETRO_MENU_STYLE_DRACULA);
     menu.active = true;
 
     return &menu;
+}
+
+// Extract the Nth pipe-delimited token from str into out[outSize].
+static void LibretroMenuGetNthToken(const char* str, int n, char* out, int outSize) {
+    int idx = 0;
+    const char* p = str;
+    while (p && *p) {
+        const char* pipe = p;
+        while (*pipe && *pipe != '|') pipe++;
+        if (idx == n) {
+            int len = (int)(pipe - p);
+            if (len >= outSize) len = outSize - 1;
+            memcpy(out, p, (unsigned int)len);
+            out[len] = '\0';
+            return;
+        }
+        if (!*pipe) break;
+        p = pipe + 1;
+        idx++;
+    }
+    if (out && outSize > 0) out[0] = '\0';
+}
+
+// Called when a core option combobox selection changes.
+// user_data is the option index cast to (void*).
+static void LibretroMenuOptionChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    unsigned i = (unsigned)(uintptr_t)user_data;
+    char value[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+    LibretroMenuGetNthToken(LibretroCore.variableValuesList[i],
+                            menu.optionSelectedIndices[i],
+                            value, LIBRETRO_CORE_VARIABLE_VALUE_LEN);
+    if (TextLength(value) > 0) {
+        SetLibretroCoreOption(LibretroCore.variableKeys[i], value);
+        SaveLibretroCoreOptions();
+    }
+}
+
+// Called when a core option enabled/disabled checkbox changes.
+// user_data is the option index cast to (void*).
+static void LibretroMenuOptionCheckboxChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    unsigned i = (unsigned)(uintptr_t)user_data;
+    const char* value = menu.optionCheckboxValues[i] ? "enabled" : "disabled";
+    SetLibretroCoreOption(LibretroCore.variableKeys[i], value);
+    SaveLibretroCoreOptions();
+}
+
+// Returns true if the only values are "enabled" and "disabled" (in either order).
+static bool LibretroMenuIsEnabledDisabledOption(const char* valuesList) {
+    if (!valuesList || !*valuesList) return false;
+    return TextIsEqual(valuesList, "enabled|disabled") ||
+           TextIsEqual(valuesList, "disabled|enabled");
+}
+
+void BuildLibretroMenuOptions(LibretroMenu* m) {
+    if (!m || !m->optionsMenu) return;
+
+    // Clear any previously built option children and restore Back button
+    nk_console_free_children(m->optionsMenu);
+    nk_console_button_onclick(m->optionsMenu, "Back", &nk_console_button_back);
+
+    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
+        if (TextLength(LibretroCore.variableValuesList[i]) == 0) continue;
+        if (!LibretroCore.variableVisible[i]) continue;
+
+        const char *label = TextLength(LibretroCore.variableLabels[i]) > 0
+            ? LibretroCore.variableLabels[i]
+            : LibretroCore.variableKeys[i];
+
+        nk_console* widget;
+
+        if (LibretroMenuIsEnabledDisabledOption(LibretroCore.variableValuesList[i])) {
+            m->optionCheckboxValues[i] = (nk_bool)TextIsEqual(LibretroCore.variableValues[i], "enabled");
+            widget = nk_console_checkbox(m->optionsMenu, label, &m->optionCheckboxValues[i]);
+            nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
+                                         LibretroMenuOptionCheckboxChanged,
+                                         (void*)(uintptr_t)i, NULL);
+        } else {
+            // Resolve current selected index by matching variableValues[i] against valuesList
+            int selIdx = 0, tok = 0;
+            const char *cur = LibretroCore.variableValues[i];
+            const char *p = LibretroCore.variableValuesList[i];
+            while (p && *p) {
+                const char *pipe = p;
+                while (*pipe && *pipe != '|') pipe++;
+                int len = (int)(pipe - p);
+                char tokBuf[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+                if (len < LIBRETRO_CORE_VARIABLE_VALUE_LEN) {
+                    memcpy(tokBuf, p, (unsigned int)len);
+                }
+                if (TextIsEqual(tokBuf, cur)) { selIdx = tok; break; }
+                if (!*pipe) break;
+                p = pipe + 1;
+                tok++;
+            }
+            m->optionSelectedIndices[i] = selIdx;
+
+            const char *displayStr = TextLength(LibretroCore.variableDisplayList[i]) > 0
+                ? LibretroCore.variableDisplayList[i]
+                : LibretroCore.variableValuesList[i];
+
+            widget = nk_console_combobox(m->optionsMenu, label,
+                                         displayStr, '|',
+                                         &m->optionSelectedIndices[i]);
+            nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
+                                         LibretroMenuOptionChanged,
+                                         (void*)(uintptr_t)i, NULL);
+        }
+
+        if (TextLength(LibretroCore.variableTooltips[i]) > 0) {
+            widget->tooltip = LibretroCore.variableTooltips[i];
+        }
+    }
 }
 
 void CloseLibretroMenu(void) {
@@ -228,6 +424,18 @@ void CloseLibretroMenu(void) {
     }
 }
 
+void UpdateLibretroMenuVisibility() {
+
+    // Keep fullscreen checkbox in sync with the actual window state (e.g. F11 presses).
+    menu.fullscreen = (nk_bool)IsWindowFullscreen();
+
+    // Disable game-dependent items when no game is loaded.
+    nk_bool gameReady = (nk_bool)IsLibretroGameReady();
+    if (menu.optionsMenu)    menu.optionsMenu->visible    = gameReady;
+    if (menu.saveStateButton) menu.saveStateButton->visible = gameReady;
+    if (menu.loadStateButton) menu.loadStateButton->visible = gameReady;
+}
+
 void UpdateLibretroMenu(void) {
     if (menu.ctx == NULL) {
         return;
@@ -242,48 +450,18 @@ void UpdateLibretroMenu(void) {
         return;
     }
 
-    // Keep fullscreen checkbox in sync with the actual window state (e.g. F11 presses).
-    menu.fullscreen = (nk_bool)IsWindowFullscreen();
-
-    // Render the console centered in the screen, using last frame's bounds for height
-    struct nk_rect windowPos;
-
-    // Scale it appropriately.
-    if (GetScreenWidth() > 1280 && GetScreenHeight() > 720) {
-        SetNuklearScaling(menu.ctx, 2.0f);
-        windowPos.w = NK_MAX(GetScreenWidth() / 3.0f, 640);
-    }
-    else {
-        SetNuklearScaling(menu.ctx, 1.0f);
-        windowPos.w = NK_MAX(GetScreenWidth() / 3.0f, 360);
+    if (LibretroCore.variablesVisibilityDirty) {
+        BuildLibretroMenuOptions(&menu);
+        LibretroCore.variablesVisibilityDirty = false;
     }
 
+    UpdateLibretroMenuVisibility();
+
+    menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
     UpdateNuklear(menu.ctx);
 
-    windowPos.h = menu.lastBounds.h > 0 ? menu.lastBounds.h : (float)GetScreenHeight();
-    if (windowPos.h > GetScreenHeight()) {
-        windowPos.h = GetScreenHeight();
-        windowPos.y = 0;
-    }
-    else {
-        windowPos.y = (float)GetScreenHeight() * 0.5f - windowPos.h * 0.5f;
-    }
-    windowPos.x = (float)GetScreenWidth() * 0.5f - windowPos.w * 0.5f;
-
-    if (GetNuklearScaling(menu.ctx) != 1.0f) {
-        windowPos.x /= GetNuklearScaling(menu.ctx);
-        windowPos.y /= GetNuklearScaling(menu.ctx);
-        windowPos.w /= GetNuklearScaling(menu.ctx);
-        windowPos.h /= GetNuklearScaling(menu.ctx);
-    }
-
-    menu.lastBounds = nk_console_render_window(menu.console, "raylib-libretro", windowPos, NK_WINDOW_SCROLL_AUTO_HIDE);
-    if (GetNuklearScaling(menu.ctx) != 1.0f) {
-        menu.lastBounds.x *= GetNuklearScaling(menu.ctx);
-        menu.lastBounds.y *= GetNuklearScaling(menu.ctx);
-        menu.lastBounds.w *= GetNuklearScaling(menu.ctx);
-        menu.lastBounds.h *= GetNuklearScaling(menu.ctx);
-    }
+    struct nk_rect windowPos = nk_rect(0, 0, (float)GetScreenWidth(), (float)GetScreenHeight());
+    nk_console_render_window(menu.console, "raylib-libretro", windowPos, NK_WINDOW_SCROLL_AUTO_HIDE);
 }
 
 void DrawLibretroMenu(void) {
@@ -296,9 +474,10 @@ void DrawLibretroMenu(void) {
     DrawNuklear(menu.ctx);
 }
 
+
 #if defined(__cplusplus)
 }
 #endif
 
-#endif // RAYLIB_LIBRETRO_IMPLEMENTATION_ONCE
-#endif // RAYLIB_LIBRETRO_IMPLEMENTATION
+#endif // RAYLIB_LIBRETRO_MENU_IMPLEMENTATION_ONCE
+#endif // RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
