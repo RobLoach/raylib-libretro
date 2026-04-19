@@ -124,6 +124,7 @@ bool UpdateDrawFrame(void* userData) {
         }
 
         DrawLibretroMenu();
+        DrawLibretroMessage();
     }
     EndDrawing();
 

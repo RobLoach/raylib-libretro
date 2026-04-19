@@ -79,6 +79,7 @@ static bool LoadLibretroCoreOptions(void);  // Load current core's options from 
 static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
 static bool SetLibretroSerializedData(void* data, unsigned int size);
 static void ShowLibretroMessage(const char* msg, float duration); // Show an OSD message for the given duration in seconds.
+static bool DrawLibretroMessage(); // Displays the OSD message on the screen. Returns true if there was one.
 
 static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
@@ -1989,6 +1990,21 @@ static void DrawLibretroPro(Rectangle destRec, Color tint) {
     DrawTexturePro(LibretroCore.texture, source, destRec, origin, 0, tint);
 }
 
+static bool DrawLibretroMessage() {
+    if (GetTime() > LibretroCore.osdEndTime) {
+        return false;
+    }
+    
+    int fontSize = 20;
+    int padding = 8;
+    int textWidth = MeasureText(LibretroCore.osdMessage, fontSize);
+    int x = (GetScreenWidth() - textWidth) / 2;
+    int y = GetScreenHeight() - fontSize - padding * 2;
+    DrawRectangle(x - padding, y - padding, textWidth + padding * 2, fontSize + padding * 2, (Color){0, 0, 0, 180});
+    DrawText(LibretroCore.osdMessage, x, y, fontSize, WHITE);
+    return true;
+}
+
 static void DrawLibretroTint(Color tint) {
     if (LibretroCore.loaded == false) {
         return;
@@ -2026,16 +2042,6 @@ static void DrawLibretroTint(Color tint) {
     Rectangle dest = {cx, cy, (float)destW, (float)destH};
     Vector2 origin = {destW / 2.0f, destH / 2.0f};
     DrawTexturePro(LibretroCore.texture, source, dest, origin, rotationDeg, tint);
-
-    if (GetTime() < LibretroCore.osdEndTime) {
-        int fontSize = 20;
-        int padding = 8;
-        int textWidth = MeasureText(LibretroCore.osdMessage, fontSize);
-        int x = (GetScreenWidth() - textWidth) / 2;
-        int y = GetScreenHeight() - fontSize - padding * 2;
-        DrawRectangle(x - padding, y - padding, textWidth + padding * 2, fontSize + padding * 2, (Color){0, 0, 0, 180});
-        DrawText(LibretroCore.osdMessage, x, y, fontSize, WHITE);
-    }
 }
 
 static void DrawLibretro() {
