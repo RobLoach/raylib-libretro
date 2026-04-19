@@ -1321,18 +1321,34 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY not implemented");
-            return false;
+            if (data == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY no data provided");
+                return false;
+            }
+            const char** dir = (const char**)data;
+            *dir = GetWorkingDirectory();
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY not implemented");
-            return false;
+            if (data == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY no data provided");
+                return false;
+            }
+            const char** dir = (const char**)data;
+            *dir = GetWorkingDirectory();
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE not implemented");
-            return false;
+            if (data == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE no data provided");
+                return false;
+            }
+            unsigned *sampleRate = (unsigned *)data;
+            *sampleRate = (unsigned)LibretroCore.sampleRate;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE: %u", *sampleRate);
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_NETPLAY_CLIENT_INDEX: {

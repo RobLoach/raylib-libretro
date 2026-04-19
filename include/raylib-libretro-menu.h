@@ -114,7 +114,7 @@ void SetLibretroMenuStyle(LibretroMenuStyle style) {
     struct nk_color table[NK_COLOR_COUNT];
     switch (style) {
         case LIBRETRO_MENU_STYLE_DRACULA:{
-            struct nk_color background = nk_rgba(40, 42, 54, 0);
+            struct nk_color background = nk_rgba(40, 42, 54, 128);
             struct nk_color currentline = nk_rgba(68, 71, 90, 255);
             struct nk_color foreground = nk_rgba(248, 248, 242, 255);
             struct nk_color comment = nk_rgba(98, 114, 164, 255);
