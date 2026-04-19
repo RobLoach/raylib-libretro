@@ -224,6 +224,7 @@ typedef struct rLibretro {
     char variableValuesList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
     char variableDisplayList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
     char variableTooltips[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN];
+    bool variableVisible[LIBRETRO_MAX_CORE_VARIABLES];
     unsigned variableCount;
     unsigned variableOptionsVersion; // 0=legacy SET_VARIABLES, 1=SET_CORE_OPTIONS, 2=SET_CORE_OPTIONS_V2
     bool variablesDirty; // Whether or not the variables have been changed since last RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE call.
@@ -264,6 +265,7 @@ static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
     TextCopy(LibretroCore.variableValuesList[n],  valuesList    ? valuesList    : "");
     TextCopy(LibretroCore.variableDisplayList[n], displayList   ? displayList   : "");
     TextCopy(LibretroCore.variableTooltips[n],    tooltip       ? tooltip       : "");
+    LibretroCore.variableVisible[n] = true;
     LibretroCore.variableCount++;
 }
 
@@ -1103,7 +1105,14 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY not implemented");
+            const struct retro_core_option_display *disp = (const struct retro_core_option_display *)data;
+            if (!disp || !disp->key) return false;
+            for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
+                if (TextIsEqual(LibretroCore.variableKeys[i], disp->key)) {
+                    LibretroCore.variableVisible[i] = disp->visible;
+                    return true;
+                }
+            }
             return false;
         }
 

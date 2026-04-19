@@ -314,6 +314,7 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
 
     for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
         if (TextLength(LibretroCore.variableValuesList[i]) == 0) continue;
+        if (!LibretroCore.variableVisible[i]) continue;
 
         const char *label = TextLength(LibretroCore.variableLabels[i]) > 0
             ? LibretroCore.variableLabels[i]
