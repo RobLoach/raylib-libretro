@@ -94,10 +94,13 @@ bool UpdateDrawFrame(void* userData) {
 
     UpdateLibretroMenu();
 
-    // Check if the core asks to be shutdown.
+    // Check if the core or menu asks to be shutdown.
     if (LibretroShouldClose()) {
         UnloadLibretroGame();
         CloseLibretro();
+    }
+    if (data->menu->shouldQuit) {
+        return false;
     }
 
     // Render the libretro core.
