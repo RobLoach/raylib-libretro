@@ -78,6 +78,7 @@ static bool SaveLibretroCoreOptions(void);  // Save current core's options to ra
 static bool LoadLibretroCoreOptions(void);  // Load current core's options from raylib-libretro.cfg.
 static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
 static bool SetLibretroSerializedData(void* data, unsigned int size);
+static void ShowLibretroMessage(const char* msg, float duration); // Show an OSD message for the given duration in seconds.
 
 static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
@@ -214,6 +215,7 @@ typedef struct rLibretro {
 
     // Callbacks
     retro_keyboard_event_t keyboard_event;
+    retro_core_options_update_display_callback_t options_update_display_callback;
     struct retro_vfs_interface vfs_interface;
     // struct retro_game_info_ext game_info_ext;
 
@@ -228,14 +230,22 @@ typedef struct rLibretro {
     unsigned variableCount;
     unsigned variableOptionsVersion; // 0=legacy SET_VARIABLES, 1=SET_CORE_OPTIONS, 2=SET_CORE_OPTIONS_V2
     bool variablesDirty; // Whether or not the variables have been changed since last RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE call.
+    bool variablesVisibilityDirty; // Whether option visibility changed and the menu should rebuild.
 
     // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
     unsigned rotation;
+
+    // OSD message (RETRO_ENVIRONMENT_SET_MESSAGE / SET_MESSAGE_EXT)
+    char osdMessage[256];
+    double osdEndTime;
 
     // Single-sample audio accumulation buffer (avoids static locals).
     int16_t singleSampleBuffer[LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
     size_t singleSampleCount;
     int audioDropWarnCount;
+
+    // Accumulated in-game time in nanoseconds (does not advance while menu is open).
+    retro_perf_tick_t gameTimeNSEC;
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -442,13 +452,12 @@ static void LibretroInitVideo() {
 }
 
 /**
- * Retrieve the current time in milliseconds.
+ * Retrieve the current in-game time in microseconds.
  *
- * @todo Retrieve the unix timestamp in milliseconds?
- * @return retro_time_t The current time in milliseconds.
+ * @return retro_time_t The current in-game time in microseconds.
  */
 static retro_time_t LibretroGetTimeUSEC() {
-    return (retro_time_t)(GetTime() * 1000000.0);
+    return (retro_time_t)(LibretroCore.gameTimeNSEC / 1000);
 }
 
 /**
@@ -468,7 +477,7 @@ static uint64_t LibretroGetCPUFeatures() {
  * @return retro_perf_tick_t The current value of the high resolution counter.
  */
 static retro_perf_tick_t LibretroGetPerfCounter() {
-    return (retro_perf_tick_t)(GetTime() * 1000000000.0);
+    return LibretroCore.gameTimeNSEC;
 }
 
 /**
@@ -538,7 +547,6 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_MESSAGE: {
-            // TODO: RETRO_ENVIRONMENT_SET_MESSAGE Display a message on the screen.
             const struct retro_message* message = (const struct retro_message *)data;
             if (message == NULL) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE no data provided");
@@ -549,6 +557,8 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE: %s (%i frames)", message->msg, message->frames);
+            TextCopy(LibretroCore.osdMessage, message->msg);
+            LibretroCore.osdEndTime = GetTime() + message->frames / (LibretroCore.fps > 0 ? (double)LibretroCore.fps : 60.0);
             return true;
         }
 
@@ -1110,6 +1120,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
                 if (TextIsEqual(LibretroCore.variableKeys[i], disp->key)) {
                     LibretroCore.variableVisible[i] = disp->visible;
+                    LibretroCore.variablesVisibilityDirty = true;
                     return true;
                 }
             }
@@ -1137,14 +1148,24 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION data missing");
                 return false;
             }
-            // TODO: Add support for RETRO_ENVIRONMENT_SET_MESSAGE_EXT with 1.
-            *interfaceVersion = 0;
+            *interfaceVersion = (unsigned)1;
             return true;
         }
 
         case RETRO_ENVIRONMENT_SET_MESSAGE_EXT: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE_EXT not implemented");
-            return false;
+            const struct retro_message_ext* message = (const struct retro_message_ext *)data;
+            if (message == NULL || message->msg == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE_EXT no data provided");
+                return false;
+            }
+            if (message->target == RETRO_MESSAGE_TARGET_LOG || message->target == RETRO_MESSAGE_TARGET_ALL) {
+                TraceLog(LibretroMapRetroLogLevelToTraceLogType(message->level), "LIBRETRO: %s", message->msg);
+            }
+            if (message->target == RETRO_MESSAGE_TARGET_OSD || message->target == RETRO_MESSAGE_TARGET_ALL) {
+                TextCopy(LibretroCore.osdMessage, message->msg);
+                LibretroCore.osdEndTime = GetTime() + message->duration / 1000.0;
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS: {
@@ -1250,8 +1271,10 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK not implemented");
-            return false;
+            const struct retro_core_options_update_display_callback *cb =
+                (const struct retro_core_options_update_display_callback *)data;
+            LibretroCore.options_update_display_callback = (cb && cb->callback) ? cb->callback : NULL;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_VARIABLE: {
@@ -1345,6 +1368,8 @@ static bool LibretroGetAudioVideo() {
  * Runs an iteration of the libretro core.
  */
 static void UpdateLibretro() {
+    LibretroCore.gameTimeNSEC += (retro_perf_tick_t)(GetFrameTime() * 1000000000.0);
+
     // Update the game loop timer.
     if (LibretroCore.runloop_frame_time.callback) {
         retro_time_t current = LibretroGetTimeUSEC();
@@ -1414,7 +1439,14 @@ static void UpdateLibretro() {
 
     if (IsLibretroGameReady()) {
         LibretroCore.retro_run();
+
+        if (LibretroCore.options_update_display_callback) {
+            if (LibretroCore.options_update_display_callback()) {
+                LibretroCore.variablesVisibilityDirty = true;
+            }
+        }
     }
+
 }
 
 /**
@@ -1978,10 +2010,25 @@ static void DrawLibretroTint(Color tint) {
     Rectangle dest = {cx, cy, (float)destW, (float)destH};
     Vector2 origin = {destW / 2.0f, destH / 2.0f};
     DrawTexturePro(LibretroCore.texture, source, dest, origin, rotationDeg, tint);
+
+    if (GetTime() < LibretroCore.osdEndTime) {
+        int fontSize = 20;
+        int padding = 8;
+        int textWidth = MeasureText(LibretroCore.osdMessage, fontSize);
+        int x = (GetScreenWidth() - textWidth) / 2;
+        int y = GetScreenHeight() - fontSize - padding * 2;
+        DrawRectangle(x - padding, y - padding, textWidth + padding * 2, fontSize + padding * 2, (Color){0, 0, 0, 180});
+        DrawText(LibretroCore.osdMessage, x, y, fontSize, WHITE);
+    }
 }
 
 static void DrawLibretro() {
     DrawLibretroTint(WHITE);
+}
+
+static void ShowLibretroMessage(const char* msg, float duration) {
+    TextCopy(LibretroCore.osdMessage, msg);
+    LibretroCore.osdEndTime = GetTime() + (double)duration;
 }
 
 static void SetLibretroVolume(float volume) {

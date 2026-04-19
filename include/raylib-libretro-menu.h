@@ -189,8 +189,12 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
     if (saveData != NULL) {
         SaveFileData(TextFormat("save_%s.sav", GetLibretroName()), saveData, (int)size);
         MemFree(saveData);
+        ShowLibretroMessage("State Saved", 2.0f);
+        menu.active = false;
     }
-    menu.active = false;
+    else {
+        ShowLibretroMessage("State Saved Failed", 2.0f);
+    }
 }
 
 static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
@@ -202,8 +206,12 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     if (saveData != NULL) {
         SetLibretroSerializedData(saveData, (unsigned int)dataSize);
         MemFree(saveData);
+        ShowLibretroMessage("Loaded State", 2.0f);
+        menu.active = false;
     }
-    menu.active = false;
+    else {
+        ShowLibretroMessage("Load State failed", 2.0f);
+    }
 }
 
 LibretroMenu* InitLibretroMenu(void) {
@@ -410,6 +418,11 @@ void UpdateLibretroMenu(void) {
 
     if (!menu.active) {
         return;
+    }
+
+    if (LibretroCore.variablesVisibilityDirty) {
+        BuildLibretroMenuOptions(&menu);
+        LibretroCore.variablesVisibilityDirty = false;
     }
 
     UpdateLibretroMenuVisibility();
