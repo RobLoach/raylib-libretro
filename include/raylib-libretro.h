@@ -1994,7 +1994,7 @@ static bool DrawLibretroMessage() {
     if (GetTime() > LibretroCore.osdEndTime) {
         return false;
     }
-    
+
     int fontSize = 20;
     int padding = 8;
     int textWidth = MeasureText(LibretroCore.osdMessage, fontSize);
