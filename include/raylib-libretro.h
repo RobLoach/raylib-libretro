@@ -1866,6 +1866,11 @@ static bool DoesLibretroCoreNeedContent() {
     return !LibretroCore.supportNoGame;
 }
 
+// Optional WASM core loading – included here so it can reference the callbacks above.
+#ifdef RAYLIB_LIBRETRO_WASM
+#include "raylib-libretro-wasm.h"
+#endif
+
 static bool InitLibretro(const char* core) {
     // Ensure the core exists.
     if (!FileExists(core)) {
@@ -1876,6 +1881,13 @@ static bool InitLibretro(const char* core) {
     if (LibretroCore.handle != NULL) {
         CloseLibretro();
     }
+
+#ifdef RAYLIB_LIBRETRO_WASM
+    // Route .wasm files through the WebAssembly loader.
+    if (IsLibretroWasmCore(core)) {
+        return InitLibretroWasm(core);
+    }
+#endif
 
     // Open the dynamic library.
     LibretroCore.handle = dylib_load(core);
@@ -2126,9 +2138,17 @@ static void CloseLibretro() {
     }
     UnloadTexture(LibretroCore.texture);
 
-    // Close the dynamically loaded handle.
+    // Close the dynamically loaded handle (or WASM instance).
     if (LibretroCore.handle != NULL) {
+#ifdef RAYLIB_LIBRETRO_WASM
+        if (LibretroWasm.instance != NULL) {
+            CloseLibretroWasm();
+        } else {
+            dylib_close(LibretroCore.handle);
+        }
+#else
         dylib_close(LibretroCore.handle);
+#endif
         LibretroCore.handle = NULL;
     }
 

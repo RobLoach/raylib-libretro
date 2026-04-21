@@ -26,3 +26,6 @@
 	path = vendor/raylib-app
 	url = https://github.com/RobLoach/raylib-app
     ignore = dirty
+[submodule "vendor/wasm-c-api"]
+	path = vendor/wasm-c-api
+	url = https://github.com/WebAssembly/wasm-c-api.git
