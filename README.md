@@ -32,6 +32,7 @@ The following cores have been tested with raylib-libretro:
 - fceumm
 - snes9x
 - picodrive
+- scummvm
 
 ## Compile
 
@@ -156,6 +157,18 @@ DrawText(GetLibretroShaderName(GetActiveLibretroShaderType()), 10, 10, 20, WHITE
 | `GetActiveLibretroShaderState()` | Returns mutable pointer to active state, or NULL |
 | `BeginLibretroShader()` | Begin shader mode (no-op when `SHADER_NONE`) |
 | `EndLibretroShader()` | End shader mode (no-op when `SHADER_NONE`) |
+
+## Development
+
+Update the dependencies through git submodules...
+```sh
+git submodule update --recursive --remote --init --force
+```
+
+Use clang-format to apply coding standards...
+```c
+clang-format -i *.h
+```
 
 ## License
 
