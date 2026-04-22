@@ -4,10 +4,10 @@
 *
 *   DEPENDENCIES:
 *            - raylib
-*            - dl
+*            - wasmtime or wasmer (wasm-c-api runtime)
 *            - libretro-common
-*              - dynamic/dylib
 *              - libretro.h
+*              - features/features_cpu.h
 *
 *   LICENSE: zlib/libpng
 *
