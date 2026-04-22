@@ -78,11 +78,9 @@ There is no explicit context object passed around — all functions operate on t
 
 ### Libretro Core Loading
 
-Cores (emulators) are shared libraries (`.so`/`.dll`/`.dylib`) loaded at runtime using `dylib.h` from libretro-common. The macro pattern for loading symbols is:
+Cores (emulators) are WebAssembly (`.wasm`) modules loaded at runtime using the [WebAssembly Micro Runtime (WAMR)](https://github.com/bytecodealliance/wasm-micro-runtime). Native shared libraries (`.so`/`.dll`/`.dylib`) are **not** supported.
 
-```c
-#define LoadLibretroMethod(S) LoadLibretroMethodHandle(LibretroCore.S, S)
-```
+The WASM module must export all `retro_*` functions and import callbacks from the `env` namespace (`env::video_refresh`, `env::audio_sample`, `env::environment`, etc.). All core loading logic is in `include/raylib-libretro-wasm.h`.
 
 ---
 
@@ -94,7 +92,7 @@ The minimal usage sequence (see `example/raylib-libretro-basic.c`):
 InitWindow(...);
 InitAudioDevice();
 
-InitLibretro(core_path);         // Dynamically load the core .so/.dll
+InitLibretro(core_path);         // Load the core .wasm module via WAMR
 LoadLibretroGame(game_path);     // Load ROM (NULL for content-less cores)
 
 while (!WindowShouldClose() && !LibretroShouldClose()) {
@@ -226,7 +224,7 @@ CMake first calls `find_package(raylib QUIET)`. If not found on the system, it f
 ### CMake Targets
 
 - `raylib-libretro-interface` — interface/header-only target (`include/`)
-- `raylib-libretro-static` — static library (`lib/`), links raylib + dylib
+- `raylib-libretro-static` — static library (`lib/`), links raylib + vmlib (WAMR)
 - `raylib-libretro` — full executable (`bin/`)
 - `raylib-libretro-basic` — example executable
 
@@ -235,17 +233,10 @@ CMake first calls `find_package(raylib QUIET)`. If not found on the system, it f
 ## Running the Frontend
 
 ```sh
-# General usage
-raylib-libretro <core.so> [game_file]
-
-# Linux example
-bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
-
-# macOS example
-bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib smb.nes
+raylib-libretro <core.wasm> [game_file]
 ```
 
-Tested cores: `fceumm` (NES), `snes9x` (SNES), `picodrive` (Sega).
+Cores must be compiled as WebAssembly (`.wasm`) modules.
 
 ### Keyboard Controls
 
@@ -271,7 +262,8 @@ All dependencies are git submodules in `vendor/`:
 | Submodule | Purpose |
 |-----------|---------|
 | `raylib` | Graphics, audio, input, windowing |
-| `libretro-common` | `dylib.h` (dynamic loading), `libretro.h`, CPU features |
+| `wasm-micro-runtime` | WAMR — WebAssembly runtime for loading cores |
+| `libretro-common` | `libretro.h`, CPU features (`features/features_cpu.h`) |
 | `raylib-nuklear` | Nuklear GUI integration for raylib |
 | `nuklear_console` | Terminal-style console UI widget |
 | `nuklear_gamepad` | Gamepad input for Nuklear |
