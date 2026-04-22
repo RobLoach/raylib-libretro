@@ -2,8 +2,8 @@
 *
 *   raylib-libretro-wasm - Load libretro cores compiled as WebAssembly modules.
 *
-*   Provides an alternative to dylib-based loading: when InitLibretro() receives a path
-*   ending in ".wasm", it uses the WebAssembly C API (wasm-c-api) instead of dlopen.
+*   Implements core loading via the WebAssembly C API (wasm-c-api),
+*   supporting runtimes such as wasmtime and wasmer.
 *
 *   The WASM module must:
 *     - Export all retro_* functions
@@ -29,7 +29,6 @@
 #ifndef RAYLIB_LIBRETRO_WASM_H
 #define RAYLIB_LIBRETRO_WASM_H
 
-static bool IsLibretroWasmCore(const char* path);
 static bool InitLibretroWasm(const char* path);
 static void CloseLibretroWasm(void);
 
@@ -877,12 +876,6 @@ static void WasmWireCoreFuncs(void) {
 // Public API
 // ============================================================
 
-static bool IsLibretroWasmCore(const char* path) {
-    if (!path) return false;
-    const char* ext = GetFileExtension(path);
-    return TextIsEqual(ext, ".wasm");
-}
-
 static bool InitLibretroWasm(const char* path) {
     // Read the .wasm binary
     int file_size = 0;
@@ -976,9 +969,6 @@ static bool InitLibretroWasm(const char* path) {
 
     // Wire LibretroCore function pointers to WASM wrappers
     WasmWireCoreFuncs();
-
-    // Use a sentinel so IsLibretroReady() returns true
-    LibretroCore.handle = (void*)LibretroWasm.instance;
 
     TraceLog(LOG_INFO, "LIBRETRO: WASM: Loaded %s", path);
     return true;

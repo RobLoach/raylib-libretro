@@ -4,9 +4,8 @@
 *
 *   DEPENDENCIES:
 *            - raylib
-*            - dl: dylib_proc(), dylib_error()
+*            - wasm-c-api (wasmtime or wasmer)
 *            - libretro-common
-*              - dynamic/dylib.h
 *              - features/features_cpu.h
 *              - libretro.h
 *
@@ -111,7 +110,6 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #include <stdlib.h>
 
 // libretro-common
-#include <dynamic/dylib.h>
 #include <features/features_cpu.h>
 
 #define RAYLIB_LIBRETRO_VFS_IMPLEMENTATION
@@ -133,20 +131,7 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 // Keys are prefixed with the core name: "CoreName.key=value"
 #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
 
-// Dynamic loading methods.
-#define LoadLibretroMethodHandle(V, S) do {\
-    function_t func = dylib_proc(LibretroCore.handle, #S); \
-    memcpy(&V, &func, sizeof(func)); \
-    if (!func) { \
-        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load symbol '" #S "' ", dylib_error()); \
-        return false; \
-    }\
-} while (0)
-#define LoadLibretroMethod(S) LoadLibretroMethodHandle(LibretroCore.S, S)
-
 typedef struct rLibretro {
-    // Dynamic library symbols.
-    void *handle;
     void (*retro_init)(void);
     void (*retro_deinit)(void);
     unsigned (*retro_api_version)(void);
@@ -1470,7 +1455,7 @@ static void UpdateLibretro() {
  * Retrieve whether or not the core has been loaded.
  */
 static bool IsLibretroReady() {
-    return LibretroCore.handle != NULL;
+    return LibretroWasm.instance != NULL;
 }
 
 /**
@@ -1866,110 +1851,18 @@ static bool DoesLibretroCoreNeedContent() {
     return !LibretroCore.supportNoGame;
 }
 
-// Optional WASM core loading – included here so it can reference the callbacks above.
-#ifdef RAYLIB_LIBRETRO_WASM
+// WASM core loading – included here so it can reference the callbacks above.
 #include "raylib-libretro-wasm.h"
-#endif
 
 static bool InitLibretro(const char* core) {
-    // Ensure the core exists.
     if (!FileExists(core)) {
         TraceLog(LOG_ERROR, "LIBRETRO: Given core doesn't exist: %s", core);
         return false;
     }
-
-    if (LibretroCore.handle != NULL) {
+    if (LibretroWasm.instance != NULL) {
         CloseLibretro();
     }
-
-#ifdef RAYLIB_LIBRETRO_WASM
-    // Route .wasm files through the WebAssembly loader.
-    if (IsLibretroWasmCore(core)) {
-        return InitLibretroWasm(core);
-    }
-#endif
-
-    // Open the dynamic library.
-    LibretroCore.handle = dylib_load(core);
-    if (!LibretroCore.handle) {
-        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load provided library");
-        return false;
-    }
-
-    // Find the libretro API version.
-    LoadLibretroMethod(retro_api_version);
-    LibretroCore.apiVersion = LibretroCore.retro_api_version();
-    TraceLog(LOG_INFO, "LIBRETRO: API version: %i", LibretroCore.apiVersion);
-    if (LibretroCore.apiVersion != 1) {
-        CloseLibretro();
-        TraceLog(LOG_ERROR, "LIBRETRO: Incompatible API version");
-        return false;
-    }
-
-    // Retrieve the libretro core system information.
-    LoadLibretroMethod(retro_get_system_info);
-    struct retro_system_info systemInfo;
-    LibretroCore.retro_get_system_info(&systemInfo);
-    TextCopy(LibretroCore.libraryName, systemInfo.library_name);
-    TextCopy(LibretroCore.libraryVersion, systemInfo.library_version);
-    TextCopy(LibretroCore.validExtensions, systemInfo.valid_extensions);
-    LibretroCore.needFullpath = systemInfo.need_fullpath;
-    LibretroCore.blockExtract = systemInfo.block_extract;
-    TraceLog(LOG_INFO, "LIBRETRO: Core loaded successfully");
-    TraceLog(LOG_INFO, "    > Name:         %s", LibretroCore.libraryName);
-    TraceLog(LOG_INFO, "    > Version:      %s", LibretroCore.libraryVersion);
-    if (TextLength(LibretroCore.validExtensions) > 0) {
-        TraceLog(LOG_INFO, "    > Extensions:   %s", LibretroCore.validExtensions);
-    }
-
-    // TODO: Add ability to peek inside the core to grab data.
-    /*
-    if (peek) {
-        CloseLibretro();
-        return true;
-    }
-    */
-
-    // Load all other libretro methods.
-    LoadLibretroMethod(retro_init);
-    LoadLibretroMethod(retro_deinit);
-    LoadLibretroMethod(retro_set_environment);
-    LoadLibretroMethod(retro_set_video_refresh);
-    LoadLibretroMethod(retro_set_audio_sample);
-    LoadLibretroMethod(retro_set_audio_sample_batch);
-    LoadLibretroMethod(retro_set_input_poll);
-    LoadLibretroMethod(retro_set_input_state);
-    LoadLibretroMethod(retro_get_system_av_info);
-    LoadLibretroMethod(retro_set_controller_port_device);
-    LoadLibretroMethod(retro_reset);
-    LoadLibretroMethod(retro_run);
-    LoadLibretroMethod(retro_serialize_size);
-    LoadLibretroMethod(retro_serialize);
-    LoadLibretroMethod(retro_unserialize);
-    LoadLibretroMethod(retro_cheat_reset);
-    LoadLibretroMethod(retro_cheat_set);
-    LoadLibretroMethod(retro_load_game);
-    LoadLibretroMethod(retro_load_game_special);
-    LoadLibretroMethod(retro_unload_game);
-    LoadLibretroMethod(retro_get_region);
-    LoadLibretroMethod(retro_get_memory_data);
-    LoadLibretroMethod(retro_get_memory_size);
-
-    // Initialize the core.
-    LibretroCore.shutdown = false;
-    LibretroCore.volume = 1.0f;
-
-    // Set up the callbacks.
-    LibretroCore.retro_set_video_refresh(LibretroVideoRefresh);
-    LibretroCore.retro_set_input_poll(LibretroInputPoll);
-    LibretroCore.retro_set_input_state(LibretroInputState);
-    LibretroCore.retro_set_audio_sample(LibretroAudioSample);
-    LibretroCore.retro_set_audio_sample_batch(LibretroAudioSampleBatch);
-    LibretroCore.retro_set_environment(LibretroSetEnvironment);
-
-    // Initialize the core.
-    LibretroCore.retro_init();
-    return true;
+    return InitLibretroWasm(core);
 }
 
 static void DrawLibretroTexture(int posX, int posY, Color tint) {
@@ -2138,19 +2031,7 @@ static void CloseLibretro() {
     }
     UnloadTexture(LibretroCore.texture);
 
-    // Close the dynamically loaded handle (or WASM instance).
-    if (LibretroCore.handle != NULL) {
-#ifdef RAYLIB_LIBRETRO_WASM
-        if (LibretroWasm.instance != NULL) {
-            CloseLibretroWasm();
-        } else {
-            dylib_close(LibretroCore.handle);
-        }
-#else
-        dylib_close(LibretroCore.handle);
-#endif
-        LibretroCore.handle = NULL;
-    }
+    CloseLibretroWasm();
 
     // Free the frame conversion buffer.
     MemFree(LibretroCore.frameBuffer);
