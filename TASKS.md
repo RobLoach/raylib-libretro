@@ -12,6 +12,13 @@
 - [ ] Per-game settings overrides (core options, shaders, controls)
 - [ ] On-screen display (OSD) for notifications (state saved, shader changed, etc.) using nk_console_show_message()
 
+## WASM Cores
+
+- [ ] Document how to compile a libretro core to WASM32 (emcc / wasi-sdk toolchain, required exports, import namespace)
+- [ ] Build at least one reference core (e.g. fceumm or a minimal test core) as `.wasm` and verify end-to-end
+- [ ] Add the compiled `.wasm` test core to CI so the runtime path is exercised, not just compilation
+- [ ] Investigate WAMR AOT compilation for better performance on constrained devices
+
 ## Tasks
 
 - [ ] `raylib-libretro.h` documentation
