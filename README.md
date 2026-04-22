@@ -27,11 +27,7 @@ raylib-libretro [core] [game]
 
 ## Core Support
 
-The following cores have been tested with raylib-libretro:
-
-- fceumm
-- snes9x
-- picodrive
+Cores must be compiled as WebAssembly (`.wasm`) modules. Native shared libraries (`.so`/`.dll`/`.dylib`) are not supported.
 
 ## Compile
 
@@ -45,17 +41,8 @@ mkdir build
 cd build
 cmake ..
 make
-bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
+bin/raylib-libretro fceumm_libretro.wasm smb.nes
 ```
-
-### Mac OSX
-
-- Make sure you have you have cmake/xcode-cli-tools installed
-- Run the above compile instructions
-- After installing RetroArch and some cores, you should be able to run the below:
-    ```bash
-    bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib ~/Desktop/smb.nes
-    ```
 
 ## Contributors
 
