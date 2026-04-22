@@ -2,9 +2,9 @@
 
 ## GUI
 
-- [ ] Add nuklear_console with dependencies nuklear_gamepad, c-vector, nuklear
+- [x] Add nuklear_console with dependencies nuklear_gamepad, c-vector, nuklear
 - [ ] Load Game button to load a file. Then select a Core for it if it doesn't detect.
-- [ ] Core Options
+- [x] Core Options
 - [ ] Rebindable Inputs
 - [ ] History
 - [ ] Game library / ROM browser with box art thumbnails (RetroArch thumbnail packs)
@@ -34,7 +34,7 @@
 
 ## Audio / Video
 
-- [ ] Audio volume control and mute toggle
+- [x] Audio volume control and mute toggle
 - [ ] Aspect ratio options (pixel-perfect, stretch, 4:3 locked)
 - [ ] Integer scaling mode
 - [ ] Scanline / CRT shader presets

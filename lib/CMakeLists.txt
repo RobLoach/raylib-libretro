@@ -21,5 +21,6 @@ target_include_directories(raylib-libretro-static PUBLIC
 target_compile_definitions(raylib-libretro-static PUBLIC
     HAVE_DYNAMIC=1
 )
+#set_property(TARGET raylib-libretro-static PROPERTY POSITION_INDEPENDENT_CODE 1)
 install(TARGETS raylib-libretro-static DESTINATION lib)
 install(FILES ../include/raylib-libretro.h DESTINATION include)

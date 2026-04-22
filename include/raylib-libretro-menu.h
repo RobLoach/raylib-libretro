@@ -125,8 +125,25 @@ static void MenuSettingsVolumeChanged(nk_console* widget, void* user_data) {
     if (!volume) {
         return;
     }
-    TraceLog(LOG_INFO, "LibretroMenu: Volume changed to %.2f", *volume);
     SetLibretroVolume(*volume);
+}
+
+static void MenuSettingsFpsChanged(nk_console* widget, void* user_data) {
+    int* fps = (int*)user_data;
+    if (!fps) {
+        return;
+    }
+    switch (*fps) {
+        case 0: SetTargetFPS(0); break;
+        case 1: SetTargetFPS(30); break;
+        case 2: SetTargetFPS(50); break;
+        case 3: SetTargetFPS(60); break;
+        case 4: SetTargetFPS(80); break;
+        case 5: SetTargetFPS(100); break;
+        case 6: SetTargetFPS(120); break;
+        case 7: SetTargetFPS(144); break;
+    }
+    TraceLog(LOG_INFO, "Target FPS changed to %d", *fps == 0 ? 0 : (int[]){0,30,50,60,80,100,120,144}[*fps]);
 }
 
 LibretroMenu* GetLibretroMenu(void) {
@@ -327,6 +344,11 @@ LibretroMenu* InitLibretroMenu(void) {
         static float volumeSelected = 1.0f;
         nk_console* volume = nk_console_slider_float(settings, "Volume", 0.0f, &volumeSelected, 1.0f, 0.1f);
         nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &MenuSettingsVolumeChanged, &volumeSelected, NULL);
+
+        // Target FPS
+        static int fpsSelected = 0;
+        nk_console* fps = nk_console_combobox(settings, "Target FPS", "Off|30|50|60|80|100|120|144", '|', &fpsSelected);
+        nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &MenuSettingsFpsChanged, &fpsSelected, NULL);
     }
 
     menu.saveStateButton = nk_console_button(menu.console, "Save State");
