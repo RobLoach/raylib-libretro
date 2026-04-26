@@ -391,6 +391,23 @@ static void LibretroMenuOptionCheckboxChanged(nk_console* widget, void* user_dat
     SaveLibretroCoreOptions();
 }
 
+static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
+    int idx = 0;
+    const char* p = str;
+    while (p && *p) {
+        const char* pipe = p;
+        while (*pipe && *pipe != '|') pipe++;
+        int len = (int)(pipe - p);
+        char tok[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+        if (len < LIBRETRO_CORE_VARIABLE_VALUE_LEN) memcpy(tok, p, (unsigned int)len);
+        if (TextIsEqual(tok, value)) return idx;
+        if (!*pipe) break;
+        p = pipe + 1;
+        idx++;
+    }
+    return 0;
+}
+
 // Returns true if the only values are "enabled" and "disabled" (in either order).
 static bool LibretroMenuIsEnabledDisabledOption(const char* valuesList) {
     if (!valuesList || !*valuesList) return false;
@@ -412,14 +429,14 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
     m->optionsMenu->visible = nk_true;
 
     nk_console_button_set_symbol(
-        nk_console_button_onclick(menu.optionsMenu, "Back", &nk_console_button_back),
+        nk_console_button_onclick(m->optionsMenu, "Back", &nk_console_button_back),
         NK_SYMBOL_TRIANGLE_LEFT);
 
     for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
         if (TextLength(LibretroCore.variableValuesList[i]) == 0) continue;
         if (!LibretroCore.variableVisible[i]) continue;
 
-        const char *label = TextLength(LibretroCore.variableLabels[i]) > 0
+        const char* label = TextLength(LibretroCore.variableLabels[i]) > 0
             ? LibretroCore.variableLabels[i]
             : LibretroCore.variableKeys[i];
 
@@ -432,26 +449,10 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
                                          LibretroMenuOptionCheckboxChanged,
                                          (void*)(uintptr_t)i, NULL);
         } else {
-            // Resolve current selected index by matching variableValues[i] against valuesList
-            int selIdx = 0, tok = 0;
-            const char *cur = LibretroCore.variableValues[i];
-            const char *p = LibretroCore.variableValuesList[i];
-            while (p && *p) {
-                const char *pipe = p;
-                while (*pipe && *pipe != '|') pipe++;
-                int len = (int)(pipe - p);
-                char tokBuf[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
-                if (len < LIBRETRO_CORE_VARIABLE_VALUE_LEN) {
-                    memcpy(tokBuf, p, (unsigned int)len);
-                }
-                if (TextIsEqual(tokBuf, cur)) { selIdx = tok; break; }
-                if (!*pipe) break;
-                p = pipe + 1;
-                tok++;
-            }
-            m->optionSelectedIndices[i] = selIdx;
+            m->optionSelectedIndices[i] = LibretroMenuFindTokenIndex(
+                LibretroCore.variableValuesList[i], LibretroCore.variableValues[i]);
 
-            const char *displayStr = TextLength(LibretroCore.variableDisplayList[i]) > 0
+            const char* displayStr = TextLength(LibretroCore.variableDisplayList[i]) > 0
                 ? LibretroCore.variableDisplayList[i]
                 : LibretroCore.variableValuesList[i];
 
