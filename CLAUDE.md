@@ -4,13 +4,13 @@ This file provides guidance for AI assistants working with this codebase.
 
 ## Project Overview
 
-**raylib-libretro** (v0.0.7) is a [libretro](https://www.libretro.com/) frontend built with [raylib](https://www.raylib.com). It provides:
+**raylib-libretro** is a [libretro](https://www.libretro.com/) frontend built with [raylib](https://www.raylib.com). It provides:
 
 1. `raylib-libretro.h` — a single-header C library that integrates the libretro API into any raylib application
-2. `raylib-libretro` — a full frontend executable with shaders, save states, and a menu UI
+2. `bin/raylib-libretro.c` — a full frontend executable with shaders, save states, and a menu UI
 3. Supporting headers for shaders, VFS, and menus
 
-The project is in early development. License: zlib/libpng (allows static linking with closed-source software).
+The project is in early development. License: zlib/libpng
 
 ---
 
@@ -43,8 +43,6 @@ raylib-libretro/
 ├── README.md
 └── TASKS.md                       # Planned features / roadmap
 ```
-
----
 
 ## Architecture
 
@@ -83,8 +81,6 @@ Cores (emulators) are shared libraries (`.so`/`.dll`/`.dylib`) loaded at runtime
 ```c
 #define LoadLibretroMethod(S) LoadLibretroMethodHandle(LibretroCore.S, S)
 ```
-
----
 
 ## Core API Lifecycle
 
@@ -147,8 +143,6 @@ CloseWindow();
 - `GetLibretroSerializedData(&size)` → `void*` (caller must `MemFree()`)
 - `SetLibretroSerializedData(data, size)` → `bool`
 
----
-
 ## Shader System (raylib-libretro-shaders.h)
 
 ### Available Shader Types
@@ -158,14 +152,9 @@ CloseWindow();
 | `SHADER_NONE` | None | Pass-through |
 | `SHADER_CRT` | CRT | Barrel distortion, phosphor mask |
 | `SHADER_SCANLINES` | Scanlines | Horizontal scanline overlay |
-| `SHADER_PIXELATE` | Pixelate | Block downscale |
-| `SHADER_CHROMATIC_ABERR` | Chromatic Aberration | RGB channel split |
 | `SHADER_VIGNETTE` | Vignette | Darkened corners |
-| `SHADER_BLOOM` | Bloom | Additive glow |
 | `SHADER_GRAYSCALE` | Grayscale | Monochrome + tint |
-| `SHADER_LCD_GRID` | LCD Grid | Game Boy / GBA style |
 | `SHADER_NTSC` | NTSC | Composite artifacts |
-| `SHADER_COLOR_GRADE` | Color Grade | Hue/sat/contrast/gamma |
 
 ### Shader Usage
 
@@ -230,8 +219,6 @@ CMake first calls `find_package(raylib QUIET)`. If not found on the system, it f
 - `raylib-libretro` — full executable (`bin/`)
 - `raylib-libretro-basic` — example executable
 
----
-
 ## Running the Frontend
 
 ```sh
@@ -247,23 +234,6 @@ bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libret
 
 Tested cores: `fceumm` (NES), `snes9x` (SNES), `picodrive` (Sega).
 
-### Keyboard Controls
-
-| Key | Action |
-|-----|--------|
-| Arrow Keys | D-Pad |
-| Z X A S Q W | Buttons |
-| Enter | Start |
-| Right Shift | Select |
-| F2 | Save State |
-| F4 | Load State |
-| F8 | Screenshot |
-| F9 | Previous Shader |
-| F10 | Next Shader |
-| F11 | Fullscreen |
-
----
-
 ## Dependencies
 
 All dependencies are git submodules in `vendor/`:
@@ -277,6 +247,7 @@ All dependencies are git submodules in `vendor/`:
 | `nuklear_gamepad` | Gamepad input for Nuklear |
 | `c-vector` | Dynamic array / vector utility |
 | `raylib-app` | App framework wrapper (Init/UpdateDrawFrame/Cleanup lifecycle) |
+| `rini` | Loading and saving configuration in an ini-like format |
 
 Always run `git submodule update --init` after cloning or switching branches.
 
@@ -306,8 +277,6 @@ There are **no unit tests** — CI validates compilation only. When adding code,
 - **Comments:** File headers use the raylib-style `/**** ... ****/` banner format
 - **Pixel formats:** libretro uses `RGB565`, `XRGB8888`, `0RGB1555`; mapping functions convert to raylib equivalents
 
----
-
 ## Key Files for AI Assistants
 
 When making changes, these are the most important files to understand:
@@ -321,20 +290,6 @@ When making changes, these are the most important files to understand:
 | `CMakeLists.txt` | Dependency resolution and build options |
 | `TASKS.md` | Planned features — check here before implementing something to see if it's already scoped |
 
----
-
-## Planned / In-Progress Features (TASKS.md)
-
-Before implementing new features, check `TASKS.md`. Key planned items:
-
-- **GUI:** ROM browser, core options UI, rebindable inputs, OSD notifications
-- **Gameplay:** Save state slots, SRAM auto-save, rewind, fast-forward, turbo, cheats, RetroAchievements
-- **Audio/Video:** Volume control, aspect ratio options, integer scaling, VSync toggle
-- **Input:** Gamepad auto-detection, analog sticks, multi-player support
-- **Misc:** `.zip` loading, Doxygen docs, binary releases, OpenGL cores
-
----
-
 ## Pixel Format Handling
 
 The core may report one of three pixel formats via the environment callback:
@@ -345,8 +300,6 @@ The core may report one of three pixel formats via the environment callback:
 
 Conversion functions: `LibretroMapPixelFormatARGB1555ToRGB565`, `LibretroMapPixelFormatARGB8888ToRGBA8888`.
 
----
-
-## Audio Implementation
+## Audio
 
 Audio uses a pre-allocated ring buffer of 8192 stereo frames to avoid per-frame allocation. The libretro audio callbacks accumulate samples into this buffer, which is drained by raylib's audio stream. Volume is applied at drain time via `SetLibretroVolume`.

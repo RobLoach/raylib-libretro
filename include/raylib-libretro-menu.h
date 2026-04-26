@@ -289,12 +289,6 @@ LibretroMenu* InitLibretroMenu(void) {
 
     // Load Game
     nk_console_button(menu.console, "Load Game");
-    menu.optionsMenu = nk_console_button(menu.console, "Core Options");
-    {
-        nk_console_button_set_symbol(
-            nk_console_button_onclick(menu.optionsMenu, "Back", &nk_console_button_back),
-            NK_SYMBOL_TRIANGLE_LEFT);
-    }
 
     // Settings
     nk_console* settings = nk_console_button(menu.console, "Settings");
@@ -336,14 +330,25 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
     }
 
+    // Core Options
+    menu.optionsMenu = nk_console_button(menu.console, "Core Options");
+    {
+        nk_console_button_set_symbol(
+            nk_console_button_onclick(menu.optionsMenu, "Back", &nk_console_button_back),
+            NK_SYMBOL_TRIANGLE_LEFT);
+    }
+
+    // Save State
     menu.saveStateButton = nk_console_button(menu.console, "Save State");
     nk_console_add_event(menu.saveStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuSaveStateClicked);
     nk_console_button_set_symbol(menu.saveStateButton, NK_SYMBOL_RECT_SOLID);
 
+    // Load State
     menu.loadStateButton = nk_console_button(menu.console, "Load State");
     nk_console_add_event(menu.loadStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuLoadStateClicked);
     nk_console_button_set_symbol(menu.loadStateButton, NK_SYMBOL_RECT_OUTLINE);
 
+    // Quit
     nk_console* quitButton = nk_console_button(menu.console, "Quit");
     nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuQuitClicked);
     nk_console_button_set_symbol(quitButton, NK_SYMBOL_X);

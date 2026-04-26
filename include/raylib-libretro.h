@@ -1,6 +1,6 @@
 /**********************************************************************************************
 *
-*   rlibretro - Raylib extension to interact with libretro cores.
+*   raylib-libretro - raylib extension to interact with libretro cores.
 *
 *   DEPENDENCIES:
 *            - raylib
@@ -12,7 +12,7 @@
 *
 *   LICENSE: zlib/libpng
 *
-*   rLibretro is licensed under an unmodified zlib/libpng license, which is an OSI-certified,
+*   raylib-libretro is licensed under an unmodified zlib/libpng license, which is an OSI-certified,
 *   BSD-like license that allows static linking with closed source software:
 *
 *   Copyright (c) 2020 Rob Loach (@RobLoach)
@@ -47,7 +47,7 @@ extern "C" {
 #endif
 
 //------------------------------------------------------------------------------------
-// Libretro Raylib Integration (Module: rlibretro)
+// Libretro Raylib Integration (Module: raylib-libretro)
 //------------------------------------------------------------------------------------
 
 static bool InitLibretro(const char* core);              // Initialize the given libretro core.
@@ -733,6 +733,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 (1 << RETRO_DEVICE_JOYPAD) |
                 (1 << RETRO_DEVICE_MOUSE) |
                 (1 << RETRO_DEVICE_KEYBOARD) |
+                (1 << RETRO_DEVICE_LIGHTGUN) |
                 (1 << RETRO_DEVICE_ANALOG) |
                 (1 << RETRO_DEVICE_POINTER);
             return true;
@@ -1571,6 +1572,7 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
             int gamepadButton = LibretroMapRetroJoypadButtonToGamepadButton(id);
             return (int)IsGamepadButtonDown(port - 1, gamepadButton);
         }
+
         case RETRO_DEVICE_MOUSE: {
             switch (id) {
                 case RETRO_DEVICE_ID_MOUSE_LEFT:
@@ -1595,6 +1597,46 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                     return IsMouseButtonDown(MOUSE_BUTTON_SIDE);
                 case RETRO_DEVICE_ID_MOUSE_BUTTON_5:
                     return IsMouseButtonDown(MOUSE_BUTTON_EXTRA);
+            }
+            return 0;
+        }
+
+        case RETRO_DEVICE_LIGHTGUN: {
+            switch (id) {
+                case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_X:
+                    return (int16_t)(((float)GetMouseX() / (float)GetScreenWidth()) * 2.0f - 1.0f) * 0x7fff;
+                case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_Y:
+                    return (int16_t)(((float)GetMouseY() / (float)GetScreenHeight()) * 2.0f - 1.0f) * 0x7fff;
+                case RETRO_DEVICE_ID_LIGHTGUN_IS_OFFSCREEN: {
+                    int mx = GetMouseX(), my = GetMouseY();
+                    return (mx < 0 || my < 0 || mx >= GetScreenWidth() || my >= GetScreenHeight()) ? 1 : 0;
+                }
+                case RETRO_DEVICE_ID_LIGHTGUN_TRIGGER:
+                    return IsMouseButtonDown(MOUSE_LEFT_BUTTON);
+                case RETRO_DEVICE_ID_LIGHTGUN_RELOAD:
+                    return IsMouseButtonDown(MOUSE_RIGHT_BUTTON);
+                case RETRO_DEVICE_ID_LIGHTGUN_AUX_A:
+                    return IsMouseButtonDown(MOUSE_MIDDLE_BUTTON);
+                case RETRO_DEVICE_ID_LIGHTGUN_AUX_B:
+                    return IsMouseButtonDown(MOUSE_BUTTON_SIDE);
+                case RETRO_DEVICE_ID_LIGHTGUN_AUX_C:
+                    return IsMouseButtonDown(MOUSE_BUTTON_EXTRA);
+                case RETRO_DEVICE_ID_LIGHTGUN_START:
+                    return IsKeyDown(KEY_ENTER);
+                case RETRO_DEVICE_ID_LIGHTGUN_SELECT:
+                    return IsKeyDown(KEY_RIGHT_SHIFT);
+                case RETRO_DEVICE_ID_LIGHTGUN_DPAD_UP:
+                    return IsKeyDown(KEY_UP);
+                case RETRO_DEVICE_ID_LIGHTGUN_DPAD_DOWN:
+                    return IsKeyDown(KEY_DOWN);
+                case RETRO_DEVICE_ID_LIGHTGUN_DPAD_LEFT:
+                    return IsKeyDown(KEY_LEFT);
+                case RETRO_DEVICE_ID_LIGHTGUN_DPAD_RIGHT:
+                    return IsKeyDown(KEY_RIGHT);
+                case RETRO_DEVICE_ID_LIGHTGUN_X:
+                    return LibretroCore.inputMousePosition.x - LibretroCore.inputLastMousePosition.x;
+                case RETRO_DEVICE_ID_LIGHTGUN_Y:
+                    return LibretroCore.inputMousePosition.y - LibretroCore.inputLastMousePosition.y;
             }
             return 0;
         }
