@@ -33,3 +33,8 @@
 	url = https://github.com/RobLoach/raylib-app
     ignore = dirty
     branch = master
+[submodule "vendor/rini"]
+	path = vendor/rini
+	url = https://github.com/raysan5/rini.git
+    ignore = dirty
+    branch = main

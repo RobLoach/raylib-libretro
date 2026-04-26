@@ -37,8 +37,10 @@
 #ifndef RAYLIB_LIBRETRO_RLIBRETRO_H
 #define RAYLIB_LIBRETRO_RLIBRETRO_H
 
-#include "libretro.h"
+#include <string.h>
 #include "raylib.h"
+
+#include "libretro.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -100,9 +102,33 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 
 #include "raylib-libretro-vfs.h"
 
+#ifndef RAYLIB_LIBRETRO_RINI_CONFIGURED
+#define RAYLIB_LIBRETRO_RINI_CONFIGURED
+static inline void* LibretroRiniCalloc(size_t n, size_t sz) {
+    void* p = MemAlloc((unsigned int)(n * sz));
+    if (p) memset(p, 0, n * sz);
+    return p;
+}
+#define RINI_MAX_KEY_SIZE       300
+#define RINI_MAX_TEXT_SIZE      256
+#define RINI_MAX_VALUE_CAPACITY 200
+#define RINI_MALLOC(sz)    MemAlloc((unsigned int)(sz))
+#define RINI_CALLOC(n,sz)  LibretroRiniCalloc(n, sz)
+#define RINI_FREE(p)       MemFree(p)
+#include "../vendor/rini/src/rini.h"
+#undef RINI_LOG
+#define RINI_LOG(...)
+#endif
+
 #ifdef RAYLIB_LIBRETRO_IMPLEMENTATION
 #ifndef RAYLIB_LIBRETRO_IMPLEMENTATION_ONCE
 #define RAYLIB_LIBRETRO_IMPLEMENTATION_ONCE
+
+#ifndef RAYLIB_LIBRETRO_RINI_COMPILED
+#define RAYLIB_LIBRETRO_RINI_COMPILED
+#define RINI_IMPLEMENTATION
+#include "../vendor/rini/src/rini.h"
+#endif
 
 // System dependencies
 #include <string.h>
@@ -307,101 +333,36 @@ static const char *GetLibretroCoreOption(const char *key) {
 static bool SaveLibretroCoreOptions(void) {
     if (LibretroCore.variableCount == 0) return false;
     const char *coreName = LibretroCore.libraryName;
-    unsigned prefixLen = TextLength(coreName) + 1; // +1 for '.'
+    if (!coreName) return false;
 
-    int newEntrySize = (int)LibretroCore.variableCount *
-        ((int)prefixLen + LIBRETRO_CORE_VARIABLE_KEY_LEN + LIBRETRO_CORE_VARIABLE_VALUE_LEN + 4);
-    int bufSize = newEntrySize + 65536; // 64 KB headroom for existing content
-    char *buf = (char*)MemAlloc(bufSize);
-    if (!buf) return false;
-    int pos = 0;
-
-    // Copy lines from existing file that belong to OTHER cores
-    if (FileExists(RAYLIB_LIBRETRO_CFG_FILE)) {
-        char *existing = LoadFileText(RAYLIB_LIBRETRO_CFG_FILE);
-        if (existing) {
-            char *line = existing;
-            while (*line) {
-                char *eol = line;
-                while (*eol && *eol != '\n') eol++;
-
-                // Check if this line starts with "{coreName}."
-                bool isOurs = false;
-                if ((int)(eol - line) > (int)prefixLen) {
-                    char prefix[200] = {0};
-                    unsigned pl = prefixLen - 1 < 199 ? prefixLen - 1 : 198;
-                    memcpy(prefix, line, pl);
-                    isOurs = TextIsEqual(prefix, coreName) && (line[pl] == '.');
-                }
-
-                if (!isOurs && pos + (int)(eol - line) + 2 < bufSize) {
-                    memcpy(buf + pos, line, (size_t)(eol - line));
-                    pos += (int)(eol - line);
-                    buf[pos++] = '\n';
-                }
-                line = *eol ? eol + 1 : eol;
-            }
-            UnloadFileText(existing);
-        }
-    }
-
-    // Append this core's current options
+    rini_data data = rini_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
     for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-        const char *entry = TextFormat("%s.%s=%s\n", coreName,
-            LibretroCore.variableKeys[i], LibretroCore.variableValues[i]);
-        int len = (int)TextLength(entry);
-        if (pos + len < bufSize) {
-            TextCopy(buf + pos, entry);
-            pos += len;
-        }
+        char key[RINI_MAX_KEY_SIZE] = {0};
+        snprintf(key, sizeof(key), "%s.%s", coreName, LibretroCore.variableKeys[i]);
+        rini_set_value_text(&data, key, LibretroCore.variableValues[i], NULL);
     }
-    buf[pos] = '\0';
-
-    bool ok = SaveFileText(RAYLIB_LIBRETRO_CFG_FILE, buf);
-    MemFree(buf);
-    TraceLog(ok ? LOG_INFO : LOG_WARNING, "LIBRETRO: %s core options to %s",
-        ok ? "Saved" : "Failed to save", RAYLIB_LIBRETRO_CFG_FILE);
-    return ok;
+    rini_save(data, RAYLIB_LIBRETRO_CFG_FILE);
+    rini_unload(&data);
+    TraceLog(LOG_INFO, "LIBRETRO: Saved core options to %s", RAYLIB_LIBRETRO_CFG_FILE);
+    return true;
 }
 
 static bool LoadLibretroCoreOptions(void) {
     if (!FileExists(RAYLIB_LIBRETRO_CFG_FILE)) return false;
-    char *text = LoadFileText(RAYLIB_LIBRETRO_CFG_FILE);
-    if (!text) return false;
     const char *coreName = LibretroCore.libraryName;
-    unsigned prefixLen = TextLength(coreName) + 1; // +1 for '.'
+    char prefix[RINI_MAX_KEY_SIZE] = {0};
+    snprintf(prefix, sizeof(prefix), "%s.", coreName);
+    unsigned prefixLen = (unsigned)strlen(prefix);
 
+    rini_data data = rini_load(RAYLIB_LIBRETRO_CFG_FILE);
     int loaded = 0;
-    char *line = text;
-    while (*line) {
-        char *eol = line;
-        while (*eol && *eol != '\n') eol++;
-
-        if ((int)(eol - line) > (int)prefixLen) {
-            // Check prefix: "{coreName}."
-            char prefix[200] = {0};
-            unsigned pl = prefixLen - 1 < 199 ? prefixLen - 1 : 198;
-            memcpy(prefix, line, pl);
-            if (TextIsEqual(prefix, coreName) && line[pl] == '.') {
-                const char *rest = line + prefixLen;
-                char *eq = (char*)rest;
-                while (eq < eol && *eq != '=') eq++;
-                if (eq < eol) {
-                    char key[LIBRETRO_CORE_VARIABLE_KEY_LEN]   = {0};
-                    char val[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
-                    unsigned kl = (unsigned)(eq - rest);
-                    unsigned vl = (unsigned)(eol - eq - 1);
-                    if (kl >= LIBRETRO_CORE_VARIABLE_KEY_LEN)   kl = LIBRETRO_CORE_VARIABLE_KEY_LEN - 1;
-                    if (vl >= LIBRETRO_CORE_VARIABLE_VALUE_LEN) vl = LIBRETRO_CORE_VARIABLE_VALUE_LEN - 1;
-                    memcpy(key, rest, kl);
-                    memcpy(val, eq + 1, vl);
-                    if (SetLibretroCoreOption(key, val)) loaded++;
-                }
-            }
+    for (unsigned i = 0; i < data.count; i++) {
+        if (strncmp(data.values[i].key, prefix, prefixLen) == 0) {
+            const char *key = data.values[i].key + prefixLen;
+            if (SetLibretroCoreOption(key, data.values[i].text)) loaded++;
         }
-        line = *eol ? eol + 1 : eol;
     }
-    UnloadFileText(text);
+    rini_unload(&data);
     TraceLog(LOG_INFO, "LIBRETRO: Loaded %d core option(s) from %s", loaded, RAYLIB_LIBRETRO_CFG_FILE);
     return loaded > 0;
 }

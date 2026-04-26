@@ -42,6 +42,7 @@
 typedef enum LibretroMenuStyle {
     LIBRETRO_MENU_STYLE_DEFAULT,
     LIBRETRO_MENU_STYLE_DRACULA,
+    LIBRETRO_MENU_STYLE_COUNT,
 } LibretroMenuStyle;
 
 typedef struct LibretroMenu {
@@ -55,7 +56,9 @@ typedef struct LibretroMenu {
     nk_console* saveStateButton;
     nk_console* loadStateButton;
     nk_console* resumeButton;
-    int shaderSelectedIndex;              // tracks active shader for combobox sync
+    int shaderSelectedIndex;
+    int themeSelectedIndex;
+    float volumeSelected;
     int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
     nk_bool optionCheckboxValues[128];    // per-option checkbox state for enabled/disabled options
 } LibretroMenu;
@@ -71,13 +74,14 @@ void UpdateLibretroMenu(void);
 void DrawLibretroMenu(void);
 void BuildLibretroMenuOptions(LibretroMenu* menu); // Populate "Core Options" with comboboxes from the loaded core.
 void SetLibretroMenuStyle(LibretroMenuStyle style);
+bool SaveLibretroMenuSettings(void);  // Save shader/theme/volume to RAYLIB_LIBRETRO_CFG_FILE.
+bool LoadLibretroMenuSettings(void);  // Load shader/theme/volume from RAYLIB_LIBRETRO_CFG_FILE.
 
 #if defined(__cplusplus)
 }
 #endif
 
 #endif
-
 
 #ifdef RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
 #ifndef RAYLIB_LIBRETRO_MENU_IMPLEMENTATION_ONCE
@@ -91,10 +95,21 @@ void SetLibretroMenuStyle(LibretroMenuStyle style);
 #include "../vendor/nuklear_gamepad/nuklear_gamepad.h"
 
 #define CVECTOR_H "../vendor/c-vector/cvector.h"
+
 #define NK_CONSOLE_IMPLEMENTATION
 #define NK_CONSOLE_MALLOC nk_raylib_malloc
 #define NK_CONSOLE_FREE nk_raylib_mfree
 #include "../vendor/nuklear_console/nuklear_console.h"
+
+#ifndef RAYLIB_LIBRETRO_RINI_COMPILED
+#define RAYLIB_LIBRETRO_RINI_COMPILED
+#define RINI_IMPLEMENTATION
+#include "../vendor/rini/src/rini.h"
+#endif
+
+#ifndef RAYLIB_LIBRETRO_CFG_FILE
+#define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
+#endif
 
 #if defined(__cplusplus)
 extern "C" {
@@ -102,30 +117,13 @@ extern "C" {
 
 static LibretroMenu menu = {0};
 
-// Event handler for shader combobox change
-static void MenuSettingsShaderChanged(nk_console* widget, void* user_data) {
-    int* sel = (int*)user_data;
-    if (!sel) {
-        return;
-    }
-    SetActiveLibretroShader((LibretroShaderType)(*sel));
-}
-
-
-static void MenuSettingsThemeChanged(nk_console* widget, void* user_data) {
-    int* theme = (int*)user_data;
-    if (!theme) {
-        return;
-    }
-    SetLibretroMenuStyle((LibretroShaderType)(*theme));
-}
-
-static void MenuSettingsVolumeChanged(nk_console* widget, void* user_data) {
-    float* volume = (float*)user_data;
-    if (!volume) {
-        return;
-    }
-    SetLibretroVolume(*volume);
+static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    (void)user_data;
+    SetActiveLibretroShader((LibretroShaderType)menu.shaderSelectedIndex);
+    SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
+    SetLibretroVolume(menu.volumeSelected);
+    SaveLibretroMenuSettings();
 }
 
 LibretroMenu* GetLibretroMenu(void) {
@@ -202,6 +200,7 @@ static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
     (void)user_data;
     ToggleFullscreen();
     menu.fullscreen = IsWindowFullscreen();
+    SaveLibretroMenuSettings();
 }
 
 static void LibretroMenuQuitClicked(nk_console* widget, void* user_data) {
@@ -253,6 +252,8 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
 LibretroMenu* InitLibretroMenu(void) {
     int fontSize = 13 * 2;
     menu = (LibretroMenu){0};
+    menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
+    menu.volumeSelected = 1.0f;
     menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
         return NULL;
@@ -272,6 +273,8 @@ LibretroMenu* InitLibretroMenu(void) {
         menu.ctx = NULL;
         return NULL;
     }
+
+    LoadLibretroMenuSettings();
 
     // Build the Menu
     menu.resumeButton = nk_console_button_onclick(menu.console, "Resume", &MenuResumeClicked);
@@ -295,7 +298,6 @@ LibretroMenu* InitLibretroMenu(void) {
             NK_SYMBOL_TRIANGLE_LEFT);
 
         // Fullscreen
-        menu.fullscreen = (nk_bool)IsWindowFullscreen();
         nk_console* fullscreenCheckbox = nk_console_checkbox(settings, "Fullscreen", &menu.fullscreen);
         nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
 
@@ -308,24 +310,23 @@ LibretroMenu* InitLibretroMenu(void) {
                 int len = (int)strlen(name);
                 if (offset + len + 1 < (int)sizeof(shaderNames)) {
                     if (i > 0) shaderNames[offset++] = '|';
-                    memcpy(shaderNames + offset, name, len);
+                    TextCopy(shaderNames + offset, name);
                     offset += len;
                 }
             }
         }
         menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
         nk_console* shaderCombo = nk_console_combobox(settings, "Shader", shaderNames, '|', &menu.shaderSelectedIndex);
-        nk_console_add_event_handler(shaderCombo, NK_CONSOLE_EVENT_CHANGED, &MenuSettingsShaderChanged, &menu.shaderSelectedIndex, NULL);
+        nk_console_add_event_handler(shaderCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
         // Theme
-        static int themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
-        nk_console* theme = nk_console_combobox(settings, "Theme", "Dark|Dracula", '|', &themeSelectedIndex);
-        nk_console_add_event_handler(theme, NK_CONSOLE_EVENT_CHANGED, &MenuSettingsThemeChanged, &themeSelectedIndex, NULL);
+        nk_console* themeCombo = nk_console_combobox(settings, "Theme", "Dark|Dracula", '|', &menu.themeSelectedIndex);
+        nk_console_add_event_handler(themeCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+        SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
 
         // Volume
-        static float volumeSelected = 1.0f;
-        nk_console* volume = nk_console_slider_float(settings, "Volume", 0.0f, &volumeSelected, 1.0f, 0.1f);
-        nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &MenuSettingsVolumeChanged, &volumeSelected, NULL);
+        nk_console* volume = nk_console_slider_float(settings, "Volume", 0.0f, &menu.volumeSelected, 1.0f, 0.1f);
+        nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
     }
 
     menu.saveStateButton = nk_console_button(menu.console, "Save State");
@@ -340,9 +341,7 @@ LibretroMenu* InitLibretroMenu(void) {
     nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuQuitClicked);
     nk_console_button_set_symbol(quitButton, NK_SYMBOL_X);
 
-    SetLibretroMenuStyle(LIBRETRO_MENU_STYLE_DRACULA);
     menu.active = true;
-
     return &menu;
 }
 
@@ -468,6 +467,51 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
             widget->tooltip = LibretroCore.variableTooltips[i];
         }
     }
+}
+
+bool SaveLibretroMenuSettings(void) {
+    rini_data data = rini_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
+    rini_set_value(&data, "fullscreen", (int)menu.fullscreen, NULL);
+    rini_set_value(&data, "shader", menu.shaderSelectedIndex, NULL);
+    rini_set_value(&data, "theme", menu.themeSelectedIndex, NULL);
+    rini_set_value(&data, "volume", (int)(menu.volumeSelected * 100.0f), NULL);
+    rini_save(data, RAYLIB_LIBRETRO_CFG_FILE);
+    rini_unload(&data);
+    TraceLog(LOG_INFO, "MENU: Saved menu settings to %s", RAYLIB_LIBRETRO_CFG_FILE);
+    return true;
+}
+
+bool LoadLibretroMenuSettings(void) {
+    if (!FileExists(RAYLIB_LIBRETRO_CFG_FILE)) return false;
+    rini_data data = rini_load(RAYLIB_LIBRETRO_CFG_FILE);
+
+    // Fullscreen
+    nk_bool savedFullscreen = (nk_bool)rini_get_value_fallback(data, "fullscreen", (int)menu.fullscreen);
+    if (savedFullscreen != (nk_bool)IsWindowFullscreen()) ToggleFullscreen();
+    menu.fullscreen = savedFullscreen;
+
+    // Shader
+    menu.shaderSelectedIndex = rini_get_value_fallback(data, "shader", LIBRETRO_SHADER_NONE);
+    if (menu.shaderSelectedIndex < 0 || menu.shaderSelectedIndex >= LIBRETRO_SHADER_TYPE_COUNT)
+        menu.shaderSelectedIndex = LIBRETRO_SHADER_NONE;
+    SetActiveLibretroShader((LibretroShaderType)menu.shaderSelectedIndex);
+
+    // Theme
+    menu.themeSelectedIndex = rini_get_value_fallback(data, "theme", LIBRETRO_MENU_STYLE_DEFAULT);
+    if (menu.themeSelectedIndex < 0 || menu.themeSelectedIndex >= LIBRETRO_MENU_STYLE_COUNT)
+        menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DEFAULT;
+    SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
+
+    // Volume
+    int volumeInt = rini_get_value_fallback(data, "volume", 100);
+    if (volumeInt < 0) volumeInt = 0;
+    if (volumeInt > 100) volumeInt = 100;
+    menu.volumeSelected = volumeInt / 100.0f;
+    SetLibretroVolume(menu.volumeSelected);
+
+    rini_unload(&data);
+    TraceLog(LOG_INFO, "MENU: Loaded menu settings from %s", RAYLIB_LIBRETRO_CFG_FILE);
+    return true;
 }
 
 void CloseLibretroMenu(void) {
