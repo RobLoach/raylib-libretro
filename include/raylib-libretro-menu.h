@@ -36,7 +36,9 @@
 #ifndef RAYLIB_LIBRETRO_MENU_H
 #define RAYLIB_LIBRETRO_MENU_H
 
+#define NK_GAMEPAD_RAYLIB
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
+#include "../../vendor/nuklear_gamepad/nuklear_gamepad.h"
 #include "../vendor/nuklear_console/nuklear_console.h"
 
 typedef enum LibretroMenuStyle {
@@ -49,6 +51,7 @@ typedef struct LibretroMenu {
     struct nk_context* ctx;
     Font font;
     nk_console* console;
+    struct nk_gamepads gamepads;
     bool active;
     bool shouldQuit;
     nk_bool fullscreen;
@@ -92,6 +95,7 @@ bool LoadLibretroMenuSettings(void);  // Load shader/theme/volume from RAYLIB_LI
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
 
 #define NK_GAMEPAD_IMPLEMENTATION
+#define NK_GAMEPAD_RAYLIB
 #include "../vendor/nuklear_gamepad/nuklear_gamepad.h"
 
 #define CVECTOR_H "../vendor/c-vector/cvector.h"
@@ -273,6 +277,9 @@ LibretroMenu* InitLibretroMenu(void) {
         menu.ctx = NULL;
         return NULL;
     }
+
+    nk_gamepad_init(&menu.gamepads, menu.ctx, (void*)&menu.console);
+    nk_console_set_gamepads(menu.console, &menu.gamepads);
 
     LoadLibretroMenuSettings();
 
@@ -520,6 +527,9 @@ void CloseLibretroMenu(void) {
         return;
     }
 
+
+    nk_gamepad_free(nk_console_get_gamepads(menu.console));
+
     if (menu.console != NULL) {
         nk_console_free(menu.console);
         menu.console = NULL;
@@ -554,7 +564,7 @@ void UpdateLibretroMenu(void) {
     }
 
     // Toggle the menu
-    if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsKeyReleased(KEY_F1)) {
+    if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE) || IsKeyReleased(KEY_F1)) {
         menu.active = !menu.active;
     }
 
@@ -570,6 +580,8 @@ void UpdateLibretroMenu(void) {
     UpdateLibretroMenuVisibility();
 
     menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
+
+    nk_gamepad_update(nk_console_get_gamepads(menu.console));
     UpdateNuklear(menu.ctx);
 
     struct nk_rect windowPos = nk_rect(0, 0, (float)GetScreenWidth(), (float)GetScreenHeight());
@@ -585,7 +597,6 @@ void DrawLibretroMenu(void) {
     }
     DrawNuklear(menu.ctx);
 }
-
 
 #if defined(__cplusplus)
 }

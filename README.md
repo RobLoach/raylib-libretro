@@ -18,6 +18,7 @@ raylib-libretro [core] [game]
 | Buttons            | ZX AS QW    |
 | Start              | Enter       |
 | Select             | Right Shift |
+| Toggle Menu        | F1          |
 | Save State         | F2          |
 | Load State         | F4          |
 | Screenshot         | F8          |
@@ -105,35 +106,6 @@ while (!WindowShouldClose()) {
 }
 
 UnloadLibretroShaders();
-```
-
-### Advanced Usage
-
-Load a specific shader with custom parameters:
-
-```c
-ShaderCRTParams params = GetLibretroShaderDefaults(SHADER_CRT).params.crt;
-params.curvatureRadius = 0.6f;
-params.brightness      = 1.2f;
-LibretroShaderState state = LoadLibretroShaderEx(SHADER_CRT, &params);
-```
-
-Tweak parameters at runtime via the active state pointer:
-
-```c
-LibretroShaderState *s = GetActiveLibretroShaderState();
-if (s && s->type == SHADER_GRAYSCALE) {
-    s->params.grayscale.tintColor = (Vector3){ 0.2f, 0.8f, 0.3f }; // Game Boy green
-    UpdateLibretroShader(s, GetFrameTime());
-}
-```
-
-Activate a shader programmatically:
-
-```c
-SetActiveLibretroShader(SHADER_NTSC);
-// display current shader name in UI:
-DrawText(GetLibretroShaderName(GetActiveLibretroShaderType()), 10, 10, 20, WHITE);
 ```
 
 ### API Reference

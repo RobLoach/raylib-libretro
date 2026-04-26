@@ -1346,7 +1346,7 @@ static bool LibretroGetAudioVideo() {
  * Runs an iteration of the libretro core.
  */
 static void UpdateLibretro() {
-    LibretroCore.gameTimeNSEC += (retro_perf_tick_t)(GetFrameTime() * 1000000000.0);
+    LibretroCore.gameTimeNSEC += (retro_perf_tick_t)((double)GetFrameTime() * 1000000000.0);
 
     // Update the game loop timer.
     if (LibretroCore.runloop_frame_time.callback) {

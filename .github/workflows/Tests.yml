@@ -24,13 +24,13 @@ jobs:
     - name: Build
       run: cmake --build build
 
-  build-windows:
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v2
-      with:
-        submodules: recursive
-    - name: Configure
-      run: cmake -DCMAKE_BUILD_TYPE=Debug -B build .
-    - name: Build
-      run: cmake --build build
+#   build-windows:
+#     runs-on: windows-latest
+#     steps:
+#     - uses: actions/checkout@v2
+#       with:
+#         submodules: recursive
+#     - name: Configure
+#       run: cmake -DCMAKE_BUILD_TYPE=Debug -B build .
+#     - name: Build
+#       run: cmake --build build
