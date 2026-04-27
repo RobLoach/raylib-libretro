@@ -18,6 +18,7 @@ raylib-libretro [core] [game]
 | Buttons            | ZX AS QW    |
 | Start              | Enter       |
 | Select             | Right Shift |
+| Rewind             | R           |
 | Toggle Menu        | F1          |
 | Save State         | F2          |
 | Load State         | F4          |
@@ -72,22 +73,6 @@ The [`raylib-libretro-shaders.h`](include/raylib-libretro-shaders.h) header prov
 #define RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
 #include "raylib-libretro-shaders.h"
 ```
-
-### Available Shaders
-
-| Type                    | Name                 | Description                                      |
-| ---                     | ---                  | ---                                              |
-| `SHADER_NONE`           | None                 | Pass-through, no post-processing                 |
-| `SHADER_CRT`            | CRT                  | Barrel distortion, phosphor mask, corner vignette |
-| `SHADER_SCANLINES`      | Scanlines            | Lightweight horizontal scanline overlay          |
-| `SHADER_PIXELATE`       | Pixelate             | Chunky pixel-art block downscale                 |
-| `SHADER_CHROMATIC_ABERR`| Chromatic Aberration | RGB channel split / lens fringing                |
-| `SHADER_VIGNETTE`       | Vignette             | Darkened oval corners                            |
-| `SHADER_BLOOM`          | Bloom                | Additive glow around bright areas                |
-| `SHADER_GRAYSCALE`      | Grayscale            | Monochrome with optional tint                    |
-| `SHADER_LCD_GRID`       | LCD Grid             | Subpixel LCD grid (Game Boy / GBA style)         |
-| `SHADER_NTSC`           | NTSC                 | Composite signal artifacts: chroma bleed, noise  |
-| `SHADER_COLOR_GRADE`    | Color Grade          | Hue, saturation, contrast, brightness, gamma     |
 
 ### Basic Usage
 

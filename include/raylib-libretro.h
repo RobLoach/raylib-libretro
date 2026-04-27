@@ -118,6 +118,7 @@ static inline void* LibretroRiniCalloc(size_t n, size_t sz) {
 #include "../vendor/rini/src/rini.h"
 #undef RINI_LOG
 #define RINI_LOG(...)
+#undef RINI_USE_TEXT_QUOTATION_MARKS
 #endif
 
 #ifdef RAYLIB_LIBRETRO_IMPLEMENTATION

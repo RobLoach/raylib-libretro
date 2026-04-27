@@ -40,14 +40,62 @@
 #define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
 #include "../include/raylib-libretro-menu.h"
 
+#define REWIND_BUFFER_FRAMES 600  // ~10 seconds at 60fps
+
+typedef struct {
+    void* data;
+    unsigned int size;
+} RewindFrame;
+
+typedef struct {
+    RewindFrame frames[REWIND_BUFFER_FRAMES];
+    int head;   // next write index
+    int count;  // number of valid frames stored
+} RewindBuffer;
+
+static void RewindBufferPush(RewindBuffer* rb, void* data, unsigned int size) {
+    int idx = rb->head;
+    if (rb->frames[idx].data != NULL) {
+        MemFree(rb->frames[idx].data);
+    }
+    rb->frames[idx].data = data;
+    rb->frames[idx].size = size;
+    rb->head = (rb->head + 1) % REWIND_BUFFER_FRAMES;
+    if (rb->count < REWIND_BUFFER_FRAMES) rb->count++;
+}
+
+static bool RewindBufferPop(RewindBuffer* rb, void** outData, unsigned int* outSize) {
+    if (rb->count <= 0) return false;
+    rb->head = (rb->head - 1 + REWIND_BUFFER_FRAMES) % REWIND_BUFFER_FRAMES;
+    rb->count--;
+    *outData = rb->frames[rb->head].data;
+    *outSize = rb->frames[rb->head].size;
+    rb->frames[rb->head].data = NULL;
+    rb->frames[rb->head].size = 0;
+    return true;
+}
+
+static void RewindBufferFree(RewindBuffer* rb) {
+    for (int i = 0; i < REWIND_BUFFER_FRAMES; i++) {
+        if (rb->frames[i].data != NULL) {
+            MemFree(rb->frames[i].data);
+            rb->frames[i].data = NULL;
+        }
+    }
+    rb->head = 0;
+    rb->count = 0;
+}
+
 typedef struct {
     LibretroMenu* menu;
+    RewindBuffer rewind;
 } AppData;
 
 bool Init(void** userData, int argc, char** argv) {
     SetWindowMinSize(400, 300);
 
     AppData* data = (AppData*)MemAlloc(sizeof(AppData));
+    memset(data, 0, sizeof(AppData));
     *userData = data;
 
     InitAudioDevice();
@@ -93,6 +141,26 @@ bool UpdateDrawFrame(void* userData) {
 
     // Run a frame of the core.
     if (!data->menu->active) {
+        if (data->menu->rewindEnabled && IsLibretroGameReady()) {
+            if (IsKeyDown(KEY_R)) {
+                void* stateData = NULL;
+                unsigned int stateSize = 0;
+                if (RewindBufferPop(&data->rewind, &stateData, &stateSize)) {
+                    SetLibretroSerializedData(stateData, stateSize);
+                    MemFree(stateData);
+                } else {
+                    ShowLibretroMessage("Rewind limit reached", 1.0f);
+                }
+            } else {
+                unsigned int size = 0;
+                void* state = GetLibretroSerializedData(&size);
+                if (state != NULL) {
+                    RewindBufferPush(&data->rewind, state, size);
+                }
+            }
+        } else if (data->rewind.count > 0) {
+            RewindBufferFree(&data->rewind);
+        }
         UpdateLibretro();
     }
 
@@ -100,6 +168,7 @@ bool UpdateDrawFrame(void* userData) {
 
     // Check if the core or menu asks to be shutdown.
     if (LibretroShouldClose()) {
+        RewindBufferFree(&data->rewind);
         UnloadLibretroGame();
         CloseLibretro();
     }
@@ -113,8 +182,8 @@ bool UpdateDrawFrame(void* userData) {
         ClearBackground(BLACK);
 
         if (data->menu->active) {
-            BeginLibretroShader();
-            DrawLibretroTint(ColorAlpha(WHITE, 0.1f));
+            BeginLibretroShaderGreyscale();
+            DrawLibretro();
             EndShaderMode();
         }
         else {
@@ -186,6 +255,9 @@ void Close(void* userData) {
     if (IsLibretroReady()) {
         SaveLibretroCoreOptions();
     }
+
+    // Free the rewind buffer.
+    RewindBufferFree(&data->rewind);
 
     // Unload the game and close the core.
     UnloadLibretroGame();
