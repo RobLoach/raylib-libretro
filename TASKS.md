@@ -14,6 +14,7 @@
 
 ## Tasks
 
+- [ ] Move rini dependency to just bin/raylib-libretro.c
 - [ ] `raylib-libretro.h` documentation
 - [ ] Doxygen
 - [ ] Clean up Shader API to be a family of applicable shaders
@@ -25,7 +26,7 @@
 
 - [ ] Save state slots (multiple named saves per game)
 - [ ] SRAM / battery save auto-save on exit
-- [ ] Rewind support (`retro_serialize` API)
+- [x] Rewind support (`retro_serialize` API)
 - [ ] Fast-forward / slow-motion toggle
 - [ ] Turbo button support
 - [ ] Cheats support (libretro cheat interface)

@@ -109,15 +109,19 @@ static inline void* LibretroRiniCalloc(size_t n, size_t sz) {
     if (p) memset(p, 0, n * sz);
     return p;
 }
-#define RINI_MAX_KEY_SIZE       300
-#define RINI_MAX_TEXT_SIZE      256
-#define RINI_MAX_VALUE_CAPACITY 200
+#define RINI_MAX_TEXT_FILE_SIZE 16384
+#define RINI_MAX_KEY_SIZE       512
+#define RINI_MAX_TEXT_SIZE       512
+#define RINI_MAX_VALUE_CAPACITY 512
+#define RINI_MAX_DESC_SIZE 3
+#define RINI_MAX_LINE_SIZE RINI_MAX_KEY_SIZE + RINI_MAX_TEXT_SIZE + RINI_MAX_DESC_SIZE + 2
 #define RINI_MALLOC(sz)    MemAlloc((unsigned int)(sz))
 #define RINI_CALLOC(n,sz)  LibretroRiniCalloc(n, sz)
 #define RINI_FREE(p)       MemFree(p)
 #include "../vendor/rini/src/rini.h"
 #undef RINI_LOG
 #define RINI_LOG(...)
+#undef RINI_USE_TEXT_QUOTATION_MARKS
 #endif
 
 #ifdef RAYLIB_LIBRETRO_IMPLEMENTATION
@@ -148,11 +152,11 @@ static inline void* LibretroRiniCalloc(size_t n, size_t sz) {
 // Single-sample accumulation buffer size (stereo frames)
 #define LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
 // Core options/variables storage limits
-#define LIBRETRO_MAX_CORE_VARIABLES 128
-#define LIBRETRO_CORE_VARIABLE_KEY_LEN 64
-#define LIBRETRO_CORE_VARIABLE_VALUE_LEN 256
-#define LIBRETRO_CORE_VARIABLE_LABEL_LEN 128   // human-readable option name
-#define LIBRETRO_CORE_VARIABLE_VALUES_LEN 512   // pipe-separated list of valid values
+#define LIBRETRO_MAX_CORE_VARIABLES RINI_MAX_VALUE_CAPACITY
+#define LIBRETRO_CORE_VARIABLE_KEY_LEN RINI_MAX_KEY_SIZE
+#define LIBRETRO_CORE_VARIABLE_VALUE_LEN RINI_MAX_TEXT_SIZE
+#define LIBRETRO_CORE_VARIABLE_LABEL_LEN RINI_MAX_KEY_SIZE   // human-readable option name
+#define LIBRETRO_CORE_VARIABLE_VALUES_LEN RINI_MAX_TEXT_SIZE   // pipe-separated list of valid values
 #define LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN 256  // option info/description text
 
 // Shared config file used by SaveLibretroCoreOptions / LoadLibretroCoreOptions.
@@ -333,12 +337,12 @@ static const char *GetLibretroCoreOption(const char *key) {
 static bool SaveLibretroCoreOptions(void) {
     if (LibretroCore.variableCount == 0) return false;
     const char *coreName = LibretroCore.libraryName;
+    static char key[RINI_MAX_LINE_SIZE];
     if (!coreName) return false;
 
     rini_data data = rini_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
     for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-        char key[RINI_MAX_KEY_SIZE] = {0};
-        snprintf(key, sizeof(key), "%s.%s", coreName, LibretroCore.variableKeys[i]);
+        snprintf(key, sizeof(key), "%s_%s", coreName, LibretroCore.variableKeys[i]);
         rini_set_value_text(&data, key, LibretroCore.variableValues[i], NULL);
     }
     rini_save(data, RAYLIB_LIBRETRO_CFG_FILE);
@@ -350,8 +354,8 @@ static bool SaveLibretroCoreOptions(void) {
 static bool LoadLibretroCoreOptions(void) {
     if (!FileExists(RAYLIB_LIBRETRO_CFG_FILE)) return false;
     const char *coreName = LibretroCore.libraryName;
-    char prefix[RINI_MAX_KEY_SIZE] = {0};
-    snprintf(prefix, sizeof(prefix), "%s.", coreName);
+    static char prefix[RINI_MAX_KEY_SIZE] = {0};
+    snprintf(prefix, sizeof(prefix), "%s_", coreName);
     unsigned prefixLen = (unsigned)strlen(prefix);
 
     rini_data data = rini_load(RAYLIB_LIBRETRO_CFG_FILE);

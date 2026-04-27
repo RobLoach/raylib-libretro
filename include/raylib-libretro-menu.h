@@ -62,6 +62,7 @@ typedef struct LibretroMenu {
     int shaderSelectedIndex;
     int themeSelectedIndex;
     float volumeSelected;
+    bool rewindEnabled;
     int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
     nk_bool optionCheckboxValues[128];    // per-option checkbox state for enabled/disabled options
 } LibretroMenu;
@@ -143,10 +144,11 @@ void SetLibretroMenuStyle(LibretroMenuStyle style) {
         return;
     }
 
-    struct nk_color table[NK_COLOR_COUNT];
     switch (style) {
-        case LIBRETRO_MENU_STYLE_DRACULA:{
-            struct nk_color background = nk_rgba(40, 42, 54, 200);
+        case LIBRETRO_MENU_STYLE_DRACULA: {
+            struct nk_color table[NK_COLOR_COUNT];
+            nk_style_default(menu.ctx);
+            struct nk_color background = nk_rgba(40, 42, 54, 235);
             struct nk_color currentline = nk_rgba(68, 71, 90, 255);
             struct nk_color foreground = nk_rgba(248, 248, 242, 255);
             struct nk_color comment = nk_rgba(98, 114, 164, 255);
@@ -193,9 +195,10 @@ void SetLibretroMenuStyle(LibretroMenuStyle style) {
             break;
         }
         case LIBRETRO_MENU_STYLE_DEFAULT:
-        default:
+        default: {
             nk_style_default(menu.ctx);
             break;
+        }
     }
 }
 
@@ -328,6 +331,10 @@ LibretroMenu* InitLibretroMenu(void) {
         // Volume
         nk_console* volume = nk_console_slider_float(settings, "Volume", 0.0f, &menu.volumeSelected, 1.0f, 0.1f);
         nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
+        // Rewind
+        nk_console* rewind = nk_console_checkbox(settings, "Rewind", &menu.rewindEnabled);
+        nk_console_add_event_handler(rewind, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
     }
 
     // Core Options
@@ -488,6 +495,7 @@ bool SaveLibretroMenuSettings(void) {
     rini_set_value(&data, "shader", menu.shaderSelectedIndex, NULL);
     rini_set_value(&data, "theme", menu.themeSelectedIndex, NULL);
     rini_set_value(&data, "volume", (int)(menu.volumeSelected * 100.0f), NULL);
+    rini_set_value(&data, "rewind", menu.rewindEnabled ? 1 : 0, NULL);
     rini_save(data, RAYLIB_LIBRETRO_CFG_FILE);
     rini_unload(&data);
     TraceLog(LOG_INFO, "MENU: Saved menu settings to %s", RAYLIB_LIBRETRO_CFG_FILE);
@@ -522,6 +530,9 @@ bool LoadLibretroMenuSettings(void) {
     menu.volumeSelected = volumeInt / 100.0f;
     SetLibretroVolume(menu.volumeSelected);
 
+    // Rewind
+    menu.rewindEnabled = rini_get_value(data, "rewind") > 0;
+
     rini_unload(&data);
     TraceLog(LOG_INFO, "MENU: Loaded menu settings from %s", RAYLIB_LIBRETRO_CFG_FILE);
     return true;
@@ -532,7 +543,7 @@ void CloseLibretroMenu(void) {
         return;
     }
 
-
+    // Clear out the gamepad system.
     nk_gamepad_free(nk_console_get_gamepads(menu.console));
 
     if (menu.console != NULL) {

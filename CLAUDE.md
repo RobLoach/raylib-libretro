@@ -35,8 +35,6 @@ raylib-libretro/
 ├── lib/
 │   ├── CMakeLists.txt
 │   └── raylib-libretro-static.c  # Thin wrapper for static library target
-├── src/
-│   └── screenshot.png
 ├── vendor/                        # Git submodules (see Dependencies)
 ├── CMakeLists.txt                 # Root build config
 ├── LICENSE
