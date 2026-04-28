@@ -245,7 +245,7 @@ All dependencies are git submodules in `vendor/`:
 | `nuklear_gamepad` | Gamepad input for Nuklear |
 | `c-vector` | Dynamic array / vector utility |
 | `raylib-app` | App framework wrapper (Init/UpdateDrawFrame/Cleanup lifecycle) |
-| `rini` | Loading and saving configuration in an ini-like format |
+| `hashmap` | Type-safe string-keyed hash map backing `raylib-libretro-config.h` |
 
 Always run `git submodule update --init` after cloning or switching branches.
 

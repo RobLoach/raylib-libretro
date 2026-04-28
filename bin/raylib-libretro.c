@@ -31,6 +31,9 @@
 #define RAYLIB_APP_IMPLEMENTATION
 #include "raylib-app.h"
 
+#define RAYLIB_LIBRETRO_CONFIG_IMPLEMENTATION
+#include "raylib-libretro-config.h"
+
 #define RAYLIB_LIBRETRO_IMPLEMENTATION
 #include "raylib-libretro.h"
 
@@ -199,7 +202,7 @@ bool UpdateDrawFrame(void* userData) {
 
     // Fullscreen
     if (IsKeyReleased(KEY_F11)) {
-        ToggleFullscreen();
+        LibretroMenuFullscreenChanged(menu.console, NULL);
     }
 
     // Screenshot
@@ -219,30 +222,12 @@ bool UpdateDrawFrame(void* userData) {
 
     // Save State
     else if (IsKeyReleased(KEY_F2)) {
-        unsigned int size;
-        void* saveData = GetLibretroSerializedData(&size);
-        if (saveData != NULL) {
-            SaveFileData(TextFormat("save_%s.sav", GetLibretroName()), saveData, (int)size);
-            MemFree(saveData);
-            ShowLibretroMessage("State Saved", 2.0f);
-        }
-        else {
-            ShowLibretroMessage("Save State Failed", 2.0f);
-        }
+        LibretroMenuSaveStateClicked(menu.console, NULL);
     }
 
     // Load State
     else if (IsKeyReleased(KEY_F4)) {
-        int dataSize;
-        void* saveData = LoadFileData(TextFormat("save_%s.sav", GetLibretroName()), &dataSize);
-        if (saveData != NULL) {
-            SetLibretroSerializedData(saveData, (unsigned int)dataSize);
-            MemFree(saveData);
-            ShowLibretroMessage("State Loaded", 2.0f);
-        }
-        else {
-            ShowLibretroMessage("Load State Failed", 2.0f);
-        }
+        LibretroMenuLoadStateClicked(menu.console, NULL);
     }
 
     return true;
@@ -251,10 +236,8 @@ bool UpdateDrawFrame(void* userData) {
 void Close(void* userData) {
     AppData* data = (AppData*)userData;
 
-    // Save core options before closing.
-    if (IsLibretroReady()) {
-        SaveLibretroCoreOptions();
-    }
+    // Save all settings in one pass before closing.
+    SaveLibretroAllSettings();
 
     // Free the rewind buffer.
     RewindBufferFree(&data->rewind);

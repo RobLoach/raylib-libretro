@@ -576,7 +576,6 @@ void CycleLibretroShaderReverse(void) {
 
 void SetActiveLibretroShader(LibretroShaderType type) {
     rlsh_current = type;
-    TraceLog(LOG_INFO, "LIBRETRO: Shader: %s", GetLibretroShaderName(rlsh_current));
 }
 
 LibretroShaderType GetActiveLibretroShaderType(void) {

@@ -76,8 +76,6 @@ static void SetLibretroVolume(float volume);             // Set the audio volume
 static float GetLibretroVolume();                        // Get the current audio volume.
 static bool SetLibretroCoreOption(const char* key, const char* value);  // Set a core option by key.
 static const char* GetLibretroCoreOption(const char* key);              // Get a core option value by key. Returns NULL if not found.
-static bool SaveLibretroCoreOptions(void);  // Save current core's options to raylib-libretro.cfg (prefixed by core name).
-static bool LoadLibretroCoreOptions(void);  // Load current core's options from raylib-libretro.cfg.
 static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
 static bool SetLibretroSerializedData(void* data, unsigned int size);
 static void ShowLibretroMessage(const char* msg, float duration); // Show an OSD message for the given duration in seconds.
@@ -102,37 +100,9 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 
 #include "raylib-libretro-vfs.h"
 
-#ifndef RAYLIB_LIBRETRO_RINI_CONFIGURED
-#define RAYLIB_LIBRETRO_RINI_CONFIGURED
-static inline void* LibretroRiniCalloc(size_t n, size_t sz) {
-    void* p = MemAlloc((unsigned int)(n * sz));
-    if (p) memset(p, 0, n * sz);
-    return p;
-}
-#define RINI_MAX_TEXT_FILE_SIZE 16384
-#define RINI_MAX_KEY_SIZE       512
-#define RINI_MAX_TEXT_SIZE       512
-#define RINI_MAX_VALUE_CAPACITY 512
-#define RINI_MAX_DESC_SIZE 3
-#define RINI_MAX_LINE_SIZE RINI_MAX_KEY_SIZE + RINI_MAX_TEXT_SIZE + RINI_MAX_DESC_SIZE + 2
-#define RINI_MALLOC(sz)    MemAlloc((unsigned int)(sz))
-#define RINI_CALLOC(n,sz)  LibretroRiniCalloc(n, sz)
-#define RINI_FREE(p)       MemFree(p)
-#include "../vendor/rini/src/rini.h"
-#undef RINI_LOG
-#define RINI_LOG(...)
-#undef RINI_USE_TEXT_QUOTATION_MARKS
-#endif
-
 #ifdef RAYLIB_LIBRETRO_IMPLEMENTATION
 #ifndef RAYLIB_LIBRETRO_IMPLEMENTATION_ONCE
 #define RAYLIB_LIBRETRO_IMPLEMENTATION_ONCE
-
-#ifndef RAYLIB_LIBRETRO_RINI_COMPILED
-#define RAYLIB_LIBRETRO_RINI_COMPILED
-#define RINI_IMPLEMENTATION
-#include "../vendor/rini/src/rini.h"
-#endif
 
 // System dependencies
 #include <string.h>
@@ -152,12 +122,12 @@ static inline void* LibretroRiniCalloc(size_t n, size_t sz) {
 // Single-sample accumulation buffer size (stereo frames)
 #define LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
 // Core options/variables storage limits
-#define LIBRETRO_MAX_CORE_VARIABLES RINI_MAX_VALUE_CAPACITY
-#define LIBRETRO_CORE_VARIABLE_KEY_LEN RINI_MAX_KEY_SIZE
-#define LIBRETRO_CORE_VARIABLE_VALUE_LEN RINI_MAX_TEXT_SIZE
-#define LIBRETRO_CORE_VARIABLE_LABEL_LEN RINI_MAX_KEY_SIZE   // human-readable option name
-#define LIBRETRO_CORE_VARIABLE_VALUES_LEN RINI_MAX_TEXT_SIZE   // pipe-separated list of valid values
-#define LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN 256  // option info/description text
+#define LIBRETRO_MAX_CORE_VARIABLES      512
+#define LIBRETRO_CORE_VARIABLE_KEY_LEN   512
+#define LIBRETRO_CORE_VARIABLE_VALUE_LEN 512
+#define LIBRETRO_CORE_VARIABLE_LABEL_LEN 512
+#define LIBRETRO_CORE_VARIABLE_VALUES_LEN 512
+#define LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN 256
 
 // Shared config file used by SaveLibretroCoreOptions / LoadLibretroCoreOptions.
 // Keys are prefixed with the core name: "CoreName.key=value"
@@ -232,6 +202,8 @@ typedef struct rLibretro {
 
     // Raylib objects used to play the libretro core.
     Texture texture;
+    bool textureRebuild;
+    int textureFilter; // TextureFilter
 
     // Pre-allocated frame conversion buffer (avoids per-frame MemAlloc).
     void *frameBuffer;
@@ -334,43 +306,6 @@ static const char *GetLibretroCoreOption(const char *key) {
     return LibretroGetCoreVariable(key);
 }
 
-static bool SaveLibretroCoreOptions(void) {
-    if (LibretroCore.variableCount == 0) return false;
-    const char *coreName = LibretroCore.libraryName;
-    static char key[RINI_MAX_LINE_SIZE];
-    if (!coreName) return false;
-
-    rini_data data = rini_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
-    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-        snprintf(key, sizeof(key), "%s_%s", coreName, LibretroCore.variableKeys[i]);
-        rini_set_value_text(&data, key, LibretroCore.variableValues[i], NULL);
-    }
-    rini_save(data, RAYLIB_LIBRETRO_CFG_FILE);
-    rini_unload(&data);
-    TraceLog(LOG_INFO, "LIBRETRO: Saved core options to %s", RAYLIB_LIBRETRO_CFG_FILE);
-    return true;
-}
-
-static bool LoadLibretroCoreOptions(void) {
-    if (!FileExists(RAYLIB_LIBRETRO_CFG_FILE)) return false;
-    const char *coreName = LibretroCore.libraryName;
-    static char prefix[RINI_MAX_KEY_SIZE] = {0};
-    snprintf(prefix, sizeof(prefix), "%s_", coreName);
-    unsigned prefixLen = (unsigned)strlen(prefix);
-
-    rini_data data = rini_load(RAYLIB_LIBRETRO_CFG_FILE);
-    int loaded = 0;
-    for (unsigned i = 0; i < data.count; i++) {
-        if (strncmp(data.values[i].key, prefix, prefixLen) == 0) {
-            const char *key = data.values[i].key + prefixLen;
-            if (SetLibretroCoreOption(key, data.values[i].text)) loaded++;
-        }
-    }
-    rini_unload(&data);
-    TraceLog(LOG_INFO, "LIBRETRO: Loaded %d core option(s) from %s", loaded, RAYLIB_LIBRETRO_CFG_FILE);
-    return loaded > 0;
-}
-
 static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
     int type = LibretroMapRetroLogLevelToTraceLogType(level);
 
@@ -395,26 +330,40 @@ static void LibretroInitAudio();  // Forward declaration.
 
 static void LibretroInitVideo() {
     // Unload the existing texture if it exists already.
-    UnloadTexture(LibretroCore.texture);
+    if (IsTextureValid(LibretroCore.texture)) {
+        UnloadTexture(LibretroCore.texture);
+        LibretroCore.texture.id = 0;
+    }
 
     // Build the rendering image.
+    if (LibretroCore.width == 0 || LibretroCore.height == 0) {
+        return;
+    }
+
     Image image = GenImageColor(LibretroCore.width, LibretroCore.height, BLACK);
+    if (!IsImageValid(image)) {
+        return;
+    }
     ImageFormat(&image, LibretroMapRetroPixelFormatToPixelFormat(LibretroCore.pixelFormat));
 
     // Create the texture.
     LibretroCore.texture = LoadTextureFromImage(image);
-    SetTextureFilter(LibretroCore.texture, TEXTURE_FILTER_POINT);
-
-    // We don't need the image anymore.
     UnloadImage(image);
+    if (!IsTextureValid(LibretroCore.texture)) {
+        return;
+    }
+
+    SetTextureFilter(LibretroCore.texture, LibretroCore.textureFilter);
 
     // (Re-)allocate the frame conversion buffer sized for XRGB8888→RGBA8888 (worst case).
     size_t needed = (size_t)GetPixelDataSize(LibretroCore.width, LibretroCore.height, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
-    if (needed > LibretroCore.frameBufferSize) {
+    if (LibretroCore.frameBuffer != NULL) {
         MemFree(LibretroCore.frameBuffer);
-        LibretroCore.frameBuffer = MemAlloc(needed);
-        LibretroCore.frameBufferSize = needed;
     }
+    LibretroCore.frameBuffer = MemAlloc(needed);
+    LibretroCore.frameBufferSize = needed;
+
+    LibretroCore.textureRebuild = false;
 }
 
 /**
@@ -883,6 +832,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 LibretroCore.height,
                 LibretroCore.aspectRatio
             );
+            LibretroCore.textureRebuild = true;
             return true;
         }
 
@@ -1351,6 +1301,10 @@ static bool LibretroGetAudioVideo() {
  * Runs an iteration of the libretro core.
  */
 static void UpdateLibretro() {
+    if (LibretroCore.textureRebuild) {
+        LibretroInitVideo();
+    }
+
     LibretroCore.gameTimeNSEC += (retro_perf_tick_t)((double)GetFrameTime() * 1000000000.0);
 
     // Update the game loop timer.
@@ -1429,7 +1383,6 @@ static void UpdateLibretro() {
             }
         }
     }
-
 }
 
 /**
@@ -2061,6 +2014,8 @@ static void ShowLibretroMessage(const char* msg, float duration) {
 }
 
 static void SetLibretroVolume(float volume) {
+    if (volume < 0) volume = 0.0f;
+    else if (volume > 1.0f) volume = 1.0f;
     LibretroCore.volume = volume;
     SetAudioStreamVolume(LibretroCore.audioStream, volume);
 }
