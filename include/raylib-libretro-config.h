@@ -122,7 +122,7 @@ static void rlconfig_clear_section(RLibretroConfig *cfg, const char *section) {
     /* Stable partition: keep non-matching entries, free matching ones. */
     size_t write = 0;
     for (size_t i = 0; i < cvector_size(cfg->entries); i++) {
-        if (strcmp(cfg->entries[i]->section, section) == 0) {
+        if (TextIsEqual(cfg->entries[i]->section, section)) {
             MemFree(cfg->entries[i]);
         } else {
             cfg->entries[write++] = cfg->entries[i];
@@ -187,9 +187,7 @@ static int rlconfig_get_int(RLibretroConfig *cfg, const char *section,
                              const char *key, int fallback) {
     const char *v = rlconfig_get(cfg, section, key);
     if (!v || !v[0]) return fallback;
-    int result = fallback;
-    sscanf(v, "%d", &result);
-    return result;
+    return TextToInteger(v);
 }
 
 /* Trim leading and trailing ASCII whitespace in-place. */
@@ -197,8 +195,8 @@ static void RLibretroConfigTrim(char *s) {
     char *start = s;
     while (*start == ' ' || *start == '\t' || *start == '\r' || *start == '\n')
         start++;
-    if (start != s) memmove(s, start, strlen(start) + 1);
-    size_t len = strlen(s);
+    if (start != s) memmove(s, start, TextLength(start) + 1);
+    unsigned int len = TextLength(s);
     while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\t' ||
                        s[len-1] == '\r' || s[len-1] == '\n')) {
         s[--len] = '\0';
@@ -212,13 +210,20 @@ static RLibretroConfig* rlconfig_load(const char *filename) {
 
     if (!filename) return cfg;
 
-    FILE *f = fopen(filename, "r");
-    if (!f) return cfg;
+    char *text = LoadFileText(filename);
+    if (!text) return cfg;
 
     char line[RLCONFIG_LINE_MAX];
     char section[RLCONFIG_SECTION_MAX] = {0};
+    const char *p = text;
 
-    while (fgets(line, sizeof(line), f)) {
+    while (*p) {
+        int i = 0;
+        while (*p && *p != '\n' && i < RLCONFIG_LINE_MAX - 1)
+            line[i++] = *p++;
+        if (*p == '\n') p++;
+        line[i] = '\0';
+
         RLibretroConfigTrim(line);
 
         /* Skip blank lines and comments */
@@ -248,7 +253,7 @@ static RLibretroConfig* rlconfig_load(const char *filename) {
         if (k[0] != '\0') rlconfig_set(cfg, section, k, v);
     }
 
-    fclose(f);
+    UnloadFileText(text);
     return cfg;
 }
 
@@ -264,7 +269,7 @@ static bool rlconfig_save(RLibretroConfig *cfg, const char *filename) {
         const char *sec = cfg->entries[i]->section;
         bool found = false;
         for (size_t s = 0; s < cvector_size(sections); s++) {
-            if (strcmp(sections[s], sec) == 0) { found = true; break; }
+            if (TextIsEqual(sections[s], sec)) { found = true; break; }
         }
         if (!found) cvector_push_back(sections, sec);
     }
@@ -273,7 +278,7 @@ static bool rlconfig_save(RLibretroConfig *cfg, const char *filename) {
     for (size_t s = 0; s < cvector_size(sections); s++) {
         fprintf(f, "[%s]\n", sections[s]);
         for (size_t i = 0; i < cvector_size(cfg->entries); i++) {
-            if (strcmp(cfg->entries[i]->section, sections[s]) == 0) {
+            if (TextIsEqual(cfg->entries[i]->section, sections[s])) {
                 fprintf(f, "%s=%s\n", cfg->entries[i]->key, cfg->entries[i]->value);
             }
         }
