@@ -1,6 +1,6 @@
 /**********************************************************************************************
 *
-*   raylib-libretro-basic - A basic example of using raylib-libretro.h with Raylib.
+*   raylib-libretro-basic - A basic example of using raylib-libretro.h.
 *
 *   LICENSE: zlib/libpng
 *
@@ -39,15 +39,27 @@ int main(int argc, char* argv[]) {
     }
 
     // Create the window and audio.
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(800, 600, "raylib-libretro - basic window");
     InitAudioDevice();
 
     // Initialize the given core.
-    InitLibretro(argv[1]);
+    if (!InitLibretro(argv[1])) {
+        TraceLog(LOG_ERROR, "Failed to initialize libretro core");
+        CloseAudioDevice();
+        CloseWindow();
+        return 1;
+    }
 
     // Load the given game.
     const char* gameFile = (argc > 2) ? argv[2] : NULL;
-    LoadLibretroGame(gameFile);
+    if (!LoadLibretroGame(gameFile)) {
+        TraceLog(LOG_ERROR, "Failed to initialize libretro content");
+        CloseLibretro();
+        CloseAudioDevice();
+        CloseWindow();
+        return 1;
+    }
 
     while (!WindowShouldClose() && !LibretroShouldClose()) {
         // Run a frame of the core.
@@ -62,7 +74,7 @@ int main(int argc, char* argv[]) {
         EndDrawing();
     }
 
-    // Unload the game and close the core.
+    // Unload the game first, and then close the core.
     UnloadLibretroGame();
     CloseLibretro();
 

@@ -2,11 +2,37 @@
     path = vendor/libretro-common
     url = https://github.com/libretro/libretro-common.git
     ignore = dirty
+    branch = master
 [submodule "vendor/raylib"]
     path = vendor/raylib
     url = https://github.com/raysan5/raylib.git
     ignore = dirty
-[submodule "vendor/raygui"]
-	path = vendor/raygui
-	url = https://github.com/raysan5/raygui.git
+    branch = master
+[submodule "vendor/nuklear_console"]
+	path = vendor/nuklear_console
+	url = https://github.com/RobLoach/nuklear_console.git
     ignore = dirty
+    branch = master
+[submodule "vendor/nuklear_gamepad"]
+	path = vendor/nuklear_gamepad
+	url = https://github.com/RobLoach/nuklear_gamepad.git
+    ignore = dirty
+    branch = master
+[submodule "vendor/raylib-nuklear"]
+	path = vendor/raylib-nuklear
+	url = https://github.com/RobLoach/raylib-nuklear.git
+    ignore = dirty
+    branch = master
+[submodule "vendor/c-vector"]
+	path = vendor/c-vector
+	url = https://github.com/eteran/c-vector.git
+    ignore = dirty
+    branch = master
+[submodule "vendor/raylib-app"]
+	path = vendor/raylib-app
+	url = https://github.com/RobLoach/raylib-app
+    ignore = dirty
+    branch = master
+[submodule "vendor/hashmap"]
+	path = vendor/hashmap
+	url = git@github.com:RolandMarchand/hashmap.h.git
