@@ -60,40 +60,22 @@ bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
     bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib ~/Desktop/smb.nes
     ```
 
-## Contributors
-
-- [Konsumer](https://github.com/konsumer)
-- [MikeDX](https://github.com/MikeDX) and [libretro-raylib](https://github.com/MikeDX/libretro-raylib)
-
-## Shaders
-
-The [`raylib-libretro-shaders.h`](include/raylib-libretro-shaders.h) header provides a family of retro post-process shaders. Include it with the implementation defined in one translation unit:
+## Basic Usage
 
 ```c
-#define RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
-#include "raylib-libretro-shaders.h"
-```
-
-### Basic Usage
-
-```c
-LoadLibretroShaders();                        // load all shaders with defaults
-
+InitLibretro("snes9x.so");
+LoadLibretroGame("mario.rom");
 while (!WindowShouldClose()) {
-    UpdateLibretroShaders(GetFrameTime());    // cycle with F10/F9, update uniforms
-
+    UpdateLibretro();
     BeginDrawing();
         ClearBackground(BLACK);
-        BeginLibretroShader();
-            DrawLibretro();
-        EndLibretroShader();
+        DrawLibretro();
     EndDrawing();
 }
-
-UnloadLibretroShaders();
+CloseLibretro();
 ```
 
-### API Reference
+## API Reference
 
 | Function | Description |
 | --- | --- |
@@ -126,6 +108,11 @@ Use clang-format to apply coding standards...
 ```c
 clang-format -i *.h
 ```
+
+## Contributors
+
+- [Konsumer](https://github.com/konsumer)
+- [MikeDX](https://github.com/MikeDX) and [libretro-raylib](https://github.com/MikeDX/libretro-raylib)
 
 ## License
 
