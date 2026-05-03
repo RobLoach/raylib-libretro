@@ -207,9 +207,10 @@ bool UpdateDrawFrame(void* userData) {
 
     // Screenshot
     else if (IsKeyReleased(KEY_F8)) {
+        const char* screenshotsDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
         const char* screenshotName = NULL;
         for (int i = 1; i < 1000; i++) {
-            screenshotName = TextFormat("screenshot-%i.png", i);
+            screenshotName = TextFormat("%s/screenshot-%i.png", screenshotsDir, i);
             if (!FileExists(screenshotName)) {
                 TakeScreenshot(screenshotName);
                 break;
