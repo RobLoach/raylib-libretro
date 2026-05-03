@@ -53,7 +53,7 @@ bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
 
 ### Mac OSX
 
-- Make sure you have you have cmake/xcode-cli-tools installed
+- Make sure you have you have `cmake/xcode-cli-tools` installed
 - Run the above compile instructions
 - After installing RetroArch and some cores, you should be able to run the below:
     ```bash
@@ -63,8 +63,8 @@ bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
 ## Basic Usage
 
 ```c
-InitLibretro("snes9x.so");
-LoadLibretroGame("mario.rom");
+InitLibretro("fceumm.so");
+LoadLibretroGame("mario.nes");
 while (!WindowShouldClose()) {
     UpdateLibretro();
     BeginDrawing();
@@ -77,25 +77,39 @@ CloseLibretro();
 
 ## API Reference
 
-| Function | Description |
-| --- | --- |
-| `GetLibretroShaderCode(type)` | Returns the embedded GLSL source for the given type |
-| `GetLibretroShaderDefaults(type)` | Returns a state populated with default parameters |
-| `GetLibretroShaderName(type)` | Returns the display name (`"CRT"`, `"None"`, etc.) |
-| `LoadLibretroShader(type)` | Compile shader with defaults |
-| `LoadLibretroShaderEx(type, params)` | Compile shader with custom params |
-| `UpdateLibretroShader(state, dt)` | Re-upload uniforms, accumulate time |
-| `UnloadLibretroShader(state)` | Free GPU resource |
-| `LoadLibretroShaders()` | Load all shaders with defaults |
-| `UnloadLibretroShaders()` | Unload all shader GPU resources |
-| `UpdateLibretroShaders(dt)` | Update active shader; F10 = next, F9 = previous |
-| `CycleLibretroShader()` | Advance to next shader type |
-| `CycleLibretroShaderReverse()` | Go back to previous shader type |
-| `SetActiveLibretroShader(type)` | Activate a specific shader |
-| `GetActiveLibretroShaderType()` | Returns the active `LibretroShaderType` |
-| `GetActiveLibretroShaderState()` | Returns mutable pointer to active state, or NULL |
-| `BeginLibretroShader()` | Begin shader mode (no-op when `SHADER_NONE`) |
-| `EndLibretroShader()` | End shader mode (no-op when `SHADER_NONE`) |
+``` c
+static bool InitLibretro(const char* core);
+static bool LoadLibretroGame(const char* gameFile);
+static bool IsLibretroReady();
+static bool IsLibretroGameReady();
+static void UpdateLibretro();
+static bool LibretroShouldClose();
+static void DrawLibretro();
+static void DrawLibretroTint(Color tint);
+static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint);
+static void DrawLibretroV(Vector2 position, Color tint);
+static void DrawLibretroTexture(int posX, int posY, Color tint);
+static void DrawLibretroPro(Rectangle destRec, Color tint);
+static const char* GetLibretroName();
+static const char* GetLibretroVersion();
+static unsigned GetLibretroWidth();
+static unsigned GetLibretroHeight();
+static unsigned GetLibretroRotation();
+static Texture2D GetLibretroTexture();
+static bool DoesLibretroCoreNeedContent();
+static void ResetLibretro();
+static void UnloadLibretroGame();
+static void CloseLibretro();
+static void SetLibretroVolume(float volume);
+static float GetLibretroVolume();
+static bool SetLibretroCoreOption(const char* key, const char* value);
+static const char* GetLibretroCoreOption(const char* key);
+static void* GetLibretroSerializedData(unsigned int* size);
+static bool SetLibretroSerializedData(void* data, unsigned int size);
+static void ShowLibretroMessage(const char* msg, float duration);
+static bool DrawLibretroMessage();
+static const char* GetLibretroDirectory(int directory);
+```
 
 ## Development
 
