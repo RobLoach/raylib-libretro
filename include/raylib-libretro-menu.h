@@ -235,7 +235,9 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
     unsigned int size;
     void* saveData = GetLibretroSerializedData(&size);
     if (saveData != NULL) {
-        SaveFileData(TextFormat("save_%s.sav", GetLibretroName()), saveData, (int)size);
+        const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
+        // TODO: Add the content name in here if applicable too.
+        SaveFileData(TextFormat("%s/save_%s.sav", savesDir, GetLibretroName()), saveData, (int)size);
         MemFree(saveData);
         ShowLibretroMessage("State Saved", 2.0f);
         menu.active = false;
@@ -256,7 +258,9 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     (void)user_data;
     if (!IsLibretroGameReady()) return;
     int dataSize;
-    void* saveData = LoadFileData(TextFormat("save_%s.sav", GetLibretroName()), &dataSize);
+    const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
+    // TODO: Add the libretro content name in here too.
+    void* saveData = LoadFileData(TextFormat("%s/save_%s.sav", savesDir, GetLibretroName()), &dataSize);
     if (saveData != NULL) {
         SetLibretroSerializedData(saveData, (unsigned int)dataSize);
         MemFree(saveData);
@@ -354,6 +358,28 @@ LibretroMenu* InitLibretroMenu(void) {
         // Rewind
         nk_console* rewind = nk_console_checkbox(settings, "Rewind", &menu.rewindEnabled);
         nk_console_add_event_handler(rewind, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
+        // Directories
+        nk_console* directoryTree = nk_console_tree(settings, "Directories", nk_true);
+        {
+            nk_console* libretroDirectory = nk_console_dir(directoryTree, "Cores", LibretroCore.libretroDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(libretroDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
+            nk_console* saveDirectory = nk_console_dir(directoryTree, "Saves", LibretroCore.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(saveDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
+            nk_console* coreAssetsDirectory = nk_console_dir(directoryTree, "Assets", LibretroCore.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(coreAssetsDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
+            nk_console* systemDirectory = nk_console_dir(directoryTree, "System", LibretroCore.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(systemDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
+            nk_console* playlistsDirectory = nk_console_dir(directoryTree, "Playlists", LibretroCore.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(playlistsDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
+            nk_console* fileBrowserStartDirectory = nk_console_dir(directoryTree, "Content", LibretroCore.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+        }
     }
 
     // Core Options
@@ -517,6 +543,12 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "volume", (int)(menu.volumeSelected * 100.0f));
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
+    rlconfig_set(menu.cfg, "raylib-libretro", "libretroDirectory", LibretroCore.libretroDirectory);
+    rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroCore.saveDirectory);
+    rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroCore.coreAssetsDirectory);
+    rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroCore.systemDirectory);
+    rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroCore.playlistsDirectory);
+    rlconfig_set(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory", LibretroCore.fileBrowserStartDirectory);
 #endif
 }
 
@@ -615,6 +647,19 @@ static bool LoadLibretroMenuSettings(void) {
     SetLibretroVolume(menu.volumeSelected);
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
+
+    const char* libretroDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "libretroDirectory");
+    if (libretroDirectory) TextCopy(LibretroCore.libretroDirectory, libretroDirectory);
+    const char* saveDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "saveDirectory");
+    if (saveDirectory) TextCopy(LibretroCore.saveDirectory, saveDirectory);
+    const char* coreAssetsDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreAssetsDirectory");
+    if (coreAssetsDirectory) TextCopy(LibretroCore.coreAssetsDirectory, coreAssetsDirectory);
+    const char* systemDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "gamesDirectory");
+    if (systemDirectory) TextCopy(LibretroCore.systemDirectory, systemDirectory);
+    const char* playlistsDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "playlistsDirectory");
+    if (playlistsDirectory) TextCopy(LibretroCore.playlistsDirectory, playlistsDirectory);
+    const char* fileBrowserStartDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory");
+    if (fileBrowserStartDirectory) TextCopy(LibretroCore.fileBrowserStartDirectory, fileBrowserStartDirectory);
 
     TraceLog(LOG_INFO, "MENU: Loaded menu settings from %s", RAYLIB_LIBRETRO_CFG_FILE);
     return true;

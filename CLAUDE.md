@@ -141,42 +141,6 @@ CloseWindow();
 - `GetLibretroSerializedData(&size)` → `void*` (caller must `MemFree()`)
 - `SetLibretroSerializedData(data, size)` → `bool`
 
-## Shader System (raylib-libretro-shaders.h)
-
-### Available Shader Types
-
-| Enum | Name | Notes |
-|------|------|-------|
-| `SHADER_NONE` | None | Pass-through |
-| `SHADER_CRT` | CRT | Barrel distortion, phosphor mask |
-| `SHADER_SCANLINES` | Scanlines | Horizontal scanline overlay |
-| `SHADER_VIGNETTE` | Vignette | Darkened corners |
-| `SHADER_GRAYSCALE` | Grayscale | Monochrome + tint |
-| `SHADER_NTSC` | NTSC | Composite artifacts |
-
-### Shader Usage
-
-```c
-LoadLibretroShaders();                     // Load all shaders with defaults
-
-while (!WindowShouldClose()) {
-    UpdateLibretroShaders(GetFrameTime()); // F10 = next, F9 = previous
-    BeginDrawing();
-        BeginLibretroShader();
-            DrawLibretro();
-        EndLibretroShader();
-    EndDrawing();
-}
-
-UnloadLibretroShaders();
-```
-
-Key shader API functions: `LoadLibretroShader(type)`, `LoadLibretroShaderEx(type, params)`, `SetActiveLibretroShader(type)`, `GetActiveLibretroShaderType()`, `GetActiveLibretroShaderState()`, `CycleLibretroShader()`, `CycleLibretroShaderReverse()`.
-
-GLSL sources are embedded directly in the header as string literals, with multiple versions (GLSL 100 for OpenGL ES / web, 120 for older desktop, 330 for modern desktop). Platform selection is via `PLATFORM_DESKTOP`.
-
----
-
 ## Build System
 
 ### Prerequisites
@@ -229,8 +193,6 @@ bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
 # macOS example
 bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib smb.nes
 ```
-
-Tested cores: `fceumm` (NES), `snes9x` (SNES), `picodrive` (Sega).
 
 ## Dependencies
 
