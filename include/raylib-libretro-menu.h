@@ -37,6 +37,8 @@
 #define RAYLIB_LIBRETRO_MENU_H
 
 #define NK_GAMEPAD_RAYLIB
+#define NK_BUTTON_TRIGGER_ON_RELEASE
+#define RAYLIB_NUKLEAR_INCLUDE_DEFAULT_FONT
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
 #include "../../vendor/nuklear_gamepad/nuklear_gamepad.h"
 #include "../vendor/nuklear_console/nuklear_console.h"
@@ -93,7 +95,6 @@ bool SaveLibretroAllSettings(void);    // Save menu settings + core options in a
 #ifndef RAYLIB_LIBRETRO_MENU_IMPLEMENTATION_ONCE
 #define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION_ONCE
 
-#define RAYLIB_NUKLEAR_INCLUDE_DEFAULT_FONT
 #define RAYLIB_NUKLEAR_IMPLEMENTATION
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
 
