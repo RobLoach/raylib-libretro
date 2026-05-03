@@ -249,6 +249,12 @@ typedef struct rLibretro {
 
     // Accumulated in-game time in nanoseconds (does not advance while menu is open).
     retro_perf_tick_t gameTimeNSEC;
+
+    // Directory configuration. Empty string means use GetApplicationDirectory().
+    char coresDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char gamesDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char savesDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char screenshotsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -304,6 +310,11 @@ static bool SetLibretroCoreOption(const char *key, const char *value) {
 
 static const char *GetLibretroCoreOption(const char *key) {
     return LibretroGetCoreVariable(key);
+}
+
+static const char* LibretroGetDirectory(const char* configured) {
+    if (configured && configured[0] != '\0') return configured;
+    return GetApplicationDirectory();
 }
 
 static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
@@ -499,7 +510,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY no data set");
                 return false;
             }
-            *dir = GetWorkingDirectory();
+            *dir = LibretroGetDirectory(LibretroCore.coresDirectory);
             return true;
         }
 
@@ -647,7 +658,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** dir = (const char**)data;
-            *dir = GetWorkingDirectory();
+            *dir = LibretroGetDirectory(LibretroCore.coresDirectory);
             return true;
         }
 
@@ -740,7 +751,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** dir = (const char**)data;
-            *dir = GetWorkingDirectory();
+            *dir = LibretroGetDirectory(LibretroCore.coresDirectory);
             return true;
         }
 
@@ -749,7 +760,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** dir = (const char**)data;
-            *dir = GetWorkingDirectory();
+            *dir = LibretroGetDirectory(LibretroCore.savesDirectory);
             return true;
         }
 
@@ -1243,7 +1254,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** dir = (const char**)data;
-            *dir = GetWorkingDirectory();
+            *dir = LibretroGetDirectory(LibretroCore.gamesDirectory);
             return true;
         }
 
@@ -1253,7 +1264,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** dir = (const char**)data;
-            *dir = GetWorkingDirectory();
+            *dir = LibretroGetDirectory(LibretroCore.gamesDirectory);
             return true;
         }
 

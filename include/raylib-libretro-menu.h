@@ -235,7 +235,8 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
     unsigned int size;
     void* saveData = GetLibretroSerializedData(&size);
     if (saveData != NULL) {
-        SaveFileData(TextFormat("save_%s.sav", GetLibretroName()), saveData, (int)size);
+        const char* savesDir = LibretroGetDirectory(LibretroCore.savesDirectory);
+        SaveFileData(TextFormat("%s/save_%s.sav", savesDir, GetLibretroName()), saveData, (int)size);
         MemFree(saveData);
         ShowLibretroMessage("State Saved", 2.0f);
         menu.active = false;
@@ -256,7 +257,8 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     (void)user_data;
     if (!IsLibretroGameReady()) return;
     int dataSize;
-    void* saveData = LoadFileData(TextFormat("save_%s.sav", GetLibretroName()), &dataSize);
+    const char* savesDir = LibretroGetDirectory(LibretroCore.savesDirectory);
+    void* saveData = LoadFileData(TextFormat("%s/save_%s.sav", savesDir, GetLibretroName()), &dataSize);
     if (saveData != NULL) {
         SetLibretroSerializedData(saveData, (unsigned int)dataSize);
         MemFree(saveData);
@@ -354,6 +356,16 @@ LibretroMenu* InitLibretroMenu(void) {
         // Rewind
         nk_console* rewind = nk_console_checkbox(settings, "Rewind", &menu.rewindEnabled);
         nk_console_add_event_handler(rewind, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
+        // Directories
+        nk_console* coresDir = nk_console_dir(settings, "Cores Dir", LibretroCore.coresDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+        nk_console_add_event_handler(coresDir, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+        nk_console* gamesDir = nk_console_dir(settings, "Games Dir", LibretroCore.gamesDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+        nk_console_add_event_handler(gamesDir, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+        nk_console* savesDir = nk_console_dir(settings, "Saves Dir", LibretroCore.savesDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+        nk_console_add_event_handler(savesDir, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+        nk_console* screenshotsDir = nk_console_dir(settings, "Screenshots Dir", LibretroCore.screenshotsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+        nk_console_add_event_handler(screenshotsDir, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
     }
 
     // Core Options
@@ -517,6 +529,10 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "volume", (int)(menu.volumeSelected * 100.0f));
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
+    rlconfig_set(menu.cfg, "raylib-libretro", "coresDirectory", LibretroCore.coresDirectory);
+    rlconfig_set(menu.cfg, "raylib-libretro", "gamesDirectory", LibretroCore.gamesDirectory);
+    rlconfig_set(menu.cfg, "raylib-libretro", "savesDirectory", LibretroCore.savesDirectory);
+    rlconfig_set(menu.cfg, "raylib-libretro", "screenshotsDirectory", LibretroCore.screenshotsDirectory);
 #endif
 }
 
@@ -615,6 +631,15 @@ static bool LoadLibretroMenuSettings(void) {
     SetLibretroVolume(menu.volumeSelected);
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
+
+    const char* savedCoresDir = rlconfig_get(menu.cfg, "raylib-libretro", "coresDirectory");
+    if (savedCoresDir) TextCopy(LibretroCore.coresDirectory, savedCoresDir);
+    const char* savedGamesDir = rlconfig_get(menu.cfg, "raylib-libretro", "gamesDirectory");
+    if (savedGamesDir) TextCopy(LibretroCore.gamesDirectory, savedGamesDir);
+    const char* savedSavesDir = rlconfig_get(menu.cfg, "raylib-libretro", "savesDirectory");
+    if (savedSavesDir) TextCopy(LibretroCore.savesDirectory, savedSavesDir);
+    const char* savedScreenshotsDir = rlconfig_get(menu.cfg, "raylib-libretro", "screenshotsDirectory");
+    if (savedScreenshotsDir) TextCopy(LibretroCore.screenshotsDirectory, savedScreenshotsDir);
 
     TraceLog(LOG_INFO, "MENU: Loaded menu settings from %s", RAYLIB_LIBRETRO_CFG_FILE);
     return true;
