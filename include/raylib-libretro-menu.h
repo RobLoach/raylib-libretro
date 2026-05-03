@@ -236,6 +236,7 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
     void* saveData = GetLibretroSerializedData(&size);
     if (saveData != NULL) {
         const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
+        // TODO: Add the content name in here if applicable too.
         SaveFileData(TextFormat("%s/save_%s.sav", savesDir, GetLibretroName()), saveData, (int)size);
         MemFree(saveData);
         ShowLibretroMessage("State Saved", 2.0f);
@@ -258,6 +259,7 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     if (!IsLibretroGameReady()) return;
     int dataSize;
     const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
+    // TODO: Add the libretro content name in here too.
     void* saveData = LoadFileData(TextFormat("%s/save_%s.sav", savesDir, GetLibretroName()), &dataSize);
     if (saveData != NULL) {
         SetLibretroSerializedData(saveData, (unsigned int)dataSize);

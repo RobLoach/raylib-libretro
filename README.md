@@ -78,37 +78,37 @@ CloseLibretro();
 ## API Reference
 
 ``` c
-static bool InitLibretro(const char* core);
-static bool LoadLibretroGame(const char* gameFile);
-static bool IsLibretroReady();
-static bool IsLibretroGameReady();
-static void UpdateLibretro();
-static bool LibretroShouldClose();
-static void DrawLibretro();
-static void DrawLibretroTint(Color tint);
-static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint);
-static void DrawLibretroV(Vector2 position, Color tint);
-static void DrawLibretroTexture(int posX, int posY, Color tint);
-static void DrawLibretroPro(Rectangle destRec, Color tint);
-static const char* GetLibretroName();
-static const char* GetLibretroVersion();
-static unsigned GetLibretroWidth();
-static unsigned GetLibretroHeight();
-static unsigned GetLibretroRotation();
-static Texture2D GetLibretroTexture();
-static bool DoesLibretroCoreNeedContent();
-static void ResetLibretro();
-static void UnloadLibretroGame();
-static void CloseLibretro();
-static void SetLibretroVolume(float volume);
-static float GetLibretroVolume();
-static bool SetLibretroCoreOption(const char* key, const char* value);
-static const char* GetLibretroCoreOption(const char* key);
-static void* GetLibretroSerializedData(unsigned int* size);
-static bool SetLibretroSerializedData(void* data, unsigned int size);
-static void ShowLibretroMessage(const char* msg, float duration);
-static bool DrawLibretroMessage();
-static const char* GetLibretroDirectory(int directory);
+bool InitLibretro(const char* core);
+bool LoadLibretroGame(const char* gameFile);
+bool IsLibretroReady();
+bool IsLibretroGameReady();
+void UpdateLibretro();
+bool LibretroShouldClose();
+void DrawLibretro();
+void DrawLibretroTint(Color tint);
+void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint);
+void DrawLibretroV(Vector2 position, Color tint);
+void DrawLibretroTexture(int posX, int posY, Color tint);
+void DrawLibretroPro(Rectangle destRec, Color tint);
+const char* GetLibretroName();
+const char* GetLibretroVersion();
+unsigned GetLibretroWidth();
+unsigned GetLibretroHeight();
+unsigned GetLibretroRotation();
+Texture2D GetLibretroTexture();
+bool DoesLibretroCoreNeedContent();
+void ResetLibretro();
+void UnloadLibretroGame();
+void CloseLibretro();
+void SetLibretroVolume(float volume);
+float GetLibretroVolume();
+bool SetLibretroCoreOption(const char* key, const char* value);
+const char* GetLibretroCoreOption(const char* key);
+void* GetLibretroSerializedData(unsigned int* size);
+bool SetLibretroSerializedData(void* data, unsigned int size);
+void ShowLibretroMessage(const char* msg, float duration);
+bool DrawLibretroMessage();
+const char* GetLibretroDirectory(int directory);
 ```
 
 ## Development
