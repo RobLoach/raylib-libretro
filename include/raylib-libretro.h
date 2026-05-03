@@ -252,7 +252,9 @@ typedef struct rLibretro {
 
     // Directory configuration. Empty string means use GetApplicationDirectory().
     char coresDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char systemDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char gamesDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char playlistsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char savesDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char screenshotsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 } rLibretro;
@@ -510,7 +512,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY no data set");
                 return false;
             }
-            *dir = LibretroGetDirectory(LibretroCore.coresDirectory);
+            *dir = LibretroGetDirectory(LibretroCore.systemDirectory);
             return true;
         }
 
@@ -1254,7 +1256,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** dir = (const char**)data;
-            *dir = LibretroGetDirectory(LibretroCore.gamesDirectory);
+            *dir = LibretroGetDirectory(LibretroCore.playlistsDirectory);
             return true;
         }
 
