@@ -320,6 +320,18 @@ static const char* LibretroGetDirectory(const char* configured) {
     return GetApplicationDirectory();
 }
 
+static const char* LibretroResolveAbsoluteDirectory(const char* path) {
+    if (!path || path[0] == '\0') return path;
+#if defined(_WIN32)
+    if (path[1] == ':' || path[0] == '\\') return path;
+#else
+    if (path[0] == '/') return path;
+#endif
+    static char absPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    snprintf(absPath, sizeof(absPath), "%s/%s", GetWorkingDirectory(), path);
+    return absPath;
+}
+
 static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
     int type = LibretroMapRetroLogLevelToTraceLogType(level);
 

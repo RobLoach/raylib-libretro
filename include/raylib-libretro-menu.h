@@ -535,13 +535,13 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "volume", (int)(menu.volumeSelected * 100.0f));
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
-    rlconfig_set(menu.cfg, "raylib-libretro", "coresDirectory", LibretroCore.coresDirectory);
-    rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroCore.systemDirectory);
-    rlconfig_set(menu.cfg, "raylib-libretro", "assetsDirectory", LibretroCore.assetsDirectory);
-    rlconfig_set(menu.cfg, "raylib-libretro", "gamesDirectory", LibretroCore.gamesDirectory);
-    rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroCore.playlistsDirectory);
-    rlconfig_set(menu.cfg, "raylib-libretro", "savesDirectory", LibretroCore.savesDirectory);
-    rlconfig_set(menu.cfg, "raylib-libretro", "screenshotsDirectory", LibretroCore.screenshotsDirectory);
+    rlconfig_set(menu.cfg, "raylib-libretro", "coresDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coresDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.systemDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "assetsDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.assetsDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "gamesDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.gamesDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.playlistsDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "savesDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.savesDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "screenshotsDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.screenshotsDirectory));
 #endif
 }
 
