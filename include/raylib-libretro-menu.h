@@ -362,6 +362,8 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_add_event_handler(coresDir, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
         nk_console* systemDir = nk_console_dir(settings, "System Dir", LibretroCore.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
         nk_console_add_event_handler(systemDir, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+        nk_console* assetsDir = nk_console_dir(settings, "Assets Dir", LibretroCore.assetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+        nk_console_add_event_handler(assetsDir, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
         nk_console* gamesDir = nk_console_dir(settings, "Games Dir", LibretroCore.gamesDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
         nk_console_add_event_handler(gamesDir, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
         nk_console* playlistsDir = nk_console_dir(settings, "Playlists Dir", LibretroCore.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
@@ -535,6 +537,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
     rlconfig_set(menu.cfg, "raylib-libretro", "coresDirectory", LibretroCore.coresDirectory);
     rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroCore.systemDirectory);
+    rlconfig_set(menu.cfg, "raylib-libretro", "assetsDirectory", LibretroCore.assetsDirectory);
     rlconfig_set(menu.cfg, "raylib-libretro", "gamesDirectory", LibretroCore.gamesDirectory);
     rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroCore.playlistsDirectory);
     rlconfig_set(menu.cfg, "raylib-libretro", "savesDirectory", LibretroCore.savesDirectory);
@@ -642,6 +645,8 @@ static bool LoadLibretroMenuSettings(void) {
     if (savedCoresDir) TextCopy(LibretroCore.coresDirectory, savedCoresDir);
     const char* savedSystemDir = rlconfig_get(menu.cfg, "raylib-libretro", "systemDirectory");
     if (savedSystemDir) TextCopy(LibretroCore.systemDirectory, savedSystemDir);
+    const char* savedAssetsDir = rlconfig_get(menu.cfg, "raylib-libretro", "assetsDirectory");
+    if (savedAssetsDir) TextCopy(LibretroCore.assetsDirectory, savedAssetsDir);
     const char* savedGamesDir = rlconfig_get(menu.cfg, "raylib-libretro", "gamesDirectory");
     if (savedGamesDir) TextCopy(LibretroCore.gamesDirectory, savedGamesDir);
     const char* savedPlaylistsDir = rlconfig_get(menu.cfg, "raylib-libretro", "playlistsDirectory");
