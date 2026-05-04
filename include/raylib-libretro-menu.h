@@ -363,8 +363,8 @@ LibretroMenu* InitLibretroMenu(void) {
         // Directories
         nk_console* directoryTree = nk_console_tree(settings, "Directories", nk_true);
         {
-            nk_console* libretroDirectory = nk_console_dir(directoryTree, "Cores", LibretroCore.libretroDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(libretroDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* coreDirectory = nk_console_dir(directoryTree, "Cores", LibretroCore.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
             nk_console* saveDirectory = nk_console_dir(directoryTree, "Saves", LibretroCore.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(saveDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
@@ -544,7 +544,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "volume", (int)(menu.volumeSelected * 100.0f));
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
-    rlconfig_set(menu.cfg, "raylib-libretro", "libretroDirectory", LibretroCore.libretroDirectory);
+    rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroCore.coreDirectory);
     rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroCore.saveDirectory);
     rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroCore.coreAssetsDirectory);
     rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroCore.systemDirectory);
@@ -649,8 +649,8 @@ static bool LoadLibretroMenuSettings(void) {
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
 
-    const char* libretroDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "libretroDirectory");
-    if (libretroDirectory) TextCopy(LibretroCore.libretroDirectory, libretroDirectory);
+    const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
+    if (coreDirectory) TextCopy(LibretroCore.coreDirectory, coreDirectory);
     const char* saveDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "saveDirectory");
     if (saveDirectory) TextCopy(LibretroCore.saveDirectory, saveDirectory);
     const char* coreAssetsDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreAssetsDirectory");
