@@ -80,6 +80,7 @@ static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the 
 static bool SetLibretroSerializedData(void* data, unsigned int size);
 static void ShowLibretroMessage(const char* msg, float duration); // Show an OSD message for the given duration in seconds.
 static bool DrawLibretroMessage(); // Displays the OSD message on the screen. Returns true if there was one.
+static const char* GetLibretroDirectory(int directory);
 
 static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
@@ -251,13 +252,13 @@ typedef struct rLibretro {
     retro_perf_tick_t gameTimeNSEC;
 
     // Directory configuration. Empty string means use GetApplicationDirectory().
-    char coresDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    // TODO: Change this to be MemAlloc-ed?
+    char libretroDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char systemDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char assetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char gamesDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char playlistsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char savesDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char screenshotsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char fileBrowserStartDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -315,9 +316,38 @@ static const char *GetLibretroCoreOption(const char *key) {
     return LibretroGetCoreVariable(key);
 }
 
-static const char* LibretroGetDirectory(const char* configured) {
-    if (configured && configured[0] != '\0') return configured;
-    return GetApplicationDirectory();
+/**
+ * Retrieves the directory that is configured as a libretro directory.
+ *
+ * @param directory The key of which directory to retrieve. Can be...
+ * - RETRO_ENVIRONMENT_GET_LIBRETRO_PATH
+ * - RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY
+ * - RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY
+ * - RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY
+ * - RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY
+ * - RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY
+ * - RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY
+ *
+ * @return The directory that's currently configured for the libretro directory. The application directory by default, or NULL if it's an incorrect directory.
+ */
+static const char* GetLibretroDirectory(int directory) {
+    const char* appDir = GetApplicationDirectory();
+    char* output = NULL;
+    switch (directory) {
+        case RETRO_ENVIRONMENT_GET_LIBRETRO_PATH: output = LibretroCore.libretroDirectory; break;
+        case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: output = LibretroCore.saveDirectory; break;
+        case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY: output = LibretroCore.coreAssetsDirectory; break; // RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY
+        case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: output = LibretroCore.systemDirectory; break;
+        case RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY: output = LibretroCore.playlistsDirectory; break;
+        case RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY: output = LibretroCore.fileBrowserStartDirectory; break;
+        default: return NULL;
+    }
+
+    if (output == NULL || output[0] == '\0')
+        return GetApplicationDirectory();
+
+    // TODO: Resolve to an absolute path.
+    return output;
 }
 
 static const char* LibretroResolveAbsoluteDirectory(const char* path) {
@@ -525,7 +555,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY no data set");
                 return false;
             }
-            *dir = LibretroGetDirectory(LibretroCore.systemDirectory);
+            *dir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY);
             return true;
         }
 
@@ -673,7 +703,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** dir = (const char**)data;
-            *dir = LibretroGetDirectory(LibretroCore.coresDirectory);
+            *dir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_LIBRETRO_PATH);
             return true;
         }
 
@@ -766,7 +796,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** dir = (const char**)data;
-            *dir = LibretroGetDirectory(LibretroCore.assetsDirectory);
+            *dir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY);
             return true;
         }
 
@@ -775,7 +805,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** dir = (const char**)data;
-            *dir = LibretroGetDirectory(LibretroCore.savesDirectory);
+            *dir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
             return true;
         }
 
@@ -1269,7 +1299,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** dir = (const char**)data;
-            *dir = LibretroGetDirectory(LibretroCore.playlistsDirectory);
+            *dir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY);
             return true;
         }
 
@@ -1279,7 +1309,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** dir = (const char**)data;
-            *dir = LibretroGetDirectory(LibretroCore.gamesDirectory);
+            *dir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY);
             return true;
         }
 
