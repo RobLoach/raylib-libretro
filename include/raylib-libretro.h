@@ -179,6 +179,7 @@ typedef struct rLibretro {
     unsigned width, height, fps;
     double sampleRate;
     float aspectRatio;
+    char corePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char libraryName[200];
     char libraryVersion[200];
     char validExtensions[200];
@@ -253,7 +254,7 @@ typedef struct rLibretro {
 
     // Directory configuration. Empty string means use GetApplicationDirectory().
     // TODO: Change this to be MemAlloc-ed?
-    char libretroDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char systemDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -320,7 +321,6 @@ static const char *GetLibretroCoreOption(const char *key) {
  * Retrieves the directory that is configured as a libretro directory.
  *
  * @param directory The key of which directory to retrieve. Can be...
- * - RETRO_ENVIRONMENT_GET_LIBRETRO_PATH
  * - RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY
  * - RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY
  * - RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY
@@ -334,7 +334,6 @@ static const char* GetLibretroDirectory(int directory) {
     const char* appDir = GetApplicationDirectory();
     char* output = NULL;
     switch (directory) {
-        case RETRO_ENVIRONMENT_GET_LIBRETRO_PATH: output = LibretroCore.libretroDirectory; break;
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: output = LibretroCore.saveDirectory; break;
         case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY: output = LibretroCore.coreAssetsDirectory; break; // RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: output = LibretroCore.systemDirectory; break;
@@ -690,8 +689,8 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_LIBRETRO_PATH no data provided");
                 return false;
             }
-            const char** dir = (const char**)data;
-            *dir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_LIBRETRO_PATH);
+            const char** path = (const char**)data;
+            *path = LibretroCore.corePath[0] != '\0' ? LibretroCore.corePath : NULL;
             return true;
         }
 
@@ -1948,6 +1947,7 @@ static bool InitLibretro(const char* core) {
     LoadLibretroMethod(retro_get_memory_size);
 
     // Initialize the core.
+    TextCopy(LibretroCore.corePath, core);
     LibretroCore.shutdown = false;
     LibretroCore.volume = 1.0f;
 
