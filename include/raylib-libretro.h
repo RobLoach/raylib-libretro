@@ -763,9 +763,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             struct retro_log_callback *callback = (struct retro_log_callback*)data;
-            if (callback != NULL) {
-                callback->log = LibretroLogger;
-            }
+            callback->log = &LibretroLogger;
             return true;
         }
 
@@ -775,13 +773,13 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             struct retro_perf_callback *perf = (struct retro_perf_callback *)data;
-            perf->get_time_usec = LibretroGetTimeUSEC;
-            perf->get_cpu_features = LibretroGetCPUFeatures;
-            perf->get_perf_counter = LibretroGetPerfCounter;
-            perf->perf_register = LibretroPerfRegister;
-            perf->perf_start = LibretroPerfStart;
-            perf->perf_stop = LibretroPerfStop;
-            perf->perf_log = LibretroPerfLog;
+            perf->get_time_usec = &LibretroGetTimeUSEC;
+            perf->get_cpu_features = &LibretroGetCPUFeatures;
+            perf->get_perf_counter = &LibretroGetPerfCounter;
+            perf->perf_register = &LibretroPerfRegister;
+            perf->perf_start = &LibretroPerfStart;
+            perf->perf_stop = &LibretroPerfStop;
+            perf->perf_log = &LibretroPerfLog;
             return true;
         }
 
@@ -901,10 +899,11 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_LANGUAGE: {
-            if (!data) {
+            if (data == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_LANGUAGE no data provided");
                 return false;
             }
-            unsigned * language = (unsigned *)data;
+            unsigned* language = (unsigned *)data;
             *language = RETRO_LANGUAGE_ENGLISH;
             return true;
         }
@@ -940,39 +939,49 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
+            if (data == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VFS_INTERFACE no data provided");
+                return false;
+            }
+
             struct retro_vfs_interface_info * vfs_interface = (struct retro_vfs_interface_info *)data;
-            if (vfs_interface == NULL) {
-                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VFS_INTERFACE data missing");
-                return false;
-            }
-            if (vfs_interface->required_interface_version > 3) {
-                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_VFS_INTERFACE version not supported");
-                return false;
+            vfs_interface->iface = &LibretroCore.vfs_interface;
+
+            // VFS 1
+            if (vfs_interface->required_interface_version >= 1) {
+                vfs_interface->iface->get_path = &raylib_libretro_vfs_get_path;
+                vfs_interface->iface->open = &raylib_libretro_vfs_open;
+                vfs_interface->iface->close = &raylib_libretro_vfs_close;
+                vfs_interface->iface->size = &raylib_libretro_vfs_size;
+                vfs_interface->iface->tell = &raylib_libretro_vfs_tell;
+                vfs_interface->iface->seek = &raylib_libretro_vfs_seek;
+                vfs_interface->iface->read = &raylib_libretro_vfs_read;
+                vfs_interface->iface->write = &raylib_libretro_vfs_write;
+                vfs_interface->iface->flush = &raylib_libretro_vfs_flush;
+                vfs_interface->iface->remove = &raylib_libretro_vfs_remove;
+                vfs_interface->iface->rename = &raylib_libretro_vfs_rename;
             }
 
-            if (vfs_interface->iface == NULL) {
-                vfs_interface->iface = &LibretroCore.vfs_interface;
+            // VFS 2
+            if (vfs_interface->required_interface_version >= 2) {
+                vfs_interface->iface->truncate = &raylib_libretro_vfs_truncate;
             }
 
-            vfs_interface->iface->get_path = &raylib_libretro_vfs_get_path;
-            vfs_interface->iface->open = &raylib_libretro_vfs_open;
-            vfs_interface->iface->close = &raylib_libretro_vfs_close;
-            vfs_interface->iface->size = &raylib_libretro_vfs_size;
-            vfs_interface->iface->tell = &raylib_libretro_vfs_tell;
-            vfs_interface->iface->seek = &raylib_libretro_vfs_seek;
-            vfs_interface->iface->read = &raylib_libretro_vfs_read;
-            vfs_interface->iface->write = &raylib_libretro_vfs_write;
-            vfs_interface->iface->flush = &raylib_libretro_vfs_flush;
-            vfs_interface->iface->remove = &raylib_libretro_vfs_remove;
-            vfs_interface->iface->rename = &raylib_libretro_vfs_rename;
-            vfs_interface->iface->truncate = &raylib_libretro_vfs_truncate;
-            vfs_interface->iface->stat = &raylib_libretro_vfs_stat;
-            vfs_interface->iface->mkdir = &raylib_libretro_vfs_mkdir;
-            vfs_interface->iface->opendir = &raylib_libretro_vfs_opendir;
-            vfs_interface->iface->readdir = &raylib_libretro_vfs_readdir;
-            vfs_interface->iface->dirent_get_name = &raylib_libretro_vfs_dirent_get_name;
-            vfs_interface->iface->dirent_is_dir = &raylib_libretro_vfs_dirent_is_dir;
-            vfs_interface->iface->closedir = &raylib_libretro_vfs_closedir;
+            // VFS 3
+            if (vfs_interface->required_interface_version >= 3) {
+                vfs_interface->iface->stat = &raylib_libretro_vfs_stat;
+                vfs_interface->iface->mkdir = &raylib_libretro_vfs_mkdir;
+                vfs_interface->iface->opendir = &raylib_libretro_vfs_opendir;
+                vfs_interface->iface->readdir = &raylib_libretro_vfs_readdir;
+                vfs_interface->iface->dirent_get_name = &raylib_libretro_vfs_dirent_get_name;
+                vfs_interface->iface->dirent_is_dir = &raylib_libretro_vfs_dirent_is_dir;
+                vfs_interface->iface->closedir = &raylib_libretro_vfs_closedir;
+            }
+
+            // VFS 4
+            if (vfs_interface->required_interface_version >= 4) {
+                vfs_interface->iface->stat_64 = &raylib_libretro_vfs_stat_64;
+            }
 
             return true;
         }
