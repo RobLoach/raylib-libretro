@@ -200,6 +200,30 @@ static KeyboardKey NkKeyToKeyboardKey(nk_rune key) {
         }
     }
     if (key >= 'a' && key <= 'z') key -= 32;
+    /* Map shifted characters to their physical key on a US keyboard. */
+    switch (key) {
+        case '+': return KEY_EQUAL;
+        case '_': return KEY_MINUS;
+        case '?': return KEY_SLASH;
+        case ':': return KEY_SEMICOLON;
+        case '"': return KEY_APOSTROPHE;
+        case '<': return KEY_COMMA;
+        case '>': return KEY_PERIOD;
+        case '{': return KEY_LEFT_BRACKET;
+        case '}': return KEY_RIGHT_BRACKET;
+        case '|': return KEY_BACKSLASH;
+        case '~': return KEY_GRAVE;
+        case '!': return KEY_ONE;
+        case '@': return KEY_TWO;
+        case '#': return KEY_THREE;
+        case '$': return KEY_FOUR;
+        case '%': return KEY_FIVE;
+        case '^': return KEY_SIX;
+        case '&': return KEY_SEVEN;
+        case '*': return KEY_EIGHT;
+        case '(': return KEY_NINE;
+        case ')': return KEY_ZERO;
+    }
     return (KeyboardKey)(int)key;
 }
 

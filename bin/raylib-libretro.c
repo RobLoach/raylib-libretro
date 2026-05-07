@@ -246,6 +246,7 @@ bool UpdateDrawFrame(void* userData) {
         if (vol > 1.0f) vol = 1.0f;
         SetLibretroVolume(vol);
         menu.volumeSelected = vol;
+        SaveLibretroMenuSettings();
         ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 100.0f)), 1.0f);
     }
     else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyVolumeDown))) {
@@ -253,6 +254,7 @@ bool UpdateDrawFrame(void* userData) {
         if (vol < 0.0f) vol = 0.0f;
         SetLibretroVolume(vol);
         menu.volumeSelected = vol;
+        SaveLibretroMenuSettings();
         ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 100.0f)), 1.0f);
     }
 
