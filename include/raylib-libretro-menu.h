@@ -66,6 +66,18 @@ typedef struct LibretroMenu {
     int themeSelectedIndex;
     float volumeSelected;
     bool rewindEnabled;
+    nk_rune keyScreenshot;
+    nk_rune keyRewind;
+    nk_rune keyMenu;
+    nk_rune keySaveState;
+    nk_rune keyLoadState;
+    nk_rune keyFullscreen;
+    nk_rune keyPrevShader;
+    nk_rune keyNextShader;
+    nk_rune keyReset;
+    nk_rune keyQuit;
+    nk_rune keyVolumeUp;
+    nk_rune keyVolumeDown;
     int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
     nk_bool optionCheckboxValues[128];    // per-option checkbox state for enabled/disabled options
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
@@ -130,6 +142,7 @@ static bool SaveLibretroMenuSettings(void);
 static bool SaveLibretroCoreOptions(void);
 static bool LoadLibretroMenuSettings(void);
 static void UpdateLibretroMenuVisibility(void);
+static KeyboardKey NkKeyToKeyboardKey(nk_rune key);
 
 static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     (void)widget;
@@ -141,8 +154,67 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
         LibretroCore.textureFilter = menu.textureFilterIndex;
         LibretroInitVideo();
     }
-    SaveLibretroMenuSettings();
+    SetExitKey(NkKeyToKeyboardKey(menu.keyQuit));
 }
+
+// Convert an nk_rune key binding to a raylib KeyboardKey.
+static KeyboardKey NkKeyToKeyboardKey(nk_rune key) {
+    if (key == 0) return KEY_NULL;
+    if (key < (nk_rune)NK_KEY_MAX) {
+        switch ((enum nk_keys)key) {
+            case NK_KEY_ENTER:           return KEY_ENTER;
+            case NK_KEY_TAB:             return KEY_TAB;
+            case NK_KEY_SHIFT:           return KEY_LEFT_SHIFT;
+            case NK_KEY_BACKSPACE:       return KEY_BACKSPACE;
+            case NK_KEY_TEXT_RESET_MODE: return KEY_ESCAPE;
+            case NK_KEY_DEL:             return KEY_DELETE;
+            case NK_KEY_UP:        return KEY_UP;
+            case NK_KEY_DOWN:      return KEY_DOWN;
+            case NK_KEY_LEFT:      return KEY_LEFT;
+            case NK_KEY_RIGHT:     return KEY_RIGHT;
+            case NK_KEY_F1:        return KEY_F1;
+            case NK_KEY_F2:        return KEY_F2;
+            case NK_KEY_F3:        return KEY_F3;
+            case NK_KEY_F4:        return KEY_F4;
+            case NK_KEY_F5:        return KEY_F5;
+            case NK_KEY_F6:        return KEY_F6;
+            case NK_KEY_F7:        return KEY_F7;
+            case NK_KEY_F8:        return KEY_F8;
+            case NK_KEY_F9:        return KEY_F9;
+            case NK_KEY_F10:       return KEY_F10;
+            case NK_KEY_F11:       return KEY_F11;
+            case NK_KEY_F12:       return KEY_F12;
+            default:               return KEY_NULL;
+        }
+    }
+    if (key >= 'a' && key <= 'z') key -= 32;
+    /* Map shifted characters to their physical key on a US keyboard. */
+    switch (key) {
+        case '+': return KEY_EQUAL;
+        case '_': return KEY_MINUS;
+        case '?': return KEY_SLASH;
+        case ':': return KEY_SEMICOLON;
+        case '"': return KEY_APOSTROPHE;
+        case '<': return KEY_COMMA;
+        case '>': return KEY_PERIOD;
+        case '{': return KEY_LEFT_BRACKET;
+        case '}': return KEY_RIGHT_BRACKET;
+        case '|': return KEY_BACKSLASH;
+        case '~': return KEY_GRAVE;
+        case '!': return KEY_ONE;
+        case '@': return KEY_TWO;
+        case '#': return KEY_THREE;
+        case '$': return KEY_FOUR;
+        case '%': return KEY_FIVE;
+        case '^': return KEY_SIX;
+        case '&': return KEY_SEVEN;
+        case '*': return KEY_EIGHT;
+        case '(': return KEY_NINE;
+        case ')': return KEY_ZERO;
+    }
+    return (KeyboardKey)(int)key;
+}
+
 
 static LibretroMenu* GetLibretroMenu(void) {
     return &menu;
@@ -220,7 +292,6 @@ static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
     (void)user_data;
     ToggleFullscreen();
     menu.fullscreen = IsWindowFullscreen();
-    SaveLibretroMenuSettings();
 }
 
 static void LibretroMenuQuitClicked(nk_console* widget, void* user_data) {
@@ -249,6 +320,8 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
 }
 
 static void MenuResumeClicked(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
     if (IsLibretroGameReady()) {
         menu.active = false;
     }
@@ -278,6 +351,18 @@ LibretroMenu* InitLibretroMenu(void) {
     menu = (LibretroMenu){0};
     menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
     menu.volumeSelected = 1.0f;
+    menu.keyScreenshot  = (nk_rune)NK_KEY_F8;
+    menu.keyRewind      = (nk_rune)'R';
+    menu.keyMenu        = (nk_rune)NK_KEY_TEXT_RESET_MODE;
+    menu.keySaveState   = (nk_rune)NK_KEY_F2;
+    menu.keyLoadState   = (nk_rune)NK_KEY_F4;
+    menu.keyFullscreen  = (nk_rune)NK_KEY_F11;
+    menu.keyPrevShader  = (nk_rune)NK_KEY_F9;
+    menu.keyNextShader  = (nk_rune)NK_KEY_F10;
+    menu.keyReset       = (nk_rune)NK_KEY_NONE;
+    menu.keyQuit        = (nk_rune)NK_KEY_NONE;
+    menu.keyVolumeUp    = (nk_rune)'=';
+    menu.keyVolumeDown  = (nk_rune)'-';
     menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
         return NULL;
@@ -300,6 +385,9 @@ LibretroMenu* InitLibretroMenu(void) {
 
     nk_gamepad_init(&menu.gamepads, menu.ctx, (void*)&menu.console);
     nk_console_set_gamepads(menu.console, &menu.gamepads);
+
+    // When trying to go back from the main menu, exit the menu.
+    nk_console_add_event(menu.console, NK_CONSOLE_EVENT_BACK, &MenuResumeClicked);
 
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     menu.cfg = rlconfig_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
@@ -362,8 +450,38 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console* rewind = nk_console_checkbox(settings, "Rewind", &menu.rewindEnabled);
         nk_console_add_event_handler(rewind, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
+        // Keys
+        nk_console* keysTree = nk_console_tree(settings, "Keys", nk_false);
+        {
+            nk_console* w;
+            w = nk_console_key(keysTree, "Screenshot", &menu.keyScreenshot);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Rewind", &menu.keyRewind);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Menu", &menu.keyMenu);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Save State", &menu.keySaveState);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Load State", &menu.keyLoadState);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Fullscreen", &menu.keyFullscreen);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Previous Shader", &menu.keyPrevShader);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Next Shader", &menu.keyNextShader);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Reset", &menu.keyReset);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Quit", &menu.keyQuit);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Volume Up", &menu.keyVolumeUp);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Volume Down", &menu.keyVolumeDown);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+        }
+
         // Directories
-        nk_console* directoryTree = nk_console_tree(settings, "Directories", nk_true);
+        nk_console* directoryTree = nk_console_tree(settings, "Directories", nk_false);
         {
             nk_console* coreDirectory = nk_console_dir(directoryTree, "Cores", LibretroCore.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
@@ -444,7 +562,6 @@ static void LibretroMenuOptionChanged(nk_console* widget, void* user_data) {
                             value, LIBRETRO_CORE_VARIABLE_VALUE_LEN);
     if (TextLength(value) > 0) {
         SetLibretroCoreOption(LibretroCore.variableKeys[i], value);
-        SaveLibretroCoreOptions();
     }
 }
 
@@ -455,7 +572,6 @@ static void LibretroMenuOptionCheckboxChanged(nk_console* widget, void* user_dat
     unsigned i = (unsigned)(uintptr_t)user_data;
     const char* value = menu.optionCheckboxValues[i] ? "enabled" : "disabled";
     SetLibretroCoreOption(LibretroCore.variableKeys[i], value);
-    SaveLibretroCoreOptions();
 }
 
 static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
@@ -546,6 +662,18 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "volume", (int)(menu.volumeSelected * 100.0f));
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyScreenshot", (int)menu.keyScreenshot);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyRewind", (int)menu.keyRewind);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyMenu", (int)menu.keyMenu);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keySaveState", (int)menu.keySaveState);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyLoadState", (int)menu.keyLoadState);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyFullscreen", (int)menu.keyFullscreen);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyReset",       (int)menu.keyReset);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyQuit",       (int)menu.keyQuit);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
     rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.saveDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreAssetsDirectory));
@@ -629,8 +757,9 @@ static bool LoadLibretroMenuSettings(void) {
     menu.fullscreen = savedFullscreen;
 
     menu.shaderSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "shader", LIBRETRO_SHADER_NONE);
-    if (menu.shaderSelectedIndex < 0 || menu.shaderSelectedIndex >= LIBRETRO_SHADER_TYPE_COUNT)
+    if (menu.shaderSelectedIndex < 0 || menu.shaderSelectedIndex >= LIBRETRO_SHADER_TYPE_COUNT) {
         menu.shaderSelectedIndex = LIBRETRO_SHADER_NONE;
+    }
     SetActiveLibretroShader((LibretroShaderType)menu.shaderSelectedIndex);
 
     menu.textureFilterIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "textureFilter", 0);
@@ -643,13 +772,27 @@ static bool LoadLibretroMenuSettings(void) {
         menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
     SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
 
-    int volumeInt = rlconfig_get_int(menu.cfg, "raylib-libretro", "volume", 100);
+    int volumeInt = (float)rlconfig_get_int(menu.cfg, "raylib-libretro", "volume", 100);
     if (volumeInt < 0) volumeInt = 0;
     if (volumeInt > 100) volumeInt = 100;
-    menu.volumeSelected = volumeInt / 100.0f;
+    menu.volumeSelected = (float)volumeInt / 100.0f;
     SetLibretroVolume(menu.volumeSelected);
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
+
+    menu.keyScreenshot = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyScreenshot", (int)menu.keyScreenshot);
+    menu.keyRewind     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyRewind",     (int)menu.keyRewind);
+    menu.keyMenu       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyMenu",       (int)menu.keyMenu);
+    menu.keySaveState  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keySaveState",  (int)menu.keySaveState);
+    menu.keyLoadState  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyLoadState",  (int)menu.keyLoadState);
+    menu.keyFullscreen = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFullscreen", (int)menu.keyFullscreen);
+    menu.keyPrevShader = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
+    menu.keyNextShader  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
+    menu.keyReset       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyReset",       (int)menu.keyReset);
+    menu.keyQuit       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyQuit",       (int)menu.keyQuit);
+    SetExitKey(NkKeyToKeyboardKey(menu.keyQuit));
+    menu.keyVolumeUp    = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
+    menu.keyVolumeDown  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
     if (coreDirectory) TextCopy(LibretroCore.coreDirectory, coreDirectory);
@@ -717,9 +860,13 @@ void UpdateLibretroMenu(void) {
         return;
     }
 
-    // Toggle the menu
-    if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE) || IsKeyReleased(KEY_F1)) {
+    // Toggle the menu via gamepad or via the menu key when inactive.
+    // When the menu is active, nk_console handles the menu key internally:
+    // back-navigation in submenus, and MenuCloseOnBack at root level.
+    if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE)) {
         menu.active = !menu.active;
+    } else if (!menu.active && IsKeyReleased(NkKeyToKeyboardKey(menu.keyMenu))) {
+        menu.active = true;
     }
 
     if (!menu.active) {
