@@ -157,8 +157,8 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
 }
 
 static void MenuCloseOnBack(nk_console* console, void* user_data) {
-    (void)console;
-    (void)user_data;
+    NK_UNUSED(console);
+    NK_UNUSED(user_data);
     if (IsLibretroGameReady()) {
         menu.active = false;
     }
@@ -390,6 +390,8 @@ LibretroMenu* InitLibretroMenu(void) {
 
     nk_gamepad_init(&menu.gamepads, menu.ctx, (void*)&menu.console);
     nk_console_set_gamepads(menu.console, &menu.gamepads);
+
+    // When trying to go back from the main menu, exit the menu.
     nk_console_add_event(menu.console, NK_CONSOLE_EVENT_BACK, &MenuCloseOnBack);
 
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
