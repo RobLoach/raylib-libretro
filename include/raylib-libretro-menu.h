@@ -75,6 +75,7 @@ typedef struct LibretroMenu {
     nk_rune keyPrevShader;
     nk_rune keyNextShader;
     nk_rune keyReset;
+    nk_rune keyQuit;
     nk_rune keyVolumeUp;
     nk_rune keyVolumeDown;
     int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
@@ -153,6 +154,7 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
         LibretroCore.textureFilter = menu.textureFilterIndex;
         LibretroInitVideo();
     }
+    SetExitKey(NkKeyToKeyboardKey(menu.keyQuit));
     SaveLibretroMenuSettings();
 }
 
@@ -366,6 +368,7 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.keyPrevShader  = (nk_rune)NK_KEY_F9;
     menu.keyNextShader  = (nk_rune)NK_KEY_F10;
     menu.keyReset       = (nk_rune)NK_KEY_NONE;
+    menu.keyQuit        = (nk_rune)NK_KEY_NONE;
     menu.keyVolumeUp    = (nk_rune)'=';
     menu.keyVolumeDown  = (nk_rune)'-';
     menu.font = LoadFontFromNuklear(fontSize);
@@ -475,6 +478,8 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Reset", &menu.keyReset);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Quit", &menu.keyQuit);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Volume Up", &menu.keyVolumeUp);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Volume Down", &menu.keyVolumeDown);
@@ -482,7 +487,7 @@ LibretroMenu* InitLibretroMenu(void) {
         }
 
         // Directories
-        nk_console* directoryTree = nk_console_tree(settings, "Directories", nk_true);
+        nk_console* directoryTree = nk_console_tree(settings, "Directories", nk_false);
         {
             nk_console* coreDirectory = nk_console_dir(directoryTree, "Cores", LibretroCore.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
@@ -674,6 +679,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyReset",       (int)menu.keyReset);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyQuit",       (int)menu.keyQuit);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
     rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreDirectory));
@@ -790,6 +796,8 @@ static bool LoadLibretroMenuSettings(void) {
     menu.keyPrevShader = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
     menu.keyNextShader  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
     menu.keyReset       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyReset",       (int)menu.keyReset);
+    menu.keyQuit       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyQuit",       (int)menu.keyQuit);
+    SetExitKey(NkKeyToKeyboardKey(menu.keyQuit));
     menu.keyVolumeUp    = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     menu.keyVolumeDown  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
 
