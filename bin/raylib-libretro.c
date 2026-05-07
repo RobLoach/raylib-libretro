@@ -145,7 +145,7 @@ bool UpdateDrawFrame(void* userData) {
     // Run a frame of the core.
     if (!data->menu->active) {
         if (data->menu->rewindEnabled && IsLibretroGameReady()) {
-            if (IsNkKeyDown(data->menu->keyRewind)) {
+            if (IsKeyDown(NkKeyToKeyboardKey(data->menu->keyRewind))) {
                 void* stateData = NULL;
                 unsigned int stateSize = 0;
                 if (RewindBufferPop(&data->rewind, &stateData, &stateSize)) {
@@ -201,12 +201,12 @@ bool UpdateDrawFrame(void* userData) {
     EndDrawing();
 
     // Fullscreen
-    if (IsNkKeyReleased(menu.keyFullscreen)) {
+    if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyFullscreen))) {
         LibretroMenuFullscreenChanged(menu.console, NULL);
     }
 
     // Screenshot
-    else if (IsNkKeyReleased(menu.keyScreenshot)) {
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyScreenshot))) {
         const char* screenshotsDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
         const char* screenshotName = NULL;
         for (int i = 1; i < 1000; i++) {
@@ -222,12 +222,12 @@ bool UpdateDrawFrame(void* userData) {
     }
 
     // Save State
-    else if (IsNkKeyReleased(menu.keySaveState)) {
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keySaveState))) {
         LibretroMenuSaveStateClicked(menu.console, NULL);
     }
 
     // Load State
-    else if (IsNkKeyReleased(menu.keyLoadState)) {
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyLoadState))) {
         LibretroMenuLoadStateClicked(menu.console, NULL);
     }
 

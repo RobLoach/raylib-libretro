@@ -191,17 +191,6 @@ static KeyboardKey NkKeyToKeyboardKey(nk_rune key) {
     return (KeyboardKey)(int)key;
 }
 
-// Check if an nk_rune key binding is currently held down in raylib.
-static bool IsNkKeyDown(nk_rune key) {
-    KeyboardKey k = NkKeyToKeyboardKey(key);
-    return k != KEY_NULL && IsKeyDown(k);
-}
-
-// Check if an nk_rune key binding was just released in raylib.
-static bool IsNkKeyReleased(nk_rune key) {
-    KeyboardKey k = NkKeyToKeyboardKey(key);
-    return k != KEY_NULL && IsKeyReleased(k);
-}
 
 static LibretroMenu* GetLibretroMenu(void) {
     return &menu;
@@ -823,7 +812,7 @@ void UpdateLibretroMenu(void) {
     }
 
     // Toggle the menu
-    if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE) || IsNkKeyReleased(menu.keyMenu)) {
+    if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE) || IsKeyReleased(NkKeyToKeyboardKey(menu.keyMenu))) {
         menu.active = !menu.active;
     }
 
