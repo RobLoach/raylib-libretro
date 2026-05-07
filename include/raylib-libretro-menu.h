@@ -347,8 +347,8 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.keyPrevShader  = (nk_rune)NK_KEY_F9;
     menu.keyNextShader  = (nk_rune)NK_KEY_F10;
     menu.keyReset       = (nk_rune)NK_KEY_F5;
-    menu.keyVolumeUp    = (nk_rune)NK_KEY_F7;
-    menu.keyVolumeDown  = (nk_rune)NK_KEY_F6;
+    menu.keyVolumeUp    = (nk_rune)'=';
+    menu.keyVolumeDown  = (nk_rune)'-';
     menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
         return NULL;
