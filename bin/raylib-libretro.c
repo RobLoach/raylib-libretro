@@ -171,7 +171,7 @@ bool UpdateDrawFrame(void* userData) {
     // Check if the core or menu asks to be shutdown.
     if (LibretroShouldClose()) {
         RewindBufferFree(&data->rewind);
-        SaveLibretroCoreOptions();
+        SaveLibretroAllSettings();
         UnloadLibretroGame();
         CloseLibretro();
     }
