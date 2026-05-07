@@ -120,6 +120,7 @@ bool Init(void** userData, int argc, char** argv) {
         if (InitLibretro(argv[1])) {
             // Apply any previously saved options before the game starts.
             LoadLibretroCoreOptions();
+            SetLibretroVolume(data->menu->volumeSelected);
 
             // Load the given game.
             const char* gameFile = (argc > 2) ? argv[2] : NULL;
@@ -136,17 +137,12 @@ bool Init(void** userData, int argc, char** argv) {
 bool UpdateDrawFrame(void* userData) {
     AppData* data = (AppData*)userData;
 
-    // Update the shaders, then show OSD if a shader key was pressed.
-    LibretroShaderType shaderTypeBefore = GetActiveLibretroShaderType();
-    UpdateLibretroShaders(GetFrameTime());
-    if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyPrevShader))) CycleLibretroShaderReverse();
-    if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyNextShader))) CycleLibretroShader();
-    if (GetActiveLibretroShaderType() != shaderTypeBefore) {
-        ShowLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
-    }
-
     // Run a frame of the core.
     if (!data->menu->active) {
+        // Update the shaders, then show OSD if a shader key was pressed.
+        LibretroShaderType shaderTypeBefore = GetActiveLibretroShaderType();
+        UpdateLibretroShaders(GetFrameTime());
+
         if (data->menu->rewindEnabled && IsLibretroGameReady()) {
             if (IsKeyDown(NkKeyToKeyboardKey(data->menu->keyRewind))) {
                 void* stateData = NULL;
@@ -224,18 +220,33 @@ bool UpdateDrawFrame(void* userData) {
         }
     }
 
+    // Cycle Shader Reverse
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyPrevShader)) && !menu.active) {
+        CycleLibretroShaderReverse();
+        ShowLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
+        menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
+    }
+
+    // Cycle Shader Next
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyNextShader)) && !menu.active) {
+        CycleLibretroShader();
+        ShowLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
+        // TODO: For some reason, cycling the shader doens't update the menu label.
+        menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
+    }
+
     // Save State
-    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keySaveState))) {
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keySaveState)) && !menu.active) {
         LibretroMenuSaveStateClicked(menu.console, NULL);
     }
 
     // Load State
-    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyLoadState))) {
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyLoadState)) && !menu.active) {
         LibretroMenuLoadStateClicked(menu.console, NULL);
     }
 
     // Reset
-    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyReset))) {
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyReset)) && !menu.active) {
         if (IsLibretroGameReady()) {
             ResetLibretro();
             ShowLibretroMessage("Reset", 2.0f);
@@ -243,21 +254,21 @@ bool UpdateDrawFrame(void* userData) {
     }
 
     // Volume
-    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyVolumeUp))) {
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyVolumeUp)) && !menu.active) {
         float vol = GetLibretroVolume() + 0.1f;
-        if (vol > 1.0f) vol = 1.0f;
         SetLibretroVolume(vol);
+        vol = GetLibretroVolume();
         menu.volumeSelected = vol;
         SaveLibretroMenuSettings();
-        ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 100.0f)), 1.0f);
+        ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0f);
     }
-    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyVolumeDown))) {
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyVolumeDown)) && !menu.active) {
         float vol = GetLibretroVolume() - 0.1f;
-        if (vol < 0.0f) vol = 0.0f;
         SetLibretroVolume(vol);
+        vol = GetLibretroVolume();
         menu.volumeSelected = vol;
         SaveLibretroMenuSettings();
-        ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 100.0f)), 1.0f);
+        ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0f);
     }
 
     return true;

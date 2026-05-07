@@ -158,14 +158,6 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     SaveLibretroMenuSettings();
 }
 
-static void MenuCloseOnBack(nk_console* console, void* user_data) {
-    NK_UNUSED(console);
-    NK_UNUSED(user_data);
-    if (IsLibretroGameReady()) {
-        menu.active = false;
-    }
-}
-
 // Convert an nk_rune key binding to a raylib KeyboardKey.
 static KeyboardKey NkKeyToKeyboardKey(nk_rune key) {
     if (key == 0) return KEY_NULL;
@@ -330,6 +322,8 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
 }
 
 static void MenuResumeClicked(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
     if (IsLibretroGameReady()) {
         menu.active = false;
     }
@@ -395,7 +389,7 @@ LibretroMenu* InitLibretroMenu(void) {
     nk_console_set_gamepads(menu.console, &menu.gamepads);
 
     // When trying to go back from the main menu, exit the menu.
-    nk_console_add_event(menu.console, NK_CONSOLE_EVENT_BACK, &MenuCloseOnBack);
+    nk_console_add_event(menu.console, NK_CONSOLE_EVENT_BACK, &MenuResumeClicked);
 
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     menu.cfg = rlconfig_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
@@ -765,8 +759,9 @@ static bool LoadLibretroMenuSettings(void) {
     menu.fullscreen = savedFullscreen;
 
     menu.shaderSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "shader", LIBRETRO_SHADER_NONE);
-    if (menu.shaderSelectedIndex < 0 || menu.shaderSelectedIndex >= LIBRETRO_SHADER_TYPE_COUNT)
+    if (menu.shaderSelectedIndex < 0 || menu.shaderSelectedIndex >= LIBRETRO_SHADER_TYPE_COUNT) {
         menu.shaderSelectedIndex = LIBRETRO_SHADER_NONE;
+    }
     SetActiveLibretroShader((LibretroShaderType)menu.shaderSelectedIndex);
 
     menu.textureFilterIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "textureFilter", 0);
@@ -779,10 +774,10 @@ static bool LoadLibretroMenuSettings(void) {
         menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
     SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
 
-    int volumeInt = rlconfig_get_int(menu.cfg, "raylib-libretro", "volume", 100);
+    int volumeInt = (float)rlconfig_get_int(menu.cfg, "raylib-libretro", "volume", 100);
     if (volumeInt < 0) volumeInt = 0;
     if (volumeInt > 100) volumeInt = 100;
-    menu.volumeSelected = volumeInt / 100.0f;
+    menu.volumeSelected = (float)volumeInt / 100.0f;
     SetLibretroVolume(menu.volumeSelected);
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
@@ -874,7 +869,6 @@ void UpdateLibretroMenu(void) {
         menu.active = !menu.active;
     } else if (!menu.active && IsKeyReleased(NkKeyToKeyboardKey(menu.keyMenu))) {
         menu.active = true;
-        return;
     }
 
     if (!menu.active) {
