@@ -74,6 +74,9 @@ typedef struct LibretroMenu {
     nk_rune keyFullscreen;
     nk_rune keyPrevShader;
     nk_rune keyNextShader;
+    nk_rune keyReset;
+    nk_rune keyVolumeUp;
+    nk_rune keyVolumeDown;
     int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
     nk_bool optionCheckboxValues[128];    // per-option checkbox state for enabled/disabled options
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
@@ -160,15 +163,23 @@ static void LibretroMenuKeyChanged(nk_console* widget, void* user_data) {
     SaveLibretroMenuSettings();
 }
 
+static void MenuCloseOnBack(nk_console* console, void* user_data) {
+    (void)console;
+    (void)user_data;
+    menu.active = false;
+}
+
 // Convert an nk_rune key binding to a raylib KeyboardKey.
 static KeyboardKey NkKeyToKeyboardKey(nk_rune key) {
     if (key == 0) return KEY_NULL;
     if (key < (nk_rune)NK_KEY_MAX) {
         switch ((enum nk_keys)key) {
             case NK_KEY_ENTER:           return KEY_ENTER;
+            case NK_KEY_TAB:             return KEY_TAB;
+            case NK_KEY_SHIFT:           return KEY_LEFT_SHIFT;
             case NK_KEY_BACKSPACE:       return KEY_BACKSPACE;
             case NK_KEY_TEXT_RESET_MODE: return KEY_ESCAPE;
-            case NK_KEY_DEL:       return KEY_DELETE;
+            case NK_KEY_DEL:             return KEY_DELETE;
             case NK_KEY_UP:        return KEY_UP;
             case NK_KEY_DOWN:      return KEY_DOWN;
             case NK_KEY_LEFT:      return KEY_LEFT;
@@ -335,6 +346,9 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.keyFullscreen  = (nk_rune)NK_KEY_F11;
     menu.keyPrevShader  = (nk_rune)NK_KEY_F9;
     menu.keyNextShader  = (nk_rune)NK_KEY_F10;
+    menu.keyReset       = (nk_rune)NK_KEY_F5;
+    menu.keyVolumeUp    = (nk_rune)NK_KEY_F7;
+    menu.keyVolumeDown  = (nk_rune)NK_KEY_F6;
     menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
         return NULL;
@@ -357,6 +371,7 @@ LibretroMenu* InitLibretroMenu(void) {
 
     nk_gamepad_init(&menu.gamepads, menu.ctx, (void*)&menu.console);
     nk_console_set_gamepads(menu.console, &menu.gamepads);
+    nk_console_add_event(menu.console, NK_CONSOLE_EVENT_BACK, &MenuCloseOnBack);
 
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     menu.cfg = rlconfig_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
@@ -436,6 +451,12 @@ LibretroMenu* InitLibretroMenu(void) {
             w = nk_console_key(keysTree, "Previous Shader", &menu.keyPrevShader);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Next Shader", &menu.keyNextShader);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Reset", &menu.keyReset);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Volume Up", &menu.keyVolumeUp);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Volume Down", &menu.keyVolumeDown);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
         }
 
@@ -630,7 +651,10 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyLoadState", (int)menu.keyLoadState);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyFullscreen", (int)menu.keyFullscreen);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyNextShader", (int)menu.keyNextShader);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyReset",       (int)menu.keyReset);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
     rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.saveDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreAssetsDirectory));
@@ -743,7 +767,10 @@ static bool LoadLibretroMenuSettings(void) {
     menu.keyLoadState  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyLoadState",  (int)menu.keyLoadState);
     menu.keyFullscreen = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFullscreen", (int)menu.keyFullscreen);
     menu.keyPrevShader = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
-    menu.keyNextShader = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextShader", (int)menu.keyNextShader);
+    menu.keyNextShader  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
+    menu.keyReset       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyReset",       (int)menu.keyReset);
+    menu.keyVolumeUp    = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
+    menu.keyVolumeDown  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
     SetLibretroShaderKeys(NkKeyToKeyboardKey(menu.keyPrevShader), NkKeyToKeyboardKey(menu.keyNextShader));
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
@@ -812,15 +839,14 @@ void UpdateLibretroMenu(void) {
         return;
     }
 
-    // Toggle the menu
+    // Toggle the menu via gamepad or via the menu key when inactive.
+    // When the menu is active, nk_console handles the menu key internally:
+    // back-navigation in submenus, and MenuCloseOnBack at root level.
     if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE)) {
         menu.active = !menu.active;
-    } else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyMenu))) {
-        if (menu.active && nk_console_active_parent(menu.console) != menu.console) {
-            nk_console_navigate_back(nk_console_active_parent(menu.console));
-        } else {
-            menu.active = !menu.active;
-        }
+    } else if (!menu.active && IsKeyReleased(NkKeyToKeyboardKey(menu.keyMenu))) {
+        menu.active = true;
+        return;
     }
 
     if (!menu.active) {

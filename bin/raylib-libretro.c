@@ -232,6 +232,30 @@ bool UpdateDrawFrame(void* userData) {
         LibretroMenuLoadStateClicked(menu.console, NULL);
     }
 
+    // Reset
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyReset))) {
+        if (IsLibretroGameReady()) {
+            ResetLibretro();
+            ShowLibretroMessage("Reset", 2.0f);
+        }
+    }
+
+    // Volume
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyVolumeUp))) {
+        float vol = GetLibretroVolume() + 0.1f;
+        if (vol > 1.0f) vol = 1.0f;
+        SetLibretroVolume(vol);
+        menu.volumeSelected = vol;
+        ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 100.0f)), 1.0f);
+    }
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyVolumeDown))) {
+        float vol = GetLibretroVolume() - 0.1f;
+        if (vol < 0.0f) vol = 0.0f;
+        SetLibretroVolume(vol);
+        menu.volumeSelected = vol;
+        ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 100.0f)), 1.0f);
+    }
+
     return true;
 }
 
