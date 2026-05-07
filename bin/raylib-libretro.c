@@ -139,6 +139,8 @@ bool UpdateDrawFrame(void* userData) {
     // Update the shaders, then show OSD if a shader key was pressed.
     LibretroShaderType shaderTypeBefore = GetActiveLibretroShaderType();
     UpdateLibretroShaders(GetFrameTime());
+    if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyPrevShader))) CycleLibretroShaderReverse();
+    if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyNextShader))) CycleLibretroShader();
     if (GetActiveLibretroShaderType() != shaderTypeBefore) {
         ShowLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
     }

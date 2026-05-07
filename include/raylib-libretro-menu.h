@@ -159,7 +159,6 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
 static void LibretroMenuKeyChanged(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
-    SetLibretroShaderKeys(NkKeyToKeyboardKey(menu.keyPrevShader), NkKeyToKeyboardKey(menu.keyNextShader));
     SaveLibretroMenuSettings();
 }
 
@@ -795,7 +794,6 @@ static bool LoadLibretroMenuSettings(void) {
     menu.keyReset       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyReset",       (int)menu.keyReset);
     menu.keyVolumeUp    = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     menu.keyVolumeDown  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
-    SetLibretroShaderKeys(NkKeyToKeyboardKey(menu.keyPrevShader), NkKeyToKeyboardKey(menu.keyNextShader));
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
     if (coreDirectory) TextCopy(LibretroCore.coreDirectory, coreDirectory);
