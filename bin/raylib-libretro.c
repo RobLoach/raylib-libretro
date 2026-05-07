@@ -96,6 +96,7 @@ typedef struct {
 
 bool Init(void** userData, int argc, char** argv) {
     SetWindowMinSize(400, 300);
+    SetExitKey(KEY_NULL);
 
     AppData* data = (AppData*)MemAlloc(sizeof(AppData));
     memset(data, 0, sizeof(AppData));
@@ -119,6 +120,7 @@ bool Init(void** userData, int argc, char** argv) {
         if (InitLibretro(argv[1])) {
             // Apply any previously saved options before the game starts.
             LoadLibretroCoreOptions();
+            SetLibretroVolume(data->menu->volumeSelected);
 
             // Load the given game.
             const char* gameFile = (argc > 2) ? argv[2] : NULL;
@@ -135,17 +137,14 @@ bool Init(void** userData, int argc, char** argv) {
 bool UpdateDrawFrame(void* userData) {
     AppData* data = (AppData*)userData;
 
-    // Update the shaders, then show OSD if a shader key was pressed.
-    LibretroShaderType shaderTypeBefore = GetActiveLibretroShaderType();
-    UpdateLibretroShaders(GetFrameTime());
-    if (GetActiveLibretroShaderType() != shaderTypeBefore) {
-        ShowLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
-    }
-
     // Run a frame of the core.
     if (!data->menu->active) {
+        // Update the shaders, then show OSD if a shader key was pressed.
+        LibretroShaderType shaderTypeBefore = GetActiveLibretroShaderType();
+        UpdateLibretroShaders(GetFrameTime());
+
         if (data->menu->rewindEnabled && IsLibretroGameReady()) {
-            if (IsKeyDown(KEY_R)) {
+            if (IsKeyDown(NkKeyToKeyboardKey(data->menu->keyRewind))) {
                 void* stateData = NULL;
                 unsigned int stateSize = 0;
                 if (RewindBufferPop(&data->rewind, &stateData, &stateSize)) {
@@ -201,12 +200,12 @@ bool UpdateDrawFrame(void* userData) {
     EndDrawing();
 
     // Fullscreen
-    if (IsKeyReleased(KEY_F11)) {
+    if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyFullscreen))) {
         LibretroMenuFullscreenChanged(menu.console, NULL);
     }
 
     // Screenshot
-    else if (IsKeyReleased(KEY_F8)) {
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyScreenshot))) {
         const char* screenshotsDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
         const char* screenshotName = NULL;
         for (int i = 1; i < 1000; i++) {
@@ -221,14 +220,55 @@ bool UpdateDrawFrame(void* userData) {
         }
     }
 
+    // Cycle Shader Reverse
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyPrevShader)) && !menu.active) {
+        CycleLibretroShaderReverse();
+        ShowLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
+        menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
+    }
+
+    // Cycle Shader Next
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyNextShader)) && !menu.active) {
+        CycleLibretroShader();
+        ShowLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
+        // TODO: For some reason, cycling the shader doens't update the menu label.
+        menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
+    }
+
     // Save State
-    else if (IsKeyReleased(KEY_F2)) {
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keySaveState)) && !menu.active) {
         LibretroMenuSaveStateClicked(menu.console, NULL);
     }
 
     // Load State
-    else if (IsKeyReleased(KEY_F4)) {
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyLoadState)) && !menu.active) {
         LibretroMenuLoadStateClicked(menu.console, NULL);
+    }
+
+    // Reset
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyReset)) && !menu.active) {
+        if (IsLibretroGameReady()) {
+            ResetLibretro();
+            ShowLibretroMessage("Reset", 2.0f);
+        }
+    }
+
+    // Volume
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyVolumeUp)) && !menu.active) {
+        float vol = GetLibretroVolume() + 0.1f;
+        SetLibretroVolume(vol);
+        vol = GetLibretroVolume();
+        menu.volumeSelected = vol;
+        SaveLibretroMenuSettings();
+        ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0f);
+    }
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyVolumeDown)) && !menu.active) {
+        float vol = GetLibretroVolume() - 0.1f;
+        SetLibretroVolume(vol);
+        vol = GetLibretroVolume();
+        menu.volumeSelected = vol;
+        SaveLibretroMenuSettings();
+        ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0f);
     }
 
     return true;

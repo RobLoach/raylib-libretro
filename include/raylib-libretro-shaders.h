@@ -188,7 +188,6 @@ LibretroShaderType GetActiveLibretroShaderType(void);
    or NULL when LIBRETRO_SHADER_NONE is active. */
 LibretroShaderState* GetActiveLibretroShaderState(void);
 
-void SetLibretroShaderKeys(KeyboardKey previous, KeyboardKey next);
 void BeginLibretroShader(void);
 void EndLibretroShader(void);
 
@@ -206,8 +205,6 @@ extern "C" {
 
 static LibretroShaderState rlsh_shaders[RAYLIB_LIBRETRO_SHADERS_MAX];
 static LibretroShaderType  rlsh_current = LIBRETRO_SHADER_NONE;
-static KeyboardKey rlsh_key_prev = KEY_F9;
-static KeyboardKey rlsh_key_next = KEY_F10;
 
 const char* GetLibretroShaderCode(LibretroShaderType type) {
     switch (type) {
@@ -550,17 +547,11 @@ void UnloadLibretroShaders(void) {
 }
 
 void UpdateLibretroShaders(float dt) {
-    if (rlsh_key_prev != KEY_NULL && IsKeyReleased(rlsh_key_prev)) CycleLibretroShaderReverse();
-    if (rlsh_key_next != KEY_NULL && IsKeyReleased(rlsh_key_next)) CycleLibretroShader();
     if (rlsh_current != LIBRETRO_SHADER_NONE) {
         UpdateLibretroShader(&rlsh_shaders[(int)rlsh_current - 1], dt);
     }
 }
 
-void SetLibretroShaderKeys(KeyboardKey previous, KeyboardKey next) {
-    rlsh_key_prev = previous;
-    rlsh_key_next = next;
-}
 
 void CycleLibretroShader(void) {
     int next = (int)rlsh_current + 1;

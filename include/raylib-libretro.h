@@ -225,6 +225,7 @@ typedef struct rLibretro {
     // struct retro_game_info_ext game_info_ext;
 
     // Core variables/options
+    // TODO: Switch these to MemAlloc'ed strings.
     char variableKeys[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_KEY_LEN];
     char variableValues[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUE_LEN];
     char variableLabels[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_LABEL_LEN];
@@ -268,6 +269,8 @@ extern "C" {
 
 /**
  * The global libretro core object.
+ *
+ * TODO: Figure out a way to have LibretroCore not be a static global?
  */
 static rLibretro LibretroCore = {0};
 
@@ -909,7 +912,8 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER not implemented");
+            // This is not supported because the framebuffer format may not match the expected PixelFormat.
+            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER not supported");
             return false;
         }
 
@@ -2172,12 +2176,13 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level) {
     switch (level) {
         case RETRO_LOG_DEBUG:
             return LOG_DEBUG;
-        case RETRO_LOG_INFO:
-            return LOG_INFO;
         case RETRO_LOG_WARN:
             return LOG_WARNING;
         case RETRO_LOG_ERROR:
             return LOG_ERROR;
+        case RETRO_LOG_INFO:
+        default:
+            return LOG_INFO;
     }
 
     return LOG_INFO;
