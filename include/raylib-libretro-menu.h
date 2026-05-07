@@ -294,16 +294,6 @@ static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
     menu.fullscreen = IsWindowFullscreen();
 }
 
-static void LibretroMenuSettingsBack(nk_console* widget, void* user_data) {
-    SaveLibretroMenuSettings();
-    nk_console_button_back(widget, user_data);
-}
-
-static void LibretroMenuCoreOptionsBack(nk_console* widget, void* user_data) {
-    SaveLibretroCoreOptions();
-    nk_console_button_back(widget, user_data);
-}
-
 static void LibretroMenuQuitClicked(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
@@ -416,7 +406,7 @@ LibretroMenu* InitLibretroMenu(void) {
     {
         // Back
         nk_console_button_set_symbol(
-            nk_console_button_onclick(settings, "Back", &LibretroMenuSettingsBack),
+            nk_console_button_onclick(settings, "Back", &nk_console_button_back),
             NK_SYMBOL_TRIANGLE_LEFT);
 
         // Fullscreen
@@ -515,7 +505,7 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.optionsMenu = nk_console_button(menu.console, "Core Options");
     {
         nk_console_button_set_symbol(
-            nk_console_button_onclick(menu.optionsMenu, "Back", &LibretroMenuCoreOptionsBack),
+            nk_console_button_onclick(menu.optionsMenu, "Back", &nk_console_button_back),
             NK_SYMBOL_TRIANGLE_LEFT);
     }
 
