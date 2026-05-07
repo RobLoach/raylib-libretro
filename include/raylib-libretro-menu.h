@@ -155,7 +155,6 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
         LibretroInitVideo();
     }
     SetExitKey(NkKeyToKeyboardKey(menu.keyQuit));
-    SaveLibretroMenuSettings();
 }
 
 // Convert an nk_rune key binding to a raylib KeyboardKey.
@@ -293,7 +292,6 @@ static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
     (void)user_data;
     ToggleFullscreen();
     menu.fullscreen = IsWindowFullscreen();
-    SaveLibretroMenuSettings();
 }
 
 static void LibretroMenuQuitClicked(nk_console* widget, void* user_data) {
@@ -562,7 +560,6 @@ static void LibretroMenuOptionChanged(nk_console* widget, void* user_data) {
                             value, LIBRETRO_CORE_VARIABLE_VALUE_LEN);
     if (TextLength(value) > 0) {
         SetLibretroCoreOption(LibretroCore.variableKeys[i], value);
-        SaveLibretroCoreOptions();
     }
 }
 
@@ -573,7 +570,6 @@ static void LibretroMenuOptionCheckboxChanged(nk_console* widget, void* user_dat
     unsigned i = (unsigned)(uintptr_t)user_data;
     const char* value = menu.optionCheckboxValues[i] ? "enabled" : "disabled";
     SetLibretroCoreOption(LibretroCore.variableKeys[i], value);
-    SaveLibretroCoreOptions();
 }
 
 static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
