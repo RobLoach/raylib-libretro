@@ -138,6 +138,7 @@ static bool SaveLibretroMenuSettings(void);
 static bool SaveLibretroCoreOptions(void);
 static bool LoadLibretroMenuSettings(void);
 static void UpdateLibretroMenuVisibility(void);
+static KeyboardKey NkKeyToKeyboardKey(nk_rune key);
 
 static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     (void)widget;
@@ -155,46 +156,51 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
 static void LibretroMenuKeyChanged(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
-    SetLibretroShaderKeys((KeyboardKey)(int)menu.keyPrevShader, (KeyboardKey)(int)menu.keyNextShader);
+    SetLibretroShaderKeys(NkKeyToKeyboardKey(menu.keyPrevShader), NkKeyToKeyboardKey(menu.keyNextShader));
     SaveLibretroMenuSettings();
+}
+
+// Convert an nk_rune key binding to a raylib KeyboardKey.
+static KeyboardKey NkKeyToKeyboardKey(nk_rune key) {
+    if (key == 0) return KEY_NULL;
+    if (key < (nk_rune)NK_KEY_MAX) {
+        switch ((enum nk_keys)key) {
+            case NK_KEY_ENTER:     return KEY_ENTER;
+            case NK_KEY_BACKSPACE: return KEY_BACKSPACE;
+            case NK_KEY_DEL:       return KEY_DELETE;
+            case NK_KEY_UP:        return KEY_UP;
+            case NK_KEY_DOWN:      return KEY_DOWN;
+            case NK_KEY_LEFT:      return KEY_LEFT;
+            case NK_KEY_RIGHT:     return KEY_RIGHT;
+            case NK_KEY_F1:        return KEY_F1;
+            case NK_KEY_F2:        return KEY_F2;
+            case NK_KEY_F3:        return KEY_F3;
+            case NK_KEY_F4:        return KEY_F4;
+            case NK_KEY_F5:        return KEY_F5;
+            case NK_KEY_F6:        return KEY_F6;
+            case NK_KEY_F7:        return KEY_F7;
+            case NK_KEY_F8:        return KEY_F8;
+            case NK_KEY_F9:        return KEY_F9;
+            case NK_KEY_F10:       return KEY_F10;
+            case NK_KEY_F11:       return KEY_F11;
+            case NK_KEY_F12:       return KEY_F12;
+            default:               return KEY_NULL;
+        }
+    }
+    if (key >= 'a' && key <= 'z') key -= 32;
+    return (KeyboardKey)(int)key;
 }
 
 // Check if an nk_rune key binding is currently held down in raylib.
 static bool IsNkKeyDown(nk_rune key) {
-    if (key == 0) return false;
-    if (key < (nk_rune)NK_KEY_MAX) {
-        switch ((enum nk_keys)key) {
-            case NK_KEY_ENTER:     return IsKeyDown(KEY_ENTER);
-            case NK_KEY_BACKSPACE: return IsKeyDown(KEY_BACKSPACE);
-            case NK_KEY_DEL:       return IsKeyDown(KEY_DELETE);
-            case NK_KEY_UP:        return IsKeyDown(KEY_UP);
-            case NK_KEY_DOWN:      return IsKeyDown(KEY_DOWN);
-            case NK_KEY_LEFT:      return IsKeyDown(KEY_LEFT);
-            case NK_KEY_RIGHT:     return IsKeyDown(KEY_RIGHT);
-            default:               return false;
-        }
-    }
-    if (key >= 'a' && key <= 'z') key -= 32;
-    return IsKeyDown((KeyboardKey)(int)key);
+    KeyboardKey k = NkKeyToKeyboardKey(key);
+    return k != KEY_NULL && IsKeyDown(k);
 }
 
 // Check if an nk_rune key binding was just released in raylib.
 static bool IsNkKeyReleased(nk_rune key) {
-    if (key == 0) return false;
-    if (key < (nk_rune)NK_KEY_MAX) {
-        switch ((enum nk_keys)key) {
-            case NK_KEY_ENTER:     return IsKeyReleased(KEY_ENTER);
-            case NK_KEY_BACKSPACE: return IsKeyReleased(KEY_BACKSPACE);
-            case NK_KEY_DEL:       return IsKeyReleased(KEY_DELETE);
-            case NK_KEY_UP:        return IsKeyReleased(KEY_UP);
-            case NK_KEY_DOWN:      return IsKeyReleased(KEY_DOWN);
-            case NK_KEY_LEFT:      return IsKeyReleased(KEY_LEFT);
-            case NK_KEY_RIGHT:     return IsKeyReleased(KEY_RIGHT);
-            default:               return false;
-        }
-    }
-    if (key >= 'a' && key <= 'z') key -= 32;
-    return IsKeyReleased((KeyboardKey)(int)key);
+    KeyboardKey k = NkKeyToKeyboardKey(key);
+    return k != KEY_NULL && IsKeyReleased(k);
 }
 
 static LibretroMenu* GetLibretroMenu(void) {
@@ -331,14 +337,14 @@ LibretroMenu* InitLibretroMenu(void) {
     menu = (LibretroMenu){0};
     menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
     menu.volumeSelected = 1.0f;
-    menu.keyScreenshot  = (nk_rune)KEY_F8;
-    menu.keyRewind      = (nk_rune)KEY_R;
-    menu.keyMenu        = (nk_rune)KEY_F1;
-    menu.keySaveState   = (nk_rune)KEY_F2;
-    menu.keyLoadState   = (nk_rune)KEY_F4;
-    menu.keyFullscreen  = (nk_rune)KEY_F11;
-    menu.keyPrevShader  = (nk_rune)KEY_F9;
-    menu.keyNextShader  = (nk_rune)KEY_F10;
+    menu.keyScreenshot  = (nk_rune)NK_KEY_F8;
+    menu.keyRewind      = (nk_rune)'R';
+    menu.keyMenu        = (nk_rune)NK_KEY_F1;
+    menu.keySaveState   = (nk_rune)NK_KEY_F2;
+    menu.keyLoadState   = (nk_rune)NK_KEY_F4;
+    menu.keyFullscreen  = (nk_rune)NK_KEY_F11;
+    menu.keyPrevShader  = (nk_rune)NK_KEY_F9;
+    menu.keyNextShader  = (nk_rune)NK_KEY_F10;
     menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
         return NULL;
@@ -748,7 +754,7 @@ static bool LoadLibretroMenuSettings(void) {
     menu.keyFullscreen = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFullscreen", (int)menu.keyFullscreen);
     menu.keyPrevShader = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
     menu.keyNextShader = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextShader", (int)menu.keyNextShader);
-    SetLibretroShaderKeys((KeyboardKey)(int)menu.keyPrevShader, (KeyboardKey)(int)menu.keyNextShader);
+    SetLibretroShaderKeys(NkKeyToKeyboardKey(menu.keyPrevShader), NkKeyToKeyboardKey(menu.keyNextShader));
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
     if (coreDirectory) TextCopy(LibretroCore.coreDirectory, coreDirectory);
