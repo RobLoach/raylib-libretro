@@ -159,7 +159,9 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
 static void MenuCloseOnBack(nk_console* console, void* user_data) {
     (void)console;
     (void)user_data;
-    menu.active = false;
+    if (IsLibretroGameReady()) {
+        menu.active = false;
+    }
 }
 
 // Convert an nk_rune key binding to a raylib KeyboardKey.
