@@ -165,8 +165,9 @@ static KeyboardKey NkKeyToKeyboardKey(nk_rune key) {
     if (key == 0) return KEY_NULL;
     if (key < (nk_rune)NK_KEY_MAX) {
         switch ((enum nk_keys)key) {
-            case NK_KEY_ENTER:     return KEY_ENTER;
-            case NK_KEY_BACKSPACE: return KEY_BACKSPACE;
+            case NK_KEY_ENTER:           return KEY_ENTER;
+            case NK_KEY_BACKSPACE:       return KEY_BACKSPACE;
+            case NK_KEY_TEXT_RESET_MODE: return KEY_ESCAPE;
             case NK_KEY_DEL:       return KEY_DELETE;
             case NK_KEY_UP:        return KEY_UP;
             case NK_KEY_DOWN:      return KEY_DOWN;
@@ -328,7 +329,7 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.volumeSelected = 1.0f;
     menu.keyScreenshot  = (nk_rune)NK_KEY_F8;
     menu.keyRewind      = (nk_rune)'R';
-    menu.keyMenu        = (nk_rune)NK_KEY_F1;
+    menu.keyMenu        = (nk_rune)NK_KEY_TEXT_RESET_MODE;
     menu.keySaveState   = (nk_rune)NK_KEY_F2;
     menu.keyLoadState   = (nk_rune)NK_KEY_F4;
     menu.keyFullscreen  = (nk_rune)NK_KEY_F11;
