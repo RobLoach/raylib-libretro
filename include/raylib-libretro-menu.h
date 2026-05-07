@@ -155,7 +155,6 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
         LibretroInitVideo();
     }
     SetExitKey(NkKeyToKeyboardKey(menu.keyQuit));
-    SaveLibretroMenuSettings();
 }
 
 // Convert an nk_rune key binding to a raylib KeyboardKey.
@@ -293,7 +292,16 @@ static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
     (void)user_data;
     ToggleFullscreen();
     menu.fullscreen = IsWindowFullscreen();
+}
+
+static void LibretroMenuSettingsBack(nk_console* widget, void* user_data) {
     SaveLibretroMenuSettings();
+    nk_console_button_back(widget, user_data);
+}
+
+static void LibretroMenuCoreOptionsBack(nk_console* widget, void* user_data) {
+    SaveLibretroCoreOptions();
+    nk_console_button_back(widget, user_data);
 }
 
 static void LibretroMenuQuitClicked(nk_console* widget, void* user_data) {
@@ -408,7 +416,7 @@ LibretroMenu* InitLibretroMenu(void) {
     {
         // Back
         nk_console_button_set_symbol(
-            nk_console_button_onclick(settings, "Back", &nk_console_button_back),
+            nk_console_button_onclick(settings, "Back", &LibretroMenuSettingsBack),
             NK_SYMBOL_TRIANGLE_LEFT);
 
         // Fullscreen
@@ -507,7 +515,7 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.optionsMenu = nk_console_button(menu.console, "Core Options");
     {
         nk_console_button_set_symbol(
-            nk_console_button_onclick(menu.optionsMenu, "Back", &nk_console_button_back),
+            nk_console_button_onclick(menu.optionsMenu, "Back", &LibretroMenuCoreOptionsBack),
             NK_SYMBOL_TRIANGLE_LEFT);
     }
 
@@ -562,7 +570,6 @@ static void LibretroMenuOptionChanged(nk_console* widget, void* user_data) {
                             value, LIBRETRO_CORE_VARIABLE_VALUE_LEN);
     if (TextLength(value) > 0) {
         SetLibretroCoreOption(LibretroCore.variableKeys[i], value);
-        SaveLibretroCoreOptions();
     }
 }
 
@@ -573,7 +580,6 @@ static void LibretroMenuOptionCheckboxChanged(nk_console* widget, void* user_dat
     unsigned i = (unsigned)(uintptr_t)user_data;
     const char* value = menu.optionCheckboxValues[i] ? "enabled" : "disabled";
     SetLibretroCoreOption(LibretroCore.variableKeys[i], value);
-    SaveLibretroCoreOptions();
 }
 
 static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
