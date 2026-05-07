@@ -813,8 +813,14 @@ void UpdateLibretroMenu(void) {
     }
 
     // Toggle the menu
-    if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE) || IsKeyReleased(NkKeyToKeyboardKey(menu.keyMenu))) {
+    if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE)) {
         menu.active = !menu.active;
+    } else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyMenu))) {
+        if (menu.active && nk_console_active_parent(menu.console) != menu.console) {
+            nk_console_navigate_back(nk_console_active_parent(menu.console));
+        } else {
+            menu.active = !menu.active;
+        }
     }
 
     if (!menu.active) {
