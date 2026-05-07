@@ -96,6 +96,7 @@ typedef struct {
 
 bool Init(void** userData, int argc, char** argv) {
     SetWindowMinSize(400, 300);
+    SetExitKey(KEY_NULL);
 
     AppData* data = (AppData*)MemAlloc(sizeof(AppData));
     memset(data, 0, sizeof(AppData));
