@@ -156,12 +156,6 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     SaveLibretroMenuSettings();
 }
 
-static void LibretroMenuKeyChanged(nk_console* widget, void* user_data) {
-    (void)widget;
-    (void)user_data;
-    SaveLibretroMenuSettings();
-}
-
 static void MenuCloseOnBack(nk_console* console, void* user_data) {
     (void)console;
     (void)user_data;
@@ -460,27 +454,27 @@ LibretroMenu* InitLibretroMenu(void) {
         {
             nk_console* w;
             w = nk_console_key(keysTree, "Screenshot", &menu.keyScreenshot);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Rewind", &menu.keyRewind);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Menu", &menu.keyMenu);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Save State", &menu.keySaveState);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Load State", &menu.keyLoadState);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Fullscreen", &menu.keyFullscreen);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Previous Shader", &menu.keyPrevShader);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Next Shader", &menu.keyNextShader);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Reset", &menu.keyReset);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Volume Up", &menu.keyVolumeUp);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Volume Down", &menu.keyVolumeDown);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuKeyChanged, NULL, NULL);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
         }
 
         // Directories
