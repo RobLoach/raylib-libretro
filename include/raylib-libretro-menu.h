@@ -346,7 +346,7 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.keyFullscreen  = (nk_rune)NK_KEY_F11;
     menu.keyPrevShader  = (nk_rune)NK_KEY_F9;
     menu.keyNextShader  = (nk_rune)NK_KEY_F10;
-    menu.keyReset       = (nk_rune)NK_KEY_F5;
+    menu.keyReset       = (nk_rune)NK_KEY_NONE;
     menu.keyVolumeUp    = (nk_rune)'=';
     menu.keyVolumeDown  = (nk_rune)'-';
     menu.font = LoadFontFromNuklear(fontSize);
