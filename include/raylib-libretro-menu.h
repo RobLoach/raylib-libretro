@@ -142,7 +142,6 @@ static bool SaveLibretroMenuSettings(void);
 static bool SaveLibretroCoreOptions(void);
 static bool LoadLibretroMenuSettings(void);
 static void UpdateLibretroMenuVisibility(void);
-static KeyboardKey NkKeyToKeyboardKey(nk_rune key);
 
 static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     (void)widget;
@@ -154,67 +153,8 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
         LibretroCore.textureFilter = menu.textureFilterIndex;
         LibretroInitVideo();
     }
-    SetExitKey(NkKeyToKeyboardKey(menu.keyQuit));
+    SetExitKey(NuklearKeyToKeyboardKey(menu.keyQuit));
 }
-
-// Convert an nk_rune key binding to a raylib KeyboardKey.
-static KeyboardKey NkKeyToKeyboardKey(nk_rune key) {
-    if (key == 0) return KEY_NULL;
-    if (key < (nk_rune)NK_KEY_MAX) {
-        switch ((enum nk_keys)key) {
-            case NK_KEY_ENTER:           return KEY_ENTER;
-            case NK_KEY_TAB:             return KEY_TAB;
-            case NK_KEY_SHIFT:           return KEY_LEFT_SHIFT;
-            case NK_KEY_BACKSPACE:       return KEY_BACKSPACE;
-            case NK_KEY_TEXT_RESET_MODE: return KEY_ESCAPE;
-            case NK_KEY_DEL:             return KEY_DELETE;
-            case NK_KEY_UP:        return KEY_UP;
-            case NK_KEY_DOWN:      return KEY_DOWN;
-            case NK_KEY_LEFT:      return KEY_LEFT;
-            case NK_KEY_RIGHT:     return KEY_RIGHT;
-            case NK_KEY_F1:        return KEY_F1;
-            case NK_KEY_F2:        return KEY_F2;
-            case NK_KEY_F3:        return KEY_F3;
-            case NK_KEY_F4:        return KEY_F4;
-            case NK_KEY_F5:        return KEY_F5;
-            case NK_KEY_F6:        return KEY_F6;
-            case NK_KEY_F7:        return KEY_F7;
-            case NK_KEY_F8:        return KEY_F8;
-            case NK_KEY_F9:        return KEY_F9;
-            case NK_KEY_F10:       return KEY_F10;
-            case NK_KEY_F11:       return KEY_F11;
-            case NK_KEY_F12:       return KEY_F12;
-            default:               return KEY_NULL;
-        }
-    }
-    if (key >= 'a' && key <= 'z') key -= 32;
-    /* Map shifted characters to their physical key on a US keyboard. */
-    switch (key) {
-        case '+': return KEY_EQUAL;
-        case '_': return KEY_MINUS;
-        case '?': return KEY_SLASH;
-        case ':': return KEY_SEMICOLON;
-        case '"': return KEY_APOSTROPHE;
-        case '<': return KEY_COMMA;
-        case '>': return KEY_PERIOD;
-        case '{': return KEY_LEFT_BRACKET;
-        case '}': return KEY_RIGHT_BRACKET;
-        case '|': return KEY_BACKSLASH;
-        case '~': return KEY_GRAVE;
-        case '!': return KEY_ONE;
-        case '@': return KEY_TWO;
-        case '#': return KEY_THREE;
-        case '$': return KEY_FOUR;
-        case '%': return KEY_FIVE;
-        case '^': return KEY_SIX;
-        case '&': return KEY_SEVEN;
-        case '*': return KEY_EIGHT;
-        case '(': return KEY_NINE;
-        case ')': return KEY_ZERO;
-    }
-    return (KeyboardKey)(int)key;
-}
-
 
 static LibretroMenu* GetLibretroMenu(void) {
     return &menu;
@@ -788,7 +728,7 @@ static bool LoadLibretroMenuSettings(void) {
     menu.keyNextShader  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
     menu.keyReset       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyReset",       (int)menu.keyReset);
     menu.keyQuit       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyQuit",       (int)menu.keyQuit);
-    SetExitKey(NkKeyToKeyboardKey(menu.keyQuit));
+    SetExitKey(NuklearKeyToKeyboardKey(menu.keyQuit));
     menu.keyVolumeUp    = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     menu.keyVolumeDown  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
 
@@ -863,7 +803,7 @@ void UpdateLibretroMenu(void) {
     // back-navigation in submenus, and MenuCloseOnBack at root level.
     if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE)) {
         menu.active = !menu.active;
-    } else if (!menu.active && IsKeyReleased(NkKeyToKeyboardKey(menu.keyMenu))) {
+    } else if (!menu.active && IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyMenu))) {
         menu.active = true;
     }
 
