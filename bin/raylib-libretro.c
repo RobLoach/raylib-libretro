@@ -115,9 +115,15 @@ bool Init(void** userData, int argc, char** argv) {
     }
 
     // Parse the command line arguments.
-    if (argc > 1) {
+    const char* corePath = (argc > 1) ? argv[1] : NULL;
+#ifdef __EMSCRIPTEN__
+    if (!corePath) {
+        corePath = "/resources/fceumm_libretro.wasm";
+    }
+#endif
+    if (corePath) {
         // Initialize the given core.
-        if (InitLibretro(argv[1])) {
+        if (InitLibretro(corePath)) {
             // Apply any previously saved options before the game starts.
             LoadLibretroCoreOptions();
             SetLibretroVolume(data->menu->volumeSelected);

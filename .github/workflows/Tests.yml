@@ -24,6 +24,19 @@ jobs:
     - name: Build
       run: cmake --build build
 
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Install Emscripten
+      uses: mymindstorm/setup-emsdk@v14
+    - name: Configure
+      run: emcmake cmake -DPLATFORM=Web -DCMAKE_BUILD_TYPE=Release -B build .
+    - name: Build
+      run: cmake --build build
+
 #   build-windows:
 #     runs-on: windows-latest
 #     steps:
