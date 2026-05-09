@@ -9,6 +9,10 @@ add_library(raylib-libretro-static STATIC
     ../vendor/libretro-common/file/file_path.c
     ../vendor/libretro-common/dynamic/dylib.c
     ../vendor/libretro-common/features/features_cpu.c
+    ../vendor/libretro-common/streams/file_stream.c
+    ../vendor/libretro-common/vfs/vfs_implementation.c
+    ../vendor/libretro-common/file/file_path_io.c
+    ../vendor/libretro-common/time/rtime.c
 )
 target_link_libraries(raylib-libretro-static PUBLIC
     raylib

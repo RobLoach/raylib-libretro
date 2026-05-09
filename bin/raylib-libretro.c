@@ -253,13 +253,13 @@ bool UpdateDrawFrame(void* userData) {
     }
 
     // Prev Slot
-    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyPrevSlot)) && !menu.active) {
+    else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyPrevSlot)) && !menu.active) {
         menu.saveSlotIndex = (menu.saveSlotIndex - 1 + 10) % 10;
         ShowLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
     }
 
     // Next Slot
-    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyNextSlot)) && !menu.active) {
+    else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyNextSlot)) && !menu.active) {
         menu.saveSlotIndex = (menu.saveSlotIndex + 1) % 10;
         ShowLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
     }
