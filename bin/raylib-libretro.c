@@ -115,9 +115,15 @@ bool Init(void** userData, int argc, char** argv) {
     }
 
     // Parse the command line arguments.
-    if (argc > 1) {
+    const char* corePath = (argc > 1) ? argv[1] : NULL;
+#ifdef __EMSCRIPTEN__
+    if (!corePath) {
+        corePath = "/resources/fceumm_libretro.wasm";
+    }
+#endif
+    if (corePath) {
         // Initialize the given core.
-        if (InitLibretro(argv[1])) {
+        if (InitLibretro(corePath)) {
             // Apply any previously saved options before the game starts.
             LoadLibretroCoreOptions();
             SetLibretroVolume(data->menu->volumeSelected);
@@ -247,13 +253,13 @@ bool UpdateDrawFrame(void* userData) {
     }
 
     // Prev Slot
-    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyPrevSlot)) && !menu.active) {
+    else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyPrevSlot)) && !menu.active) {
         menu.saveSlotIndex = (menu.saveSlotIndex - 1 + 10) % 10;
         ShowLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
     }
 
     // Next Slot
-    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyNextSlot)) && !menu.active) {
+    else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyNextSlot)) && !menu.active) {
         menu.saveSlotIndex = (menu.saveSlotIndex + 1) % 10;
         ShowLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
     }
