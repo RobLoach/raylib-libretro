@@ -68,7 +68,7 @@ static unsigned GetLibretroWidth();                      // Get the desired widt
 static unsigned GetLibretroHeight();                     // Get the desired height of the libretro core.
 static unsigned GetLibretroRotation();                   // Get the current screen rotation (0=0°, 1=90°, 2=180°, 3=270°).
 static Texture2D GetLibretroTexture();                   // Retrieve the texture used to render the libretro state.
-static bool DoesLibretroCoreNeedContent();               // Determine whether or not the loaded core require content.
+static bool IsLibretroGameRequired();               // Determine whether or not the loaded core require content.
 static void ResetLibretro();                             // Reset the currently loaded libretro core.
 static void UnloadLibretroGame();                        // Unload the game that's currently loaded.
 static void CloseLibretro();                             // Close the initialized libretro core.
@@ -1813,13 +1813,54 @@ static bool LibretroInitAudioVideo() {
     return true;
 }
 
+static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSize) {
+    if (!IsLibretroReady()) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Core is required before loading a game");
+        return NULL;
+    }
+
+    if (fileData == NULL) {
+        return LoadLibretroGame(NULL);
+    }
+
+    // Check if it needs the full path
+    if (LibretroCore.needFullpath) {
+        TraceLog(LOG_ERROR, "LIBRETRO: The core requires the full path, can't load from memory");
+        // TODO: Allow saving to a temporary location and then use LoadLibretroGame()?
+        return false;
+    }
+
+    // Load the game.
+    struct retro_game_info info;
+    info.path = NULL;
+    info.data = fileData;
+    info.size = (size_t)dataSize;
+    info.meta = "";
+    if (!LibretroCore.retro_load_game(&info)) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with retro_load_game()");
+        LibretroCore.loaded = false;
+        return false;
+    }
+
+    LibretroCore.loaded = true;
+    bool output = LibretroInitAudioVideo();
+    TraceLog(LOG_INFO, "LIBRETRO: Loaded content from memory");
+    return output;
+}
+
 static bool LoadLibretroGame(const char* gameFile) {
+    // Core needs to be loaded.
+    if (!IsLibretroReady()) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Core is required before loading a game");
+        return NULL;
+    }
+
     // Load empty game.
     if (gameFile == NULL) {
         struct retro_game_info info;
         info.data = NULL;
         info.size = 0;
-        info.path = "";
+        info.path = NULL;
         info.meta = "";
         if (LibretroCore.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded without content");
@@ -1864,22 +1905,9 @@ static bool LoadLibretroGame(const char* gameFile) {
         return false;
     }
 
-    // Load the game.
-    struct retro_game_info info;
-    info.path = gameFile;
-    info.data = gameData;
-    info.size = (size_t)size;
-    info.meta = "";
-    if (!LibretroCore.retro_load_game(&info)) {
-        MemFree(gameData);
-        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with retro_load_game()");
-        LibretroCore.loaded = false;
-        return false;
-    }
-
-    MemFree(gameData);
-    LibretroCore.loaded = true;
-    return LibretroInitAudioVideo();
+    bool output = LoadLibretroGameFromMemory(gameData, size);
+    UnloadFileData(gameData);
+    return output;
 }
 
 static const char* GetLibretroName() {
@@ -1890,19 +1918,21 @@ static const char* GetLibretroVersion() {
     return LibretroCore.libraryVersion;
 }
 
-static bool DoesLibretroCoreNeedContent() {
+static bool IsLibretroGameRequired() {
     return !LibretroCore.supportNoGame;
 }
 
 static bool InitLibretro(const char* core) {
-    // Ensure the core exists.
-    if (!FileExists(core)) {
-        TraceLog(LOG_ERROR, "LIBRETRO: Given core doesn't exist: %s", core);
+    // Avoid initializing twice.
+    if (IsLibretroReady()) {
+        TraceLog(LOG_INFO, "LIBRETRO: Core already loaded, use CloseLibretro()");
         return false;
     }
 
-    if (LibretroCore.handle != NULL) {
-        CloseLibretro();
+    // Ensure the core exists.
+    if (!FileExists(core)) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Core file doesn't exist: %s", core);
+        return false;
     }
 
     // Open the dynamic library.

@@ -96,7 +96,7 @@ unsigned GetLibretroWidth();
 unsigned GetLibretroHeight();
 unsigned GetLibretroRotation();
 Texture2D GetLibretroTexture();
-bool DoesLibretroCoreNeedContent();
+bool IsLibretroGameRequired();
 void ResetLibretro();
 void UnloadLibretroGame();
 void CloseLibretro();

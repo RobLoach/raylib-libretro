@@ -128,7 +128,7 @@ CloseWindow();
 - `GetLibretroWidth()` / `GetLibretroHeight()` / `GetLibretroRotation()`
 - `GetLibretroTexture()` — raw `Texture2D` for custom rendering
 - `IsLibretroReady()` / `IsLibretroGameReady()`
-- `DoesLibretroCoreNeedContent()`
+- `IsLibretroGameRequired()`
 
 **Audio:**
 - `SetLibretroVolume(float)` / `GetLibretroVolume()`

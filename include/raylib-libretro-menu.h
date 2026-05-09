@@ -61,6 +61,7 @@ typedef struct LibretroMenu {
     nk_console* saveStateButton;
     nk_console* loadStateButton;
     nk_console* resumeButton;
+    nk_console* closeGameButton;
     int shaderSelectedIndex;
     int textureFilterIndex;
     int themeSelectedIndex;
@@ -267,6 +268,24 @@ static void MenuResumeClicked(nk_console* widget, void* user_data) {
     }
 }
 
+static void MenuCloseGameClicked(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    if (!IsLibretroReady()) {
+        return;
+    }
+    if (IsLibretroGameReady()) {
+        UnloadLibretroGame();
+    }
+    CloseLibretro();
+    UpdateLibretroMenuVisibility();
+}
+
+static void MenuLoadGameClicked(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+}
+
 static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
@@ -339,7 +358,11 @@ LibretroMenu* InitLibretroMenu(void) {
     nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_TRIANGLE_RIGHT);
 
     // Load Game
-    nk_console_button(menu.console, "Load Game");
+    nk_console_button_onclick(menu.console, "Load Game", &MenuLoadGameClicked);
+
+    // Close Game
+    menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
+    nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_X);
 
     // Settings
     nk_console* settings = nk_console_button(menu.console, "Settings");
@@ -791,6 +814,7 @@ static void UpdateLibretroMenuVisibility(void) {
     if (menu.saveStateButton) menu.saveStateButton->visible = gameReady;
     if (menu.loadStateButton) menu.loadStateButton->visible = gameReady;
     if (menu.resumeButton) menu.resumeButton->visible = gameReady;
+    if (menu.closeGameButton) menu.closeGameButton->visible = gameReady;
 }
 
 void UpdateLibretroMenu(void) {
