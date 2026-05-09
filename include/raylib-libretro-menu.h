@@ -71,6 +71,9 @@ typedef struct LibretroMenu {
     nk_rune keyMenu;
     nk_rune keySaveState;
     nk_rune keyLoadState;
+    nk_rune keyPrevSlot;
+    nk_rune keyNextSlot;
+    int saveSlotIndex;
     nk_rune keyFullscreen;
     nk_rune keyPrevShader;
     nk_rune keyNextShader;
@@ -309,9 +312,9 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
     if (saveData != NULL) {
         const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
         // TODO: Add the content name in here if applicable too.
-        SaveFileData(TextFormat("%s/save_%s.sav", savesDir, GetLibretroName()), saveData, (int)size);
+        SaveFileData(TextFormat("%s/save_%s_%02d.sav", savesDir, GetLibretroName(), menu.saveSlotIndex + 1), saveData, (int)size);
         MemFree(saveData);
-        ShowLibretroMessage("State Saved", 2.0f);
+        ShowLibretroMessage(TextFormat("Slot %d Saved", menu.saveSlotIndex + 1), 2.0f);
         menu.active = false;
     }
     else {
@@ -334,11 +337,11 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     int dataSize;
     const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
     // TODO: Add the libretro content name in here too.
-    void* saveData = LoadFileData(TextFormat("%s/save_%s.sav", savesDir, GetLibretroName()), &dataSize);
+    void* saveData = LoadFileData(TextFormat("%s/save_%s_%02d.sav", savesDir, GetLibretroName(), menu.saveSlotIndex + 1), &dataSize);
     if (saveData != NULL) {
         SetLibretroSerializedData(saveData, (unsigned int)dataSize);
         MemFree(saveData);
-        ShowLibretroMessage("Loaded State", 2.0f);
+        ShowLibretroMessage(TextFormat("Slot %d Loaded", menu.saveSlotIndex + 1), 2.0f);
         menu.active = false;
     }
     else {
@@ -356,6 +359,9 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.keyMenu        = (nk_rune)NK_KEY_TEXT_RESET_MODE;
     menu.keySaveState   = (nk_rune)NK_KEY_F2;
     menu.keyLoadState   = (nk_rune)NK_KEY_F4;
+    menu.keyPrevSlot    = (nk_rune)NK_KEY_NONE;
+    menu.keyNextSlot    = (nk_rune)NK_KEY_NONE;
+    menu.saveSlotIndex  = 0;
     menu.keyFullscreen  = (nk_rune)NK_KEY_F11;
     menu.keyPrevShader  = (nk_rune)NK_KEY_F9;
     menu.keyNextShader  = (nk_rune)NK_KEY_F10;
@@ -450,6 +456,12 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console* rewind = nk_console_checkbox(settings, "Rewind", &menu.rewindEnabled);
         nk_console_add_event_handler(rewind, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
+        // Save Slot
+        nk_console* slotCombo = nk_console_combobox(settings, "Save Slot",
+            "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
+            '|', &menu.saveSlotIndex);
+        nk_console_add_event_handler(slotCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
         // Keys
         nk_console* keysTree = nk_console_tree(settings, "Keys", nk_false);
         {
@@ -463,6 +475,10 @@ LibretroMenu* InitLibretroMenu(void) {
             w = nk_console_key(keysTree, "Save State", &menu.keySaveState);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Load State", &menu.keyLoadState);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Prev Slot", &menu.keyPrevSlot);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Next Slot", &menu.keyNextSlot);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Fullscreen", &menu.keyFullscreen);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
@@ -667,6 +683,9 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyMenu", (int)menu.keyMenu);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keySaveState", (int)menu.keySaveState);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyLoadState", (int)menu.keyLoadState);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyPrevSlot",  (int)menu.keyPrevSlot);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyNextSlot",  (int)menu.keyNextSlot);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "saveSlot",     menu.saveSlotIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyFullscreen", (int)menu.keyFullscreen);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
@@ -785,6 +804,10 @@ static bool LoadLibretroMenuSettings(void) {
     menu.keyMenu       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyMenu",       (int)menu.keyMenu);
     menu.keySaveState  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keySaveState",  (int)menu.keySaveState);
     menu.keyLoadState  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyLoadState",  (int)menu.keyLoadState);
+    menu.keyPrevSlot   = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyPrevSlot",   (int)menu.keyPrevSlot);
+    menu.keyNextSlot   = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextSlot",   (int)menu.keyNextSlot);
+    menu.saveSlotIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "saveSlot", 0);
+    if (menu.saveSlotIndex < 0 || menu.saveSlotIndex > 9) menu.saveSlotIndex = 0;
     menu.keyFullscreen = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFullscreen", (int)menu.keyFullscreen);
     menu.keyPrevShader = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
     menu.keyNextShader  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);

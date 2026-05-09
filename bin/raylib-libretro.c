@@ -246,6 +246,18 @@ bool UpdateDrawFrame(void* userData) {
         LibretroMenuLoadStateClicked(menu.console, NULL);
     }
 
+    // Prev Slot
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyPrevSlot)) && !menu.active) {
+        menu.saveSlotIndex = (menu.saveSlotIndex - 1 + 10) % 10;
+        ShowLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
+    }
+
+    // Next Slot
+    else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyNextSlot)) && !menu.active) {
+        menu.saveSlotIndex = (menu.saveSlotIndex + 1) % 10;
+        ShowLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
+    }
+
     // Reset
     else if (IsKeyReleased(NkKeyToKeyboardKey(menu.keyReset)) && !menu.active) {
         if (IsLibretroGameReady()) {
