@@ -397,7 +397,7 @@ static void CloseLibretroVideo() {
     if (LibretroCore.frameBuffer != NULL) {
         MemFree(LibretroCore.frameBuffer);
     }
-    LibretroCore.frameBuffer = 0;
+    LibretroCore.frameBuffer = NULL;
     LibretroCore.frameBufferSize = 0;
     LibretroCore.textureRebuild = false;
 }
@@ -435,6 +435,7 @@ static bool InitLibretroVideo() {
     LibretroCore.frameBufferSize = needed;
 
     LibretroCore.textureRebuild = false;
+    return true;
 }
 
 /**
@@ -503,6 +504,9 @@ static void LibretroPerfStop(struct retro_perf_counter* counter) {
  */
 static void LibretroPerfLog() {
     // TODO: Use a linked list of counters, and loop through them all.
+    if (LibretroCore.perf_counter_last == NULL) {
+        return;
+    }
     TraceLog(LOG_INFO, "LIBRETRO: Timer %s: %i - %i", LibretroCore.perf_counter_last->ident, LibretroCore.perf_counter_last->start, LibretroCore.perf_counter_last->total);
 }
 
@@ -1514,7 +1518,13 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
     if (width != LibretroCore.width || height != LibretroCore.height) {
         LibretroCore.width = width;
         LibretroCore.height = height;
-        InitLibretroVideo();
+        if (!InitLibretroVideo()) {
+            return;
+        }
+    }
+
+    if (!IsTextureValid(LibretroCore.texture)) {
+        return;
     }
 
     switch (LibretroCore.pixelFormat) {
@@ -1843,7 +1853,7 @@ static bool LibretroInitAudioVideo() {
 static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSize) {
     if (!IsLibretroReady()) {
         TraceLog(LOG_ERROR, "LIBRETRO: Core is required before loading a game");
-        return NULL;
+        return false;
     }
 
     if (fileData == NULL) {
@@ -1869,17 +1879,19 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
         return false;
     }
 
-    LibretroCore.loaded = true;
-    bool output = LibretroInitAudioVideo();
+    LibretroCore.loaded = LibretroInitAudioVideo();
+    if (!LibretroCore.loaded) {
+        return false;
+    }
     TraceLog(LOG_INFO, "LIBRETRO: Loaded content from memory");
-    return output;
+    return true;
 }
 
 static bool LoadLibretroGame(const char* gameFile) {
     // Core needs to be loaded.
     if (!IsLibretroReady()) {
         TraceLog(LOG_ERROR, "LIBRETRO: Core is required before loading a game");
-        return NULL;
+        return false;
     }
 
     // Load empty game.
@@ -2144,7 +2156,9 @@ static void SetLibretroVolume(float volume) {
     if (volume < 0) volume = 0.0f;
     else if (volume > 1.0f) volume = 1.0f;
     LibretroCore.volume = volume;
-    SetAudioStreamVolume(LibretroCore.audioStream, volume);
+    if (IsAudioStreamValid(LibretroCore.audioStream)) {
+        SetAudioStreamVolume(LibretroCore.audioStream, volume);
+    }
 }
 
 static float GetLibretroVolume() {
