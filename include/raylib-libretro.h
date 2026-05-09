@@ -50,7 +50,8 @@ extern "C" {
 // Libretro Raylib Integration (Module: raylib-libretro)
 //------------------------------------------------------------------------------------
 
-static bool InitLibretro(const char* core);              // Initialize the given libretro core.
+static bool InitLibretro(const char* core);   // Initialize the given libretro core
+static bool InitLibretroEx(const char* core, bool peek);   // Initialize the given libretro core
 static bool LoadLibretroGame(const char* gameFile);      // Load the provided content. Provide NULL to load the core without content.
 static bool IsLibretroReady();                           // Whether or not the core was successfully loaded.
 static bool IsLibretroGameReady();                       // Whether or not the game has been loaded.
@@ -384,23 +385,34 @@ static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
     }
 }
 
-static void LibretroInitAudio();  // Forward declaration.
+static void InitLibretroAudio();  // Forward declaration.
 
-static void LibretroInitVideo() {
+static void CloseLibretroVideo() {
     // Unload the existing texture if it exists already.
     if (IsTextureValid(LibretroCore.texture)) {
         UnloadTexture(LibretroCore.texture);
-        LibretroCore.texture.id = 0;
+        memset(&LibretroCore.texture, 0, sizeof(LibretroCore.texture));
     }
+
+    if (LibretroCore.frameBuffer != NULL) {
+        MemFree(LibretroCore.frameBuffer);
+    }
+    LibretroCore.frameBuffer = 0;
+    LibretroCore.frameBufferSize = 0;
+    LibretroCore.textureRebuild = false;
+}
+
+static bool InitLibretroVideo() {
+    CloseLibretroVideo();
 
     // Build the rendering image.
     if (LibretroCore.width == 0 || LibretroCore.height == 0) {
-        return;
+        return false;
     }
 
     Image image = GenImageColor(LibretroCore.width, LibretroCore.height, BLACK);
     if (!IsImageValid(image)) {
-        return;
+        return false;
     }
     ImageFormat(&image, LibretroMapRetroPixelFormatToPixelFormat(LibretroCore.pixelFormat));
 
@@ -408,15 +420,16 @@ static void LibretroInitVideo() {
     LibretroCore.texture = LoadTextureFromImage(image);
     UnloadImage(image);
     if (!IsTextureValid(LibretroCore.texture)) {
-        return;
+        return false;
     }
 
     SetTextureFilter(LibretroCore.texture, LibretroCore.textureFilter);
 
     // (Re-)allocate the frame conversion buffer sized for XRGB8888→RGBA8888 (worst case).
     size_t needed = (size_t)GetPixelDataSize(LibretroCore.width, LibretroCore.height, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
-    if (LibretroCore.frameBuffer != NULL) {
-        MemFree(LibretroCore.frameBuffer);
+    if (needed == 0) {
+        CloseLibretroVideo();
+        return false;
     }
     LibretroCore.frameBuffer = MemAlloc(needed);
     LibretroCore.frameBufferSize = needed;
@@ -828,16 +841,10 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 LibretroCore.fps
             );
             if (dimsChanged) {
-                LibretroInitVideo();
+                InitLibretroVideo();
             }
             if (sampleRateChanged) {
-                StopAudioStream(LibretroCore.audioStream);
-                UnloadAudioStream(LibretroCore.audioStream);
-                MemFree(LibretroCore.audioRingBuffer);
-                LibretroCore.audioRingBuffer = NULL;
-                LibretroCore.audioRingAvailable = 0;
-                LibretroCore.audioRingWritePos = 0;
-                LibretroInitAudio();
+                InitLibretroAudio();
             }
             SetTargetFPS(LibretroCore.fps);
             return true;
@@ -1350,6 +1357,10 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
  * Retrieve the audio/video information for the core.
  */
 static bool LibretroGetAudioVideo() {
+    if (LibretroCore.retro_get_system_av_info == NULL) {
+        return false;
+    }
+
     struct retro_system_av_info av = {0};
     LibretroCore.retro_get_system_av_info(&av);
     LibretroCore.width = av.geometry.base_width;
@@ -1361,7 +1372,6 @@ static bool LibretroGetAudioVideo() {
     TraceLog(LOG_INFO, "    > Display size: %i x %i", LibretroCore.width, LibretroCore.height);
     TraceLog(LOG_INFO, "    > Target FPS:   %i", LibretroCore.fps);
     TraceLog(LOG_INFO, "    > Sample rate:  %.2f Hz", LibretroCore.sampleRate);
-
     return true;
 }
 
@@ -1370,7 +1380,7 @@ static bool LibretroGetAudioVideo() {
  */
 static void UpdateLibretro() {
     if (LibretroCore.textureRebuild) {
-        LibretroInitVideo();
+        InitLibretroVideo();
     }
 
     LibretroCore.gameTimeNSEC += (retro_perf_tick_t)((double)GetFrameTime() * 1000000000.0);
@@ -1504,7 +1514,7 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
     if (width != LibretroCore.width || height != LibretroCore.height) {
         LibretroCore.width = width;
         LibretroCore.height = height;
-        LibretroInitVideo();
+        InitLibretroVideo();
     }
 
     switch (LibretroCore.pixelFormat) {
@@ -1779,7 +1789,24 @@ static void LibretroAudioSample(int16_t left, int16_t right) {
     LibretroCore.singleSampleCount++;
 }
 
-static void LibretroInitAudio() {
+static void CloseLibretroAudio() {
+    // Unload the audiostream first.
+    if (IsAudioStreamValid(LibretroCore.audioStream)) {
+        StopAudioStream(LibretroCore.audioStream);
+        UnloadAudioStream(LibretroCore.audioStream);
+        memset(&LibretroCore.audioStream, 0, sizeof(LibretroCore.audioStream));
+    }
+    if (LibretroCore.audioRingBuffer != NULL) {
+        MemFree(LibretroCore.audioRingBuffer);
+        LibretroCore.audioRingBuffer = NULL;
+    }
+    LibretroCore.audioRingAvailable = 0;
+    LibretroCore.audioRingWritePos = 0;
+}
+
+static void InitLibretroAudio() {
+    CloseLibretroAudio();
+
     // Allocate the ring buffer (stereo float samples).
     LibretroCore.audioRingBufferSize = LIBRETRO_AUDIO_RING_BUFFER_SIZE;
     LibretroCore.audioRingBuffer = (float *)MemAlloc(LibretroCore.audioRingBufferSize * 2 * sizeof(float));
@@ -1805,8 +1832,8 @@ static void LibretroInitAudio() {
 
 static bool LibretroInitAudioVideo() {
     LibretroGetAudioVideo();
-    LibretroInitVideo();
-    LibretroInitAudio();
+    InitLibretroVideo();
+    InitLibretroAudio();
 
     SetTargetFPS(LibretroCore.fps);
 
@@ -1922,7 +1949,7 @@ static bool IsLibretroGameRequired() {
     return !LibretroCore.supportNoGame;
 }
 
-static bool InitLibretro(const char* core) {
+static bool InitLibretroEx(const char* core, bool peek) {
     // Avoid initializing twice.
     if (IsLibretroReady()) {
         TraceLog(LOG_INFO, "LIBRETRO: Core already loaded, use CloseLibretro()");
@@ -1968,13 +1995,10 @@ static bool InitLibretro(const char* core) {
         TraceLog(LOG_INFO, "    > Extensions:   %s", LibretroCore.validExtensions);
     }
 
-    // TODO: Add ability to peek inside the core to grab data.
-    /*
     if (peek) {
         CloseLibretro();
         return true;
     }
-    */
 
     // Load all other libretro methods.
     LoadLibretroMethod(retro_init);
@@ -2017,6 +2041,10 @@ static bool InitLibretro(const char* core) {
     // Initialize the core.
     LibretroCore.retro_init();
     return true;
+}
+
+static bool InitLibretro(const char* core) {
+    return InitLibretroEx(core, false);
 }
 
 static void DrawLibretroTexture(int posX, int posY, Color tint) {
@@ -2160,7 +2188,9 @@ static void ResetLibretro() {
 static void UnloadLibretroGame() {
     if (LibretroCore.retro_unload_game != NULL) {
         LibretroCore.retro_unload_game();
+        LibretroCore.retro_unload_game = NULL;
     }
+    LibretroCore.retro_run = NULL;
     LibretroCore.loaded = false;
 }
 
@@ -2168,35 +2198,31 @@ static void UnloadLibretroGame() {
  * Close the libretro core.
  */
 static void CloseLibretro() {
+    // Make sure the game is unloaded prior to unloading the core.
+    if (IsLibretroGameReady()) {
+        UnloadLibretroGame();
+    }
+
     // Let the core know that the audio device has been deinitialized.
     if (LibretroCore.audio_callback.set_state != NULL) {
         LibretroCore.audio_callback.set_state(false);
+        memset(&LibretroCore.audio_callback, 0, sizeof(LibretroCore.audio_callback));
     }
 
     // Call retro_deinit() to deinitialize the core.
     if (LibretroCore.retro_deinit != NULL) {
         LibretroCore.retro_deinit();
+        LibretroCore.retro_deinit = NULL;
     }
 
-    // Stop, close and unload all raylib objects.
-    StopAudioStream(LibretroCore.audioStream);
-    UnloadAudioStream(LibretroCore.audioStream);
-    if (LibretroCore.audioRingBuffer != NULL) {
-        MemFree(LibretroCore.audioRingBuffer);
-        LibretroCore.audioRingBuffer = NULL;
-    }
-    UnloadTexture(LibretroCore.texture);
+    CloseLibretroAudio();
+    CloseLibretroVideo();
 
     // Close the dynamically loaded handle.
     if (LibretroCore.handle != NULL) {
         dylib_close(LibretroCore.handle);
         LibretroCore.handle = NULL;
     }
-
-    // Free the frame conversion buffer.
-    MemFree(LibretroCore.frameBuffer);
-
-    LibretroCore = (rLibretro){0};
 }
 
 /**

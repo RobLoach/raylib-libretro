@@ -152,7 +152,7 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     SetLibretroVolume(menu.volumeSelected);
     if (LibretroCore.textureFilter != menu.textureFilterIndex) {
         LibretroCore.textureFilter = menu.textureFilterIndex;
-        LibretroInitVideo();
+        InitLibretroVideo();
     }
     SetExitKey(NuklearKeyToKeyboardKey(menu.keyQuit));
 }
