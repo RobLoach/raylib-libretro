@@ -77,6 +77,10 @@ CloseLibretro();
 
 ## API Reference
 
+See the full [API documentation](docs/API.md) for integration details, CMake setup, and function descriptions.
+
+### Quick Reference
+
 ``` c
 bool InitLibretro(const char* core);
 bool LoadLibretroGame(const char* gameFile);
