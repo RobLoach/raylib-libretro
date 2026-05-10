@@ -17,10 +17,13 @@ add_library(raylib-libretro-static STATIC
 target_link_libraries(raylib-libretro-static PUBLIC
     raylib
     raylib-libretro-h
+    raylib_zip
+    zip
     ${CMAKE_DL_LIBS}
 )
 target_include_directories(raylib-libretro-static PUBLIC
     ../vendor/libretro-common/include
+    ../vendor/raylib-zip
 )
 target_compile_definitions(raylib-libretro-static PUBLIC
     HAVE_DYNAMIC=1

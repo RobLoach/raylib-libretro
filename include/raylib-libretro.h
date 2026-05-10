@@ -1967,6 +1967,39 @@ static bool LoadLibretroGame(const char* gameFile) {
         return false;
     }
 
+#ifdef RAYLIB_ZIP_H_
+    // Load from .zip: extract the first file and load it.
+    if (IsFileExtension(gameFile, ".zip")) {
+        Zip archive = LoadZip(gameFile);
+        if (!IsZipValid(archive)) {
+            TraceLog(LOG_ERROR, "LIBRETRO: Failed to open zip: %s", gameFile);
+            UnloadZip(archive);
+            LibretroCore.loaded = false;
+            return false;
+        }
+        FilePathList files = LoadDirectoryFilesFromZip(archive, NULL);
+        if (files.count == 0) {
+            TraceLog(LOG_ERROR, "LIBRETRO: No files found in zip: %s", gameFile);
+            UnloadDirectoryFiles(files);
+            UnloadZip(archive);
+            LibretroCore.loaded = false;
+            return false;
+        }
+        int dataSize = 0;
+        unsigned char* gameData = LoadFileDataFromZip(archive, files.paths[0], &dataSize);
+        UnloadDirectoryFiles(files);
+        UnloadZip(archive);
+        if (gameData == NULL || dataSize == 0) {
+            TraceLog(LOG_ERROR, "LIBRETRO: Failed to extract content from zip: %s", gameFile);
+            LibretroCore.loaded = false;
+            return false;
+        }
+        bool output = LoadLibretroGameFromMemory(gameData, dataSize);
+        MemFree(gameData);
+        return output;
+    }
+#endif
+
     // See if we just need the full path.
     if (LibretroCore.needFullpath) {
         struct retro_game_info info;

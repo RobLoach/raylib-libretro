@@ -36,3 +36,6 @@
 [submodule "vendor/hashmap"]
 	path = vendor/hashmap
 	url = git@github.com:RolandMarchand/hashmap.h.git
+[submodule "vendor/raylib-zip"]
+	path = vendor/raylib-zip
+	url = https://github.com/RobLoach/raylib-zip.git

@@ -33,5 +33,8 @@
 *
 **********************************************************************************************/
 
+#define RAYLIB_ZIP_IMPLEMENTATION
+#include "raylib-zip.h"
+
 #define RAYLIB_LIBRETRO_IMPLEMENTATION
 #include "raylib-libretro.h"
