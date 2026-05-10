@@ -92,6 +92,7 @@ static void RewindBufferFree(RewindBuffer* rb) {
 typedef struct {
     LibretroMenu* menu;
     RewindBuffer rewind;
+    float savedVolume;
 } AppData;
 
 bool Init(void** userData, int argc, char** argv) {
@@ -178,21 +179,33 @@ bool UpdateDrawFrame(void* userData) {
 
             if (ffDown) {
                 if (!IsLibretroFastForwarding()) {
-                    SetLibretroSpeed(data->menu->fastForwardSpeed);
+                    data->savedVolume = GetLibretroVolume();
                     SetLibretroFastForwarding(true);
+                    SetLibretroSpeed(data->menu->fastForwardSpeed);
+                    SetLibretroVolume(0.0f);
                 }
             } else if (smDown) {
                 if (IsLibretroFastForwarding()) {
                     SetLibretroFastForwarding(false);
+                    SetLibretroVolume(data->savedVolume);
                 }
                 SetLibretroSpeed(data->menu->slowMotionSpeed);
             } else if (IsLibretroFastForwarding() || GetLibretroSpeed() != 1.0f) {
+                if (IsLibretroFastForwarding()) {
+                    SetLibretroVolume(data->savedVolume);
+                }
                 SetLibretroFastForwarding(false);
                 SetLibretroSpeed(1.0f);
             }
         }
 
-        UpdateLibretro();
+        if (IsLibretroFastForwarding()) {
+            int steps = (int)GetLibretroSpeed();
+            if (steps < 1) steps = 1;
+            for (int i = 0; i < steps; i++) UpdateLibretro();
+        } else {
+            UpdateLibretro();
+        }
     }
 
     UpdateLibretroMenu();

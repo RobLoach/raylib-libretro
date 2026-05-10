@@ -2255,10 +2255,9 @@ static float GetLibretroVolume() {
 
 static void SetLibretroFastForwarding(bool fastForward) {
     LibretroCore.fastForwarding = fastForward;
-    if (fastForward && LibretroCore.speed > 1.0f) {
-        SetTargetFPS((int)(LibretroCore.fps * LibretroCore.speed));
-    } else if (fastForward) {
-        SetTargetFPS(0);
+    if (fastForward) {
+        // Keep normal frame rate; caller handles multiple retro_run() calls per frame.
+        SetTargetFPS((int)LibretroCore.fps);
     } else {
         SetTargetFPS((int)(LibretroCore.fps * LibretroCore.speed));
     }

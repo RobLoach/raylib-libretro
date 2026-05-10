@@ -424,7 +424,7 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
         // Fast Forward Speed
-        nk_console* ffSpeed = nk_console_slider_float(settings, "Fast Forward Speed", 1.0f, &menu.fastForwardSpeed, 10.0f, 0.5f);
+        nk_console* ffSpeed = nk_console_slider_float(settings, "Fast Forward Speed", 2.0f, &menu.fastForwardSpeed, 10.0f, 1.0f);
         nk_console_add_event_handler(ffSpeed, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
         // Slow Motion Speed
