@@ -27,7 +27,7 @@
 - [ ] Save state slots (multiple named saves per game)
 - [ ] SRAM / battery save auto-save on exit
 - [x] Rewind support (`retro_serialize` API)
-- [ ] Fast-forward / slow-motion toggle
+- [x] Fast-forward / slow-motion toggle
 - [ ] Turbo button support
 - [ ] Cheats support (libretro cheat interface)
 - [ ] RetroAchievements integration (rcheevos)
