@@ -44,6 +44,6 @@
 ## Input
 
 - [ ] Gamepad auto-detection and mapping
-- [ ] Analog stick support for cores that use it
+- [x] Analog stick support for cores that use it
 - [ ] Multi-player / multi-gamepad assignment
 - [ ] Command-line ROM drag-and-drop onto window
