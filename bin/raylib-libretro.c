@@ -169,6 +169,19 @@ bool UpdateDrawFrame(void* userData) {
         } else if (data->rewind.count > 0) {
             RewindBufferFree(&data->rewind);
         }
+
+        if (IsLibretroGameReady() && data->menu->keyFastForward != NK_KEY_NONE) {
+            if (IsKeyDown(NuklearKeyToKeyboardKey(data->menu->keyFastForward))) {
+                if (!IsLibretroFastForwarding()) {
+                    SetLibretroSpeed(data->menu->fastForwardSpeed);
+                    SetLibretroFastForwarding(true);
+                }
+            } else if (IsLibretroFastForwarding()) {
+                SetLibretroFastForwarding(false);
+                SetLibretroSpeed(1.0f);
+            }
+        }
+
         UpdateLibretro();
     }
 

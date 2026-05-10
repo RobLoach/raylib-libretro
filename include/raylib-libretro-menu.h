@@ -82,6 +82,8 @@ typedef struct LibretroMenu {
     nk_rune keyQuit;
     nk_rune keyVolumeUp;
     nk_rune keyVolumeDown;
+    nk_rune keyFastForward;
+    float fastForwardSpeed;
     int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
     nk_bool optionCheckboxValues[128];    // per-option checkbox state for enabled/disabled options
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
@@ -328,6 +330,8 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.keyQuit        = (nk_rune)NK_KEY_NONE;
     menu.keyVolumeUp    = (nk_rune)'=';
     menu.keyVolumeDown  = (nk_rune)'-';
+    menu.keyFastForward = (nk_rune)'F';
+    menu.fastForwardSpeed = 3.0f;
     menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
         return NULL;
@@ -415,6 +419,10 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console* volume = nk_console_slider_float(settings, "Volume", 0.0f, &menu.volumeSelected, 1.0f, 0.1f);
         nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
+        // Fast Forward Speed
+        nk_console* ffSpeed = nk_console_slider_float(settings, "Fast Forward Speed", 1.0f, &menu.fastForwardSpeed, 10.0f, 0.5f);
+        nk_console_add_event_handler(ffSpeed, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
         // Rewind
         nk_console* rewind = nk_console_checkbox(settings, "Rewind", &menu.rewindEnabled);
         nk_console_add_event_handler(rewind, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
@@ -456,6 +464,8 @@ LibretroMenu* InitLibretroMenu(void) {
             w = nk_console_key(keysTree, "Volume Up", &menu.keyVolumeUp);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Volume Down", &menu.keyVolumeDown);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Fast Forward", &menu.keyFastForward);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
         }
 
@@ -656,6 +666,8 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyQuit",       (int)menu.keyQuit);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", (int)(menu.fastForwardSpeed * 10.0f));
     rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.saveDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreAssetsDirectory));
@@ -779,6 +791,11 @@ static bool LoadLibretroMenuSettings(void) {
     SetExitKey(NuklearKeyToKeyboardKey(menu.keyQuit));
     menu.keyVolumeUp    = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     menu.keyVolumeDown  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
+    menu.keyFastForward = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
+    int ffSpeedInt = rlconfig_get_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", (int)(menu.fastForwardSpeed * 10.0f));
+    menu.fastForwardSpeed = (float)ffSpeedInt / 10.0f;
+    if (menu.fastForwardSpeed < 1.0f) menu.fastForwardSpeed = 1.0f;
+    if (menu.fastForwardSpeed > 10.0f) menu.fastForwardSpeed = 10.0f;
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
     if (coreDirectory) TextCopy(LibretroCore.coreDirectory, coreDirectory);
