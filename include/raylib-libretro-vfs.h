@@ -39,25 +39,25 @@ extern "C" {
 #endif
 
 static const char* raylib_libretro_vfs_get_path(struct retro_vfs_file_handle* stream);
-struct retro_vfs_file_handle* raylib_libretro_vfs_open(const char* path, unsigned int mode, unsigned int hints);
-int raylib_libretro_vfs_close(struct retro_vfs_file_handle* stream);
-int64_t raylib_libretro_vfs_size(struct retro_vfs_file_handle* stream);
-int64_t raylib_libretro_vfs_truncate(struct retro_vfs_file_handle* stream, int64_t length);
-int64_t raylib_libretro_vfs_tell(struct retro_vfs_file_handle* stream);
-int64_t raylib_libretro_vfs_seek(struct retro_vfs_file_handle* stream, int64_t offset, int seek_position);
-int64_t raylib_libretro_vfs_read(struct retro_vfs_file_handle* stream, void *s, uint64_t len);
-int64_t raylib_libretro_vfs_write(struct retro_vfs_file_handle* stream, const void *s, uint64_t len);
-int raylib_libretro_vfs_flush(struct retro_vfs_file_handle* stream);
-int raylib_libretro_vfs_remove(const char* path);
-int raylib_libretro_vfs_rename(const char* old_path, const char* new_path);
-int raylib_libretro_vfs_stat(const char* path, int32_t *size);
-int raylib_libretro_vfs_stat_64(const char* path, int64_t *size);
-int raylib_libretro_vfs_mkdir(const char* dir);
-struct retro_vfs_dir_handle* raylib_libretro_vfs_opendir(const char* dir, bool include_hidden);
-bool raylib_libretro_vfs_readdir(struct retro_vfs_dir_handle* dirstream);
-const char* raylib_libretro_vfs_dirent_get_name(struct retro_vfs_dir_handle* dirstream);
-bool raylib_libretro_vfs_dirent_is_dir(struct retro_vfs_dir_handle* dirstream);
-int raylib_libretro_vfs_closedir(struct retro_vfs_dir_handle* dirstream);
+static struct retro_vfs_file_handle* raylib_libretro_vfs_open(const char* path, unsigned int mode, unsigned int hints);
+static int raylib_libretro_vfs_close(struct retro_vfs_file_handle* stream);
+static int64_t raylib_libretro_vfs_size(struct retro_vfs_file_handle* stream);
+static int64_t raylib_libretro_vfs_truncate(struct retro_vfs_file_handle* stream, int64_t length);
+static int64_t raylib_libretro_vfs_tell(struct retro_vfs_file_handle* stream);
+static int64_t raylib_libretro_vfs_seek(struct retro_vfs_file_handle* stream, int64_t offset, int seek_position);
+static int64_t raylib_libretro_vfs_read(struct retro_vfs_file_handle* stream, void *s, uint64_t len);
+static int64_t raylib_libretro_vfs_write(struct retro_vfs_file_handle* stream, const void *s, uint64_t len);
+static int raylib_libretro_vfs_flush(struct retro_vfs_file_handle* stream);
+static int raylib_libretro_vfs_remove(const char* path);
+static int raylib_libretro_vfs_rename(const char* old_path, const char* new_path);
+static int raylib_libretro_vfs_stat(const char* path, int32_t *size);
+static int raylib_libretro_vfs_stat_64(const char* path, int64_t *size);
+static int raylib_libretro_vfs_mkdir(const char* dir);
+static struct retro_vfs_dir_handle* raylib_libretro_vfs_opendir(const char* dir, bool include_hidden);
+static bool raylib_libretro_vfs_readdir(struct retro_vfs_dir_handle* dirstream);
+static const char* raylib_libretro_vfs_dirent_get_name(struct retro_vfs_dir_handle* dirstream);
+static bool raylib_libretro_vfs_dirent_is_dir(struct retro_vfs_dir_handle* dirstream);
+static int raylib_libretro_vfs_closedir(struct retro_vfs_dir_handle* dirstream);
 
 #if defined(__cplusplus)
 }
@@ -104,7 +104,7 @@ static const char* raylib_libretro_vfs_get_path(struct retro_vfs_file_handle* st
  * @see retro_vfs_open_t
  * @since VFS API v1
  */
-struct retro_vfs_file_handle* raylib_libretro_vfs_open(const char* path, unsigned int mode, unsigned int hints) {
+static struct retro_vfs_file_handle* raylib_libretro_vfs_open(const char* path, unsigned int mode, unsigned int hints) {
     if (path == NULL || TextLength(path) >= RAYLIB_LIBRETRO_VFS_MAX_PATH) {
         TraceLog(LOG_ERROR, "LIBRETRO: Path length is too long");
         return NULL;
@@ -154,7 +154,7 @@ struct retro_vfs_file_handle* raylib_libretro_vfs_open(const char* path, unsigne
  * @see retro_vfs_close_t
  * @since VFS API v1
  */
-int raylib_libretro_vfs_close(struct retro_vfs_file_handle* stream) {
+static int raylib_libretro_vfs_close(struct retro_vfs_file_handle* stream) {
     if (stream == NULL) {
         return 0;
     }
@@ -179,7 +179,7 @@ int raylib_libretro_vfs_close(struct retro_vfs_file_handle* stream) {
  * @see retro_vfs_size_t
  * @since VFS API v1
  */
-int64_t raylib_libretro_vfs_size(struct retro_vfs_file_handle* stream) {
+static int64_t raylib_libretro_vfs_size(struct retro_vfs_file_handle* stream) {
     if (stream == NULL) {
         return -1;
     }
@@ -199,7 +199,7 @@ int64_t raylib_libretro_vfs_size(struct retro_vfs_file_handle* stream) {
  * @see filestream_truncate
  * @since VFS API v2
  */
-int64_t raylib_libretro_vfs_truncate(struct retro_vfs_file_handle* stream, int64_t length) {
+static int64_t raylib_libretro_vfs_truncate(struct retro_vfs_file_handle* stream, int64_t length) {
     if (stream == NULL || length < 0) {
         return -1;
     }
@@ -233,7 +233,7 @@ int64_t raylib_libretro_vfs_truncate(struct retro_vfs_file_handle* stream, int64
  * @see filestream_tell
  * @since VFS API v1
  */
-int64_t raylib_libretro_vfs_tell(struct retro_vfs_file_handle* stream) {
+static int64_t raylib_libretro_vfs_tell(struct retro_vfs_file_handle* stream) {
     if (stream == NULL) {
         return -1;
     }
@@ -253,7 +253,7 @@ int64_t raylib_libretro_vfs_tell(struct retro_vfs_file_handle* stream) {
  * @see File Seek Positions
  * @see filestream_seek
  */
-int64_t raylib_libretro_vfs_seek(struct retro_vfs_file_handle* stream, int64_t offset, int seek_position) {
+static int64_t raylib_libretro_vfs_seek(struct retro_vfs_file_handle* stream, int64_t offset, int seek_position) {
     if (stream == NULL) {
         return -1;
     }
@@ -294,7 +294,7 @@ int64_t raylib_libretro_vfs_seek(struct retro_vfs_file_handle* stream, int64_t o
  * @since VFS API v1
  * @see filestream_read
  */
-int64_t raylib_libretro_vfs_read(struct retro_vfs_file_handle* stream, void *s, uint64_t len) {
+static int64_t raylib_libretro_vfs_read(struct retro_vfs_file_handle* stream, void *s, uint64_t len) {
     if (stream == NULL || s == NULL || stream->data == NULL) {
         return -1;
     }
@@ -326,7 +326,7 @@ int64_t raylib_libretro_vfs_read(struct retro_vfs_file_handle* stream, void *s, 
  * @since VFS API v1
  * @see filestream_write
  */
-int64_t raylib_libretro_vfs_write(struct retro_vfs_file_handle* stream, const void *s, uint64_t len) {
+static int64_t raylib_libretro_vfs_write(struct retro_vfs_file_handle* stream, const void *s, uint64_t len) {
     if (stream == NULL || s == NULL) {
         return -1;
     }
@@ -366,7 +366,7 @@ int64_t raylib_libretro_vfs_write(struct retro_vfs_file_handle* stream, const vo
  * @since VFS API v1
  * @see filestream_flush
  */
-int raylib_libretro_vfs_flush(struct retro_vfs_file_handle* stream) {
+static int raylib_libretro_vfs_flush(struct retro_vfs_file_handle* stream) {
     if (stream == NULL || !(stream->mode & RETRO_VFS_FILE_ACCESS_WRITE)) {
         return 0;
     }
@@ -386,7 +386,7 @@ int raylib_libretro_vfs_flush(struct retro_vfs_file_handle* stream) {
  * @see filestream_delete
  * @since VFS API v1
  */
-int raylib_libretro_vfs_remove(const char* path) {
+static int raylib_libretro_vfs_remove(const char* path) {
     return FileRemove(path);
 }
 
@@ -400,7 +400,7 @@ int raylib_libretro_vfs_remove(const char* path) {
  * @see filestream_rename
  * @since VFS API v1
  */
-int raylib_libretro_vfs_rename(const char* old_path, const char* new_path) {
+static int raylib_libretro_vfs_rename(const char* old_path, const char* new_path) {
     return FileRename(old_path, new_path);
 }
 
@@ -417,7 +417,7 @@ int raylib_libretro_vfs_rename(const char* old_path, const char* new_path) {
  * @see RETRO_VFS_STAT
  * @since VFS API v3
  */
-int raylib_libretro_vfs_stat(const char* path, int32_t *size) {
+static int raylib_libretro_vfs_stat(const char* path, int32_t *size) {
     // DirectoryExists must be checked first, because FileExists uses
     // access() which returns true for directories.
     if (DirectoryExists(path)) {
@@ -449,7 +449,7 @@ int raylib_libretro_vfs_stat(const char* path, int32_t *size) {
  * @see raylib_libretro_vfs_stat
  * @since VFS API v4
  */
-int raylib_libretro_vfs_stat_64(const char* path, int64_t *size) {
+static int raylib_libretro_vfs_stat_64(const char* path, int64_t *size) {
     // TODO: raylib doesn't really have an int64 file size type, so we use stat() instead.
     int32_t size32;
     int output = raylib_libretro_vfs_stat(path, &size32);
@@ -469,7 +469,7 @@ int raylib_libretro_vfs_stat_64(const char* path, int64_t *size) {
  * @see path_mkdir
  * @since VFS API v3
  */
-int raylib_libretro_vfs_mkdir(const char* dir) {
+static int raylib_libretro_vfs_mkdir(const char* dir) {
     if (DirectoryExists(dir)) {
         return -2;
     }
@@ -493,7 +493,7 @@ int raylib_libretro_vfs_mkdir(const char* dir) {
  * @see retro_opendir
  * @since VFS API v3
  */
-struct retro_vfs_dir_handle* raylib_libretro_vfs_opendir(const char* dir, bool include_hidden) {
+static struct retro_vfs_dir_handle* raylib_libretro_vfs_opendir(const char* dir, bool include_hidden) {
     if (dir == NULL) {
         return NULL;
     }
@@ -538,7 +538,7 @@ struct retro_vfs_dir_handle* raylib_libretro_vfs_opendir(const char* dir, bool i
  * @see retro_vfs_dirent_is_dir_t
  * @since VFS API v3
  */
-bool raylib_libretro_vfs_readdir(struct retro_vfs_dir_handle* dirstream) {
+static bool raylib_libretro_vfs_readdir(struct retro_vfs_dir_handle* dirstream) {
     if (dirstream == NULL) {
         return false;
     }
@@ -578,7 +578,7 @@ bool raylib_libretro_vfs_readdir(struct retro_vfs_dir_handle* dirstream) {
  * @see retro_dirent_get_name
  * @since VFS API v3
  */
-const char* raylib_libretro_vfs_dirent_get_name(struct retro_vfs_dir_handle* dirstream) {
+static const char* raylib_libretro_vfs_dirent_get_name(struct retro_vfs_dir_handle* dirstream) {
     if (dirstream == NULL) {
         return NULL;
     }
@@ -599,7 +599,7 @@ const char* raylib_libretro_vfs_dirent_get_name(struct retro_vfs_dir_handle* dir
  * @see retro_dirent_is_dir
  * @since VFS API v3
  */
-bool raylib_libretro_vfs_dirent_is_dir(struct retro_vfs_dir_handle* dirstream) {
+static bool raylib_libretro_vfs_dirent_is_dir(struct retro_vfs_dir_handle* dirstream) {
     if (dirstream == NULL) {
         return false;
     }
@@ -623,7 +623,7 @@ bool raylib_libretro_vfs_dirent_is_dir(struct retro_vfs_dir_handle* dirstream) {
  * @see retro_closedir
  * @since VFS API v3
  */
-int raylib_libretro_vfs_closedir(struct retro_vfs_dir_handle* dirstream) {
+static int raylib_libretro_vfs_closedir(struct retro_vfs_dir_handle* dirstream) {
     if (dirstream == NULL) {
         return 0;
     }

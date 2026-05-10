@@ -82,6 +82,8 @@ static bool SetLibretroSerializedData(void* data, unsigned int size);
 static void ShowLibretroMessage(const char* msg, float duration); // Show an OSD message for the given duration in seconds.
 static bool DrawLibretroMessage(); // Displays the OSD message on the screen. Returns true if there was one.
 static const char* GetLibretroDirectory(int directory);
+static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count); // Get input descriptors; count set to number of entries.
+static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count);    // Get controller info; count set to number of ports.
 
 static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
@@ -225,6 +227,14 @@ typedef struct rLibretro {
     struct retro_vfs_interface vfs_interface;
     // struct retro_game_info_ext game_info_ext;
 
+    // Input descriptors (RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS)
+    struct retro_input_descriptor *inputDescriptors;
+    unsigned inputDescriptorCount;
+
+    // Controller info (RETRO_ENVIRONMENT_SET_CONTROLLER_INFO)
+    struct retro_controller_info *controllerInfo;
+    unsigned controllerPortCount;
+
     // Core variables/options
     // TODO: Switch these to MemAlloc'ed strings.
     char variableKeys[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_KEY_LEN];
@@ -351,6 +361,16 @@ static const char* GetLibretroDirectory(int directory) {
 
     // TODO: Resolve to an absolute path.
     return output;
+}
+
+static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count) {
+    if (count != NULL) *count = LibretroCore.inputDescriptorCount;
+    return LibretroCore.inputDescriptors;
+}
+
+static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count) {
+    if (count != NULL) *count = LibretroCore.controllerPortCount;
+    return LibretroCore.controllerInfo;
 }
 
 static const char* LibretroResolveAbsoluteDirectory(const char* path) {
@@ -605,17 +625,32 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: {
-            // TODO: Implement RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS
             const struct retro_input_descriptor *desc = (const struct retro_input_descriptor *)data;
             if (desc == NULL) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS no data set");
                 return false;
             }
-            for (; desc->description != NULL; desc++) {
-                TraceLog(LOG_INFO, "LIBRETRO: Input port %u device %u index %u id %u: %s",
-                    desc->port, desc->device, desc->index, desc->id, desc->description);
+            unsigned count = 0;
+            for (const struct retro_input_descriptor *d = desc; d->description != NULL; d++) {
+                count++;
             }
-            return false;
+            if (LibretroCore.inputDescriptors != NULL) {
+                MemFree(LibretroCore.inputDescriptors);
+                LibretroCore.inputDescriptors = NULL;
+                LibretroCore.inputDescriptorCount = 0;
+            }
+            if (count > 0) {
+                LibretroCore.inputDescriptors = (struct retro_input_descriptor *)MemAlloc(count * sizeof(struct retro_input_descriptor));
+                if (LibretroCore.inputDescriptors != NULL) {
+                    for (unsigned i = 0; i < count; i++) {
+                        LibretroCore.inputDescriptors[i] = desc[i];
+                        TraceLog(LOG_INFO, "LIBRETRO: Input port %u device %u index %u id %u: %s",
+                            desc[i].port, desc[i].device, desc[i].index, desc[i].id, desc[i].description);
+                    }
+                    LibretroCore.inputDescriptorCount = count;
+                }
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK: {
@@ -870,14 +905,29 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const struct retro_controller_info *info = (const struct retro_controller_info *)data;
+            if (LibretroCore.controllerInfo != NULL) {
+                MemFree(LibretroCore.controllerInfo);
+                LibretroCore.controllerInfo = NULL;
+                LibretroCore.controllerPortCount = 0;
+            }
+            unsigned portCount = 0;
             for (unsigned port = 0; info[port].types != NULL; port++) {
-                TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_CONTROLLER_INFO port %u (%u types)", port, info[port].num_types);
-                for (unsigned i = 0; i < info[port].num_types; i++) {
-                    TraceLog(LOG_INFO, "    > [%u] %s (id: %u)", i, info[port].types[i].desc, info[port].types[i].id);
+                portCount++;
+            }
+            if (portCount > 0) {
+                LibretroCore.controllerInfo = (struct retro_controller_info *)MemAlloc(portCount * sizeof(struct retro_controller_info));
+                if (LibretroCore.controllerInfo != NULL) {
+                    for (unsigned port = 0; port < portCount; port++) {
+                        LibretroCore.controllerInfo[port] = info[port];
+                        TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_CONTROLLER_INFO port %u (%u types)", port, info[port].num_types);
+                        for (unsigned i = 0; i < info[port].num_types; i++) {
+                            TraceLog(LOG_INFO, "    > [%u] %s (id: %u)", i, info[port].types[i].desc, info[port].types[i].id);
+                        }
+                    }
+                    LibretroCore.controllerPortCount = portCount;
                 }
             }
-            // TODO: Implement RETRO_ENVIRONMENT_SET_CONTROLLER_INFO
-            return false;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_MEMORY_MAPS: {
@@ -2231,6 +2281,18 @@ static void CloseLibretro() {
 
     CloseLibretroAudio();
     CloseLibretroVideo();
+
+    if (LibretroCore.inputDescriptors != NULL) {
+        MemFree(LibretroCore.inputDescriptors);
+        LibretroCore.inputDescriptors = NULL;
+        LibretroCore.inputDescriptorCount = 0;
+    }
+
+    if (LibretroCore.controllerInfo != NULL) {
+        MemFree(LibretroCore.controllerInfo);
+        LibretroCore.controllerInfo = NULL;
+        LibretroCore.controllerPortCount = 0;
+    }
 
     // Close the dynamically loaded handle.
     if (LibretroCore.handle != NULL) {
