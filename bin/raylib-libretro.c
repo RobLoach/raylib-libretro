@@ -34,6 +34,8 @@
 #define RAYLIB_LIBRETRO_CONFIG_IMPLEMENTATION
 #include "raylib-libretro-config.h"
 
+#include "raylib-zip.h"
+
 #define RAYLIB_LIBRETRO_IMPLEMENTATION
 #include "raylib-libretro.h"
 
@@ -94,6 +96,36 @@ typedef struct {
     RewindBuffer rewind;
 } AppData;
 
+static bool LoadGameFile(const char* gameFile) {
+    if (gameFile && IsFileExtension(gameFile, ".zip")) {
+        Zip archive = LoadZip(gameFile);
+        if (!IsZipValid(archive)) {
+            TraceLog(LOG_ERROR, "LIBRETRO: Failed to open zip: %s", gameFile);
+            UnloadZip(archive);
+            return false;
+        }
+        FilePathList files = LoadDirectoryFilesFromZip(archive, NULL);
+        if (files.count == 0) {
+            TraceLog(LOG_ERROR, "LIBRETRO: No files found in zip: %s", gameFile);
+            UnloadDirectoryFiles(files);
+            UnloadZip(archive);
+            return false;
+        }
+        int dataSize = 0;
+        unsigned char* gameData = LoadFileDataFromZip(archive, files.paths[0], &dataSize);
+        UnloadDirectoryFiles(files);
+        UnloadZip(archive);
+        if (gameData == NULL || dataSize == 0) {
+            TraceLog(LOG_ERROR, "LIBRETRO: Failed to extract content from zip: %s", gameFile);
+            return false;
+        }
+        bool result = LoadLibretroGameFromMemory(gameData, dataSize);
+        MemFree(gameData);
+        return result;
+    }
+    return LoadLibretroGame(gameFile);
+}
+
 bool Init(void** userData, int argc, char** argv) {
     SetWindowMinSize(400, 300);
     SetExitKey(KEY_NULL);
@@ -130,7 +162,7 @@ bool Init(void** userData, int argc, char** argv) {
 
             // Load the given game.
             const char* gameFile = (argc > 2) ? argv[2] : NULL;
-            if (LoadLibretroGame(gameFile)) {
+            if (LoadGameFile(gameFile)) {
                 BuildLibretroMenuOptions(data->menu);
                 data->menu->active = false;
             }
