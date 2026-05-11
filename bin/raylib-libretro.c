@@ -180,21 +180,14 @@ bool UpdateDrawFrame(void* userData) {
             if (ffDown) {
                 if (!IsLibretroFastForwarding()) {
                     data->savedVolume = GetLibretroVolume();
-                    SetLibretroFastForwarding(true);
                     SetLibretroSpeed(data->menu->fastForwardSpeed);
                     SetLibretroVolume(0.0f);
                 }
             } else if (smDown) {
-                if (IsLibretroFastForwarding()) {
-                    SetLibretroFastForwarding(false);
-                    SetLibretroVolume(data->savedVolume);
-                }
+                if (IsLibretroFastForwarding()) SetLibretroVolume(data->savedVolume);
                 SetLibretroSpeed(data->menu->slowMotionSpeed);
             } else if (IsLibretroFastForwarding() || GetLibretroSpeed() != 1.0f) {
-                if (IsLibretroFastForwarding()) {
-                    SetLibretroVolume(data->savedVolume);
-                }
-                SetLibretroFastForwarding(false);
+                if (IsLibretroFastForwarding()) SetLibretroVolume(data->savedVolume);
                 SetLibretroSpeed(1.0f);
             }
         }
