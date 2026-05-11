@@ -192,12 +192,16 @@ bool UpdateDrawFrame(void* userData) {
             }
         }
 
+        bool wasFastForwarding = IsLibretroFastForwarding();
         if (IsLibretroFastForwarding()) {
             int steps = (int)GetLibretroSpeed();
             if (steps < 1) steps = 1;
             for (int i = 0; i < steps; i++) UpdateLibretro();
         } else {
             UpdateLibretro();
+        }
+        if (wasFastForwarding && !IsLibretroFastForwarding()) {
+            SetLibretroVolume(data->savedVolume);
         }
     }
 

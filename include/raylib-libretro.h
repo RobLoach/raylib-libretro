@@ -1358,7 +1358,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             }
             if (LibretroCore.fastForwarding) {
                 state->mode = RETRO_THROTTLE_FAST_FORWARD;
-                state->rate = 0.0f;
+                state->rate = LibretroCore.fps * LibretroCore.speed;
             } else if (LibretroCore.speed < 1.0f) {
                 state->mode = RETRO_THROTTLE_SLOW_MOTION;
                 state->rate = LibretroCore.fps * LibretroCore.speed;
@@ -2251,10 +2251,12 @@ static float GetLibretroVolume() {
 }
 
 static void SetLibretroFastForwarding(bool fastForward) {
-    LibretroCore.fastForwarding = fastForward;
     if (fastForward) {
+        LibretroCore.fastForwarding = true;
+        if (LibretroCore.speed <= 1.0f) LibretroCore.speed = 2.0f;
         SetTargetFPS(0);
-    } else {
+    } else if (LibretroCore.fastForwarding) {
+        LibretroCore.fastForwarding = false;
         LibretroCore.speed = 1.0f;
         SetTargetFPS((int)LibretroCore.fps);
     }
