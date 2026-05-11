@@ -334,7 +334,7 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.keyVolumeDown  = (nk_rune)'-';
     menu.keyFastForward = (nk_rune)'F';
     menu.fastForwardSpeed = 3;
-    menu.keySlowMotion = (nk_rune)NK_KEY_NONE;
+    menu.keySlowMotion = (nk_rune)'G';
     menu.slowMotionSpeed = 0.5f;
     menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
@@ -428,7 +428,7 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_add_event_handler(ffSpeed, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
         // Slow Motion Speed
-        nk_console* smSpeed = nk_console_slider_float(settings, "Slow Motion Speed", 0.1f, &menu.slowMotionSpeed, 1.0f, 0.1f);
+        nk_console* smSpeed = nk_console_slider_float(settings, "Slow Motion Speed", 0.1f, &menu.slowMotionSpeed, 0.9f, 0.1f);
         nk_console_add_event_handler(smSpeed, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
         // Rewind
@@ -811,7 +811,7 @@ static bool LoadLibretroMenuSettings(void) {
     int smSpeedInt = rlconfig_get_int(menu.cfg, "raylib-libretro", "slowMotionSpeed", (int)(menu.slowMotionSpeed * 10.0f));
     menu.slowMotionSpeed = (float)smSpeedInt / 10.0f;
     if (menu.slowMotionSpeed < 0.1f) menu.slowMotionSpeed = 0.1f;
-    if (menu.slowMotionSpeed > 1.0f) menu.slowMotionSpeed = 1.0f;
+    if (menu.slowMotionSpeed > 0.9f) menu.slowMotionSpeed = 0.9f;
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
     if (coreDirectory) TextCopy(LibretroCore.coreDirectory, coreDirectory);

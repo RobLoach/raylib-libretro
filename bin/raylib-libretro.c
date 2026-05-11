@@ -182,13 +182,18 @@ bool UpdateDrawFrame(void* userData) {
                     data->savedVolume = GetLibretroVolume();
                     SetLibretroSpeed(data->menu->fastForwardSpeed);
                     SetLibretroVolume(0.0f);
+                    ShowLibretroMessage(TextFormat("Fast Forward %dx", data->menu->fastForwardSpeed), 1.0f);
                 }
             } else if (smDown) {
                 if (GetLibretroSpeed() > 1.0f) SetLibretroVolume(data->savedVolume);
-                SetLibretroSpeed(data->menu->slowMotionSpeed);
+                if (GetLibretroSpeed() != data->menu->slowMotionSpeed) {
+                    SetLibretroSpeed(data->menu->slowMotionSpeed);
+                    ShowLibretroMessage(TextFormat("Slow Motion %.0f%%", data->menu->slowMotionSpeed * 100.0f), 1.0f);
+                }
             } else if (GetLibretroSpeed() != 1.0f) {
                 if (GetLibretroSpeed() > 1.0f) SetLibretroVolume(data->savedVolume);
                 SetLibretroSpeed(1.0f);
+                ShowLibretroMessage("Normal Speed", 1.0f);
             }
         }
 
