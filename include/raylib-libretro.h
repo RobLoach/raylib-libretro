@@ -75,6 +75,8 @@ static void UnloadLibretroGame();                        // Unload the game that
 static void CloseLibretro();                             // Close the initialized libretro core.
 static void SetLibretroVolume(float volume);             // Set the audio volume (0.0 - 1.0).
 static float GetLibretroVolume();                        // Get the current audio volume.
+static void SetLibretroSpeed(float speed);               // Set playback speed (1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion).
+static float GetLibretroSpeed();                         // Get the current playback speed.
 static bool SetLibretroCoreOption(const char* key, const char* value);  // Set a core option by key.
 static const char* GetLibretroCoreOption(const char* key);              // Get a core option value by key. Returns NULL if not found.
 static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
@@ -248,6 +250,9 @@ typedef struct rLibretro {
     unsigned variableOptionsVersion; // 0=legacy SET_VARIABLES, 1=SET_CORE_OPTIONS, 2=SET_CORE_OPTIONS_V2
     bool variablesDirty; // Whether or not the variables have been changed since last RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE call.
     bool variablesVisibilityDirty; // Whether option visibility changed and the menu should rebuild.
+
+    // Playback speed: 1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion.
+    float speed;
 
     // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
     unsigned rotation;
@@ -885,7 +890,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             if (sampleRateChanged) {
                 InitLibretroAudio();
             }
-            SetTargetFPS(LibretroCore.fps);
+            SetTargetFPS((int)(LibretroCore.fps * LibretroCore.speed));
             return true;
         }
 
@@ -1077,8 +1082,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_FASTFORWARDING data missing");
                 return false;
             }
-            // TODO: Implement Fast Forwarding.
-            *output = false;
+            *output = (LibretroCore.speed > 1.0f);
             return true;
         }
 
@@ -1239,8 +1243,16 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE not implemented");
-            return false;
+            if (data == NULL) {
+                return true;
+            }
+            const struct retro_fastforwarding_override* override = (const struct retro_fastforwarding_override*)data;
+            if (override->fastforward) {
+                SetLibretroSpeed(override->ratio >= 1.0f ? override->ratio : 2.0f);
+            } else {
+                SetLibretroSpeed(1.0f);
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE: {
@@ -1332,8 +1344,21 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_THROTTLE_STATE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_THROTTLE_STATE not implemented");
-            return false;
+            struct retro_throttle_state* state = (struct retro_throttle_state*)data;
+            if (state == NULL) {
+                return false;
+            }
+            if (LibretroCore.speed > 1.0f) {
+                state->mode = RETRO_THROTTLE_FAST_FORWARD;
+                state->rate = LibretroCore.fps * LibretroCore.speed;
+            } else if (LibretroCore.speed < 1.0f) {
+                state->mode = RETRO_THROTTLE_SLOW_MOTION;
+                state->rate = LibretroCore.fps * LibretroCore.speed;
+            } else {
+                state->mode = RETRO_THROTTLE_NONE;
+                state->rate = (float)LibretroCore.fps;
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT: {
@@ -1895,7 +1920,7 @@ static bool LibretroInitAudioVideo() {
     InitLibretroVideo();
     InitLibretroAudio();
 
-    SetTargetFPS(LibretroCore.fps);
+    SetTargetFPS((int)(LibretroCore.fps * LibretroCore.speed));
 
     return true;
 }
@@ -2091,6 +2116,7 @@ static bool InitLibretroEx(const char* core, bool peek) {
     TextCopy(LibretroCore.corePath, core);
     LibretroCore.shutdown = false;
     LibretroCore.volume = 1.0f;
+    LibretroCore.speed = 1.0f;
 
     // Set up the callbacks.
     LibretroCore.retro_set_video_refresh(LibretroVideoRefresh);
@@ -2213,6 +2239,20 @@ static void SetLibretroVolume(float volume) {
 
 static float GetLibretroVolume() {
     return LibretroCore.volume;
+}
+
+static void SetLibretroSpeed(float speed) {
+    if (speed <= 0.0f) speed = 0.1f;
+    LibretroCore.speed = speed;
+    if (speed > 1.0f) {
+        SetTargetFPS(0);
+    } else {
+        SetTargetFPS((int)(LibretroCore.fps * speed));
+    }
+}
+
+static float GetLibretroSpeed() {
+    return LibretroCore.speed;
 }
 
 static unsigned GetLibretroRotation() {
