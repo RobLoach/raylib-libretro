@@ -98,6 +98,9 @@ typedef struct {
 } AppData;
 
 static bool LoadGameFile(const char* gameFile) {
+    if (IsLibretroGameReady()) {
+        UnloadLibretroGame();
+    }
     if (gameFile && IsFileExtension(gameFile, ".zip")) {
         Zip archive = LoadZip(gameFile);
         if (!IsZipValid(archive)) {
