@@ -34,6 +34,7 @@
 #define RAYLIB_LIBRETRO_CONFIG_IMPLEMENTATION
 #include "raylib-libretro-config.h"
 
+#define RAYLIB_ZIP_IMPLEMENTATION
 #include "raylib-zip.h"
 
 #define RAYLIB_LIBRETRO_IMPLEMENTATION

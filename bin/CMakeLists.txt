@@ -4,10 +4,12 @@ add_executable(raylib-libretro
 )
 target_link_libraries(raylib-libretro PUBLIC
     raylib-libretro-static
+    raylib_zip
 )
 target_include_directories(raylib-libretro PUBLIC
     ../vendor/raygui/src
     ../vendor/raylib-app
+    ../vendor/raylib-zip
 )
 install(TARGETS raylib-libretro DESTINATION bin)
 install(FILES ../README.md DESTINATION share/raylib-libretro)
