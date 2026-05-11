@@ -371,7 +371,7 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.resumeButton = nk_console_button_onclick(menu.console, "Resume", &MenuResumeClicked);
     nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_TRIANGLE_RIGHT);
 
-    
+
 
     // Load Game
     nk_console_button_onclick(menu.console, "Load Game", &MenuLoadGameClicked);
