@@ -75,9 +75,7 @@ static void UnloadLibretroGame();                        // Unload the game that
 static void CloseLibretro();                             // Close the initialized libretro core.
 static void SetLibretroVolume(float volume);             // Set the audio volume (0.0 - 1.0).
 static float GetLibretroVolume();                        // Get the current audio volume.
-static void SetLibretroFastForwarding(bool fastForward); // Enable or disable fast-forward mode.
-static bool IsLibretroFastForwarding();                  // Check whether fast-forward mode is active.
-static void SetLibretroSpeed(float speed);               // Set playback speed (1.0 = normal, >1.0 = fast, <1.0 = slow).
+static void SetLibretroSpeed(float speed);               // Set playback speed (1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion).
 static float GetLibretroSpeed();                         // Get the current playback speed.
 static bool SetLibretroCoreOption(const char* key, const char* value);  // Set a core option by key.
 static const char* GetLibretroCoreOption(const char* key);              // Get a core option value by key. Returns NULL if not found.
@@ -255,7 +253,6 @@ typedef struct rLibretro {
 
     // Playback speed: 1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion.
     float speed;
-    bool fastForwarding;
 
     // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
     unsigned rotation;
@@ -1085,7 +1082,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_FASTFORWARDING data missing");
                 return false;
             }
-            *output = LibretroCore.fastForwarding;
+            *output = (LibretroCore.speed > 1.0f);
             return true;
         }
 
@@ -1251,14 +1248,9 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             }
             const struct retro_fastforwarding_override* override = (const struct retro_fastforwarding_override*)data;
             if (override->fastforward) {
-                float ratio = override->ratio;
-                if (ratio >= 1.0f) {
-                    SetLibretroSpeed(ratio);
-                } else {
-                    SetLibretroFastForwarding(true);
-                }
+                SetLibretroSpeed(override->ratio >= 1.0f ? override->ratio : 2.0f);
             } else {
-                SetLibretroFastForwarding(false);
+                SetLibretroSpeed(1.0f);
             }
             return true;
         }
@@ -1356,7 +1348,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             if (state == NULL) {
                 return false;
             }
-            if (LibretroCore.fastForwarding) {
+            if (LibretroCore.speed > 1.0f) {
                 state->mode = RETRO_THROTTLE_FAST_FORWARD;
                 state->rate = LibretroCore.fps * LibretroCore.speed;
             } else if (LibretroCore.speed < 1.0f) {
@@ -2125,7 +2117,6 @@ static bool InitLibretroEx(const char* core, bool peek) {
     LibretroCore.shutdown = false;
     LibretroCore.volume = 1.0f;
     LibretroCore.speed = 1.0f;
-    LibretroCore.fastForwarding = false;
 
     // Set up the callbacks.
     LibretroCore.retro_set_video_refresh(LibretroVideoRefresh);
@@ -2250,27 +2241,10 @@ static float GetLibretroVolume() {
     return LibretroCore.volume;
 }
 
-static void SetLibretroFastForwarding(bool fastForward) {
-    if (fastForward) {
-        LibretroCore.fastForwarding = true;
-        if (LibretroCore.speed <= 1.0f) LibretroCore.speed = 2.0f;
-        SetTargetFPS(0);
-    } else if (LibretroCore.fastForwarding) {
-        LibretroCore.fastForwarding = false;
-        LibretroCore.speed = 1.0f;
-        SetTargetFPS((int)LibretroCore.fps);
-    }
-}
-
-static bool IsLibretroFastForwarding() {
-    return LibretroCore.fastForwarding;
-}
-
 static void SetLibretroSpeed(float speed) {
     if (speed <= 0.0f) speed = 0.1f;
     LibretroCore.speed = speed;
-    LibretroCore.fastForwarding = (speed > 1.0f);
-    if (LibretroCore.fastForwarding) {
+    if (speed > 1.0f) {
         SetTargetFPS(0);
     } else {
         SetTargetFPS((int)(LibretroCore.fps * speed));

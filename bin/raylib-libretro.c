@@ -178,29 +178,29 @@ bool UpdateDrawFrame(void* userData) {
                           IsKeyDown(NuklearKeyToKeyboardKey(data->menu->keySlowMotion));
 
             if (ffDown) {
-                if (!IsLibretroFastForwarding()) {
+                if (GetLibretroSpeed() <= 1.0f) {
                     data->savedVolume = GetLibretroVolume();
                     SetLibretroSpeed(data->menu->fastForwardSpeed);
                     SetLibretroVolume(0.0f);
                 }
             } else if (smDown) {
-                if (IsLibretroFastForwarding()) SetLibretroVolume(data->savedVolume);
+                if (GetLibretroSpeed() > 1.0f) SetLibretroVolume(data->savedVolume);
                 SetLibretroSpeed(data->menu->slowMotionSpeed);
-            } else if (IsLibretroFastForwarding() || GetLibretroSpeed() != 1.0f) {
-                if (IsLibretroFastForwarding()) SetLibretroVolume(data->savedVolume);
+            } else if (GetLibretroSpeed() != 1.0f) {
+                if (GetLibretroSpeed() > 1.0f) SetLibretroVolume(data->savedVolume);
                 SetLibretroSpeed(1.0f);
             }
         }
 
-        bool wasFastForwarding = IsLibretroFastForwarding();
-        if (IsLibretroFastForwarding()) {
+        bool wasFastForwarding = GetLibretroSpeed() > 1.0f;
+        if (GetLibretroSpeed() > 1.0f) {
             int steps = (int)GetLibretroSpeed();
             if (steps < 1) steps = 1;
             for (int i = 0; i < steps; i++) UpdateLibretro();
         } else {
             UpdateLibretro();
         }
-        if (wasFastForwarding && !IsLibretroFastForwarding()) {
+        if (wasFastForwarding && GetLibretroSpeed() <= 1.0f) {
             SetLibretroVolume(data->savedVolume);
         }
     }
