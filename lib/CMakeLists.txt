@@ -18,7 +18,6 @@ target_link_libraries(raylib-libretro-static PUBLIC
     raylib
     raylib-libretro-h
     raylib_zip
-    zip
     ${CMAKE_DL_LIBS}
 )
 target_include_directories(raylib-libretro-static PUBLIC
