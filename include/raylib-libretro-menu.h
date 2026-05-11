@@ -83,7 +83,7 @@ typedef struct LibretroMenu {
     nk_rune keyVolumeUp;
     nk_rune keyVolumeDown;
     nk_rune keyFastForward;
-    float fastForwardSpeed;
+    int fastForwardSpeed;
     nk_rune keySlowMotion;
     float slowMotionSpeed;
     int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
@@ -333,7 +333,7 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.keyVolumeUp    = (nk_rune)'=';
     menu.keyVolumeDown  = (nk_rune)'-';
     menu.keyFastForward = (nk_rune)'F';
-    menu.fastForwardSpeed = 3.0f;
+    menu.fastForwardSpeed = 3;
     menu.keySlowMotion = (nk_rune)NK_KEY_NONE;
     menu.slowMotionSpeed = 0.5f;
     menu.font = LoadFontFromNuklear(fontSize);
@@ -424,7 +424,7 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
         // Fast Forward Speed
-        nk_console* ffSpeed = nk_console_slider_float(settings, "Fast Forward Speed", 2.0f, &menu.fastForwardSpeed, 10.0f, 1.0f);
+        nk_console* ffSpeed = nk_console_slider_int(settings, "Fast Forward Speed", 2, &menu.fastForwardSpeed, 10, 1);
         nk_console_add_event_handler(ffSpeed, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
         // Slow Motion Speed
@@ -677,7 +677,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", (int)(menu.fastForwardSpeed * 10.0f));
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "slowMotionSpeed", (int)(menu.slowMotionSpeed * 10.0f));
     rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreDirectory));
@@ -804,10 +804,9 @@ static bool LoadLibretroMenuSettings(void) {
     menu.keyVolumeUp    = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     menu.keyVolumeDown  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
     menu.keyFastForward = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
-    int ffSpeedInt = rlconfig_get_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", (int)(menu.fastForwardSpeed * 10.0f));
-    menu.fastForwardSpeed = (float)ffSpeedInt / 10.0f;
-    if (menu.fastForwardSpeed < 1.0f) menu.fastForwardSpeed = 1.0f;
-    if (menu.fastForwardSpeed > 10.0f) menu.fastForwardSpeed = 10.0f;
+    menu.fastForwardSpeed = rlconfig_get_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
+    if (menu.fastForwardSpeed < 2) menu.fastForwardSpeed = 2;
+    if (menu.fastForwardSpeed > 10) menu.fastForwardSpeed = 10;
     menu.keySlowMotion = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
     int smSpeedInt = rlconfig_get_int(menu.cfg, "raylib-libretro", "slowMotionSpeed", (int)(menu.slowMotionSpeed * 10.0f));
     menu.slowMotionSpeed = (float)smSpeedInt / 10.0f;

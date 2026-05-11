@@ -1250,18 +1250,15 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 return true;
             }
             const struct retro_fastforwarding_override* override = (const struct retro_fastforwarding_override*)data;
-            LibretroCore.fastForwarding = override->fastforward;
             if (override->fastforward) {
                 float ratio = override->ratio;
-                if (ratio < 0.0f) {
-                    SetTargetFPS(0);
-                } else if (ratio >= 1.0f) {
-                    SetTargetFPS((int)(LibretroCore.fps * ratio));
+                if (ratio >= 1.0f) {
+                    SetLibretroSpeed(ratio);
                 } else {
-                    SetTargetFPS(0);
+                    SetLibretroFastForwarding(true);
                 }
             } else {
-                SetTargetFPS((int)(LibretroCore.fps * LibretroCore.speed));
+                SetLibretroFastForwarding(false);
             }
             return true;
         }
@@ -2256,7 +2253,7 @@ static float GetLibretroVolume() {
 static void SetLibretroFastForwarding(bool fastForward) {
     LibretroCore.fastForwarding = fastForward;
     if (fastForward) {
-        SetTargetFPS((int)LibretroCore.fps);
+        SetTargetFPS(0);
     } else {
         LibretroCore.speed = 1.0f;
         SetTargetFPS((int)LibretroCore.fps);
@@ -2272,7 +2269,7 @@ static void SetLibretroSpeed(float speed) {
     LibretroCore.speed = speed;
     LibretroCore.fastForwarding = (speed > 1.0f);
     if (LibretroCore.fastForwarding) {
-        SetTargetFPS((int)LibretroCore.fps);
+        SetTargetFPS(0);
     } else {
         SetTargetFPS((int)(LibretroCore.fps * speed));
     }
