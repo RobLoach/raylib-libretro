@@ -126,6 +126,9 @@ static bool LoadGameFile(const char* gameFile) {
         }
         bool result = LoadLibretroGameFromMemory(gameData, dataSize);
         MemFree(gameData);
+        if (result) {
+            TextCopy(LibretroCore.contentPath, gameFile);
+        }
         return result;
     }
     return LoadLibretroGame(gameFile);
