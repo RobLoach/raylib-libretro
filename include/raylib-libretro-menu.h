@@ -82,6 +82,10 @@ typedef struct LibretroMenu {
     nk_rune keyQuit;
     nk_rune keyVolumeUp;
     nk_rune keyVolumeDown;
+    nk_rune keyFastForward;
+    int fastForwardSpeed;
+    nk_rune keySlowMotion;
+    float slowMotionSpeed;
     int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
     nk_bool optionCheckboxValues[128];    // per-option checkbox state for enabled/disabled options
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
@@ -252,8 +256,7 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
     void* saveData = GetLibretroSerializedData(&size);
     if (saveData != NULL) {
         const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
-        // TODO: Add the content name in here if applicable too.
-        SaveFileData(TextFormat("%s/save_%s_%02d.sav", savesDir, GetLibretroName(), menu.saveSlotIndex + 1), saveData, (int)size);
+        SaveFileData(TextFormat("%s/%s_%02d.sav", savesDir, GetLibretroContentName(), menu.saveSlotIndex + 1), saveData, (int)size);
         MemFree(saveData);
         ShowLibretroMessage(TextFormat("Slot %d Saved", menu.saveSlotIndex + 1), 2.0f);
         menu.active = false;
@@ -295,8 +298,7 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     if (!IsLibretroGameReady()) return;
     int dataSize;
     const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
-    // TODO: Add the libretro content name in here too.
-    void* saveData = LoadFileData(TextFormat("%s/save_%s_%02d.sav", savesDir, GetLibretroName(), menu.saveSlotIndex + 1), &dataSize);
+    void* saveData = LoadFileData(TextFormat("%s/%s_%02d.sav", savesDir, GetLibretroContentName(), menu.saveSlotIndex + 1), &dataSize);
     if (saveData != NULL) {
         SetLibretroSerializedData(saveData, (unsigned int)dataSize);
         MemFree(saveData);
@@ -328,6 +330,10 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.keyQuit        = (nk_rune)NK_KEY_NONE;
     menu.keyVolumeUp    = (nk_rune)'=';
     menu.keyVolumeDown  = (nk_rune)'-';
+    menu.keyFastForward = (nk_rune)'F';
+    menu.fastForwardSpeed = 3;
+    menu.keySlowMotion = (nk_rune)'G';
+    menu.slowMotionSpeed = 0.5f;
     menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
         return NULL;
@@ -363,7 +369,7 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.resumeButton = nk_console_button_onclick(menu.console, "Resume", &MenuResumeClicked);
     nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_TRIANGLE_RIGHT);
 
-    
+
 
     // Load Game
     nk_console_button_onclick(menu.console, "Load Game", &MenuLoadGameClicked);
@@ -415,6 +421,14 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console* volume = nk_console_slider_float(settings, "Volume", 0.0f, &menu.volumeSelected, 1.0f, 0.1f);
         nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
+        // Fast Forward Speed
+        nk_console* ffSpeed = nk_console_slider_int(settings, "Fast Forward Speed", 2, &menu.fastForwardSpeed, 10, 1);
+        nk_console_add_event_handler(ffSpeed, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
+        // Slow Motion Speed
+        nk_console* smSpeed = nk_console_slider_float(settings, "Slow Motion Speed", 0.1f, &menu.slowMotionSpeed, 0.9f, 0.1f);
+        nk_console_add_event_handler(smSpeed, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
         // Rewind
         nk_console* rewind = nk_console_checkbox(settings, "Rewind", &menu.rewindEnabled);
         nk_console_add_event_handler(rewind, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
@@ -456,6 +470,10 @@ LibretroMenu* InitLibretroMenu(void) {
             w = nk_console_key(keysTree, "Volume Up", &menu.keyVolumeUp);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Volume Down", &menu.keyVolumeDown);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Fast Forward", &menu.keyFastForward);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Slow Motion", &menu.keySlowMotion);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
         }
 
@@ -656,6 +674,10 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyQuit",       (int)menu.keyQuit);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "slowMotionSpeed", (int)(menu.slowMotionSpeed * 10.0f));
     rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.saveDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreAssetsDirectory));
@@ -779,6 +801,15 @@ static bool LoadLibretroMenuSettings(void) {
     SetExitKey(NuklearKeyToKeyboardKey(menu.keyQuit));
     menu.keyVolumeUp    = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     menu.keyVolumeDown  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
+    menu.keyFastForward = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
+    menu.fastForwardSpeed = rlconfig_get_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
+    if (menu.fastForwardSpeed < 2) menu.fastForwardSpeed = 2;
+    if (menu.fastForwardSpeed > 10) menu.fastForwardSpeed = 10;
+    menu.keySlowMotion = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
+    int smSpeedInt = rlconfig_get_int(menu.cfg, "raylib-libretro", "slowMotionSpeed", (int)(menu.slowMotionSpeed * 10.0f));
+    menu.slowMotionSpeed = (float)smSpeedInt / 10.0f;
+    if (menu.slowMotionSpeed < 0.1f) menu.slowMotionSpeed = 0.1f;
+    if (menu.slowMotionSpeed > 0.9f) menu.slowMotionSpeed = 0.9f;
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
     if (coreDirectory) TextCopy(LibretroCore.coreDirectory, coreDirectory);

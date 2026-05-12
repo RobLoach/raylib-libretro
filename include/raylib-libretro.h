@@ -64,6 +64,7 @@ static void DrawLibretroV(Vector2 position, Color tint);
 static void DrawLibretroTexture(int posX, int posY, Color tint);
 static void DrawLibretroPro(Rectangle destRec, Color tint);
 static const char* GetLibretroName();                    // Get the name of the loaded libretro core.
+static const char* GetLibretroContentName();             // Get the filename (no extension) of the loaded content, or core name if none.
 static const char* GetLibretroVersion();                 // Get the version of the loaded libretro core.
 static unsigned GetLibretroWidth();                      // Get the desired width of the libretro core.
 static unsigned GetLibretroHeight();                     // Get the desired height of the libretro core.
@@ -75,6 +76,8 @@ static void UnloadLibretroGame();                        // Unload the game that
 static void CloseLibretro();                             // Close the initialized libretro core.
 static void SetLibretroVolume(float volume);             // Set the audio volume (0.0 - 1.0).
 static float GetLibretroVolume();                        // Get the current audio volume.
+static void SetLibretroSpeed(float speed);               // Set playback speed (1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion).
+static float GetLibretroSpeed();                         // Get the current playback speed.
 static bool SetLibretroCoreOption(const char* key, const char* value);  // Set a core option by key.
 static const char* GetLibretroCoreOption(const char* key);              // Get a core option value by key. Returns NULL if not found.
 static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
@@ -249,6 +252,9 @@ typedef struct rLibretro {
     bool variablesDirty; // Whether or not the variables have been changed since last RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE call.
     bool variablesVisibilityDirty; // Whether option visibility changed and the menu should rebuild.
 
+    // Playback speed: 1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion.
+    float speed;
+
     // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
     unsigned rotation;
 
@@ -263,6 +269,9 @@ typedef struct rLibretro {
 
     // Accumulated in-game time in nanoseconds (does not advance while menu is open).
     retro_perf_tick_t gameTimeNSEC;
+
+    // Loaded content path (empty if no content loaded).
+    char contentPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 
     // Directory configuration. Empty string means use GetApplicationDirectory().
     // TODO: Change this to be MemAlloc-ed?
@@ -885,7 +894,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
             if (sampleRateChanged) {
                 InitLibretroAudio();
             }
-            SetTargetFPS(LibretroCore.fps);
+            SetTargetFPS((int)(LibretroCore.fps * LibretroCore.speed));
             return true;
         }
 
@@ -1077,8 +1086,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_FASTFORWARDING data missing");
                 return false;
             }
-            // TODO: Implement Fast Forwarding.
-            *output = false;
+            *output = (LibretroCore.speed > 1.0f);
             return true;
         }
 
@@ -1239,8 +1247,16 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE not implemented");
-            return false;
+            if (data == NULL) {
+                return true;
+            }
+            const struct retro_fastforwarding_override* override = (const struct retro_fastforwarding_override*)data;
+            if (override->fastforward) {
+                SetLibretroSpeed(override->ratio >= 1.0f ? override->ratio : 2.0f);
+            } else {
+                SetLibretroSpeed(1.0f);
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE: {
@@ -1332,8 +1348,21 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_THROTTLE_STATE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_THROTTLE_STATE not implemented");
-            return false;
+            struct retro_throttle_state* state = (struct retro_throttle_state*)data;
+            if (state == NULL) {
+                return false;
+            }
+            if (LibretroCore.speed > 1.0f) {
+                state->mode = RETRO_THROTTLE_FAST_FORWARD;
+                state->rate = LibretroCore.fps * LibretroCore.speed;
+            } else if (LibretroCore.speed < 1.0f) {
+                state->mode = RETRO_THROTTLE_SLOW_MOTION;
+                state->rate = LibretroCore.fps * LibretroCore.speed;
+            } else {
+                state->mode = RETRO_THROTTLE_NONE;
+                state->rate = (float)LibretroCore.fps;
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT: {
@@ -1895,7 +1924,7 @@ static bool LibretroInitAudioVideo() {
     InitLibretroVideo();
     InitLibretroAudio();
 
-    SetTargetFPS(LibretroCore.fps);
+    SetTargetFPS((int)(LibretroCore.fps * LibretroCore.speed));
 
     return true;
 }
@@ -1954,6 +1983,7 @@ static bool LoadLibretroGame(const char* gameFile) {
         if (LibretroCore.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded without content");
             LibretroCore.loaded = true;
+            LibretroCore.contentPath[0] = '\0';
             return LibretroInitAudioVideo();
         }
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load core without content");
@@ -1976,6 +2006,7 @@ static bool LoadLibretroGame(const char* gameFile) {
         if (LibretroCore.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded content with full path");
             LibretroCore.loaded = true;
+            TextCopy(LibretroCore.contentPath, gameFile);
             return LibretroInitAudioVideo();
         }
         else {
@@ -1994,12 +2025,20 @@ static bool LoadLibretroGame(const char* gameFile) {
         return false;
     }
 
+    TextCopy(LibretroCore.contentPath, gameFile);
     bool output = LoadLibretroGameFromMemory(gameData, size);
     UnloadFileData(gameData);
     return output;
 }
 
 static const char* GetLibretroName() {
+    return LibretroCore.libraryName;
+}
+
+static const char* GetLibretroContentName() {
+    if (LibretroCore.contentPath[0] != '\0') {
+        return GetFileNameWithoutExt(LibretroCore.contentPath);
+    }
     return LibretroCore.libraryName;
 }
 
@@ -2091,6 +2130,7 @@ static bool InitLibretroEx(const char* core, bool peek) {
     TextCopy(LibretroCore.corePath, core);
     LibretroCore.shutdown = false;
     LibretroCore.volume = 1.0f;
+    LibretroCore.speed = 1.0f;
 
     // Set up the callbacks.
     LibretroCore.retro_set_video_refresh(LibretroVideoRefresh);
@@ -2215,6 +2255,20 @@ static float GetLibretroVolume() {
     return LibretroCore.volume;
 }
 
+static void SetLibretroSpeed(float speed) {
+    if (speed <= 0.0f) speed = 0.1f;
+    LibretroCore.speed = speed;
+    if (speed > 1.0f) {
+        SetTargetFPS(0);
+    } else {
+        SetTargetFPS((int)(LibretroCore.fps * speed));
+    }
+}
+
+static float GetLibretroSpeed() {
+    return LibretroCore.speed;
+}
+
 static unsigned GetLibretroRotation() {
     return LibretroCore.rotation;
 }
@@ -2256,6 +2310,7 @@ static void UnloadLibretroGame() {
     }
     LibretroCore.retro_run = NULL;
     LibretroCore.loaded = false;
+    LibretroCore.contentPath[0] = '\0';
 }
 
 /**

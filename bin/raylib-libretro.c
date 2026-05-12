@@ -95,6 +95,7 @@ static void RewindBufferFree(RewindBuffer* rb) {
 typedef struct {
     LibretroMenu* menu;
     RewindBuffer rewind;
+    float savedVolume;
 } AppData;
 
 static bool LoadGameFile(const char* gameFile) {
@@ -205,7 +206,44 @@ bool UpdateDrawFrame(void* userData) {
         } else if (data->rewind.count > 0) {
             RewindBufferFree(&data->rewind);
         }
-        UpdateLibretro();
+
+        if (IsLibretroGameReady()) {
+            bool ffDown = data->menu->keyFastForward != NK_KEY_NONE &&
+                          IsKeyDown(NuklearKeyToKeyboardKey(data->menu->keyFastForward));
+            bool smDown = data->menu->keySlowMotion != NK_KEY_NONE &&
+                          IsKeyDown(NuklearKeyToKeyboardKey(data->menu->keySlowMotion));
+
+            if (ffDown) {
+                if (GetLibretroSpeed() <= 1.0f) {
+                    data->savedVolume = GetLibretroVolume();
+                    SetLibretroSpeed(data->menu->fastForwardSpeed);
+                    SetLibretroVolume(0.0f);
+                    ShowLibretroMessage(TextFormat("Fast Forward %dx", data->menu->fastForwardSpeed), 1.0f);
+                }
+            } else if (smDown) {
+                if (GetLibretroSpeed() > 1.0f) SetLibretroVolume(data->savedVolume);
+                if (GetLibretroSpeed() != data->menu->slowMotionSpeed) {
+                    SetLibretroSpeed(data->menu->slowMotionSpeed);
+                    ShowLibretroMessage(TextFormat("Slow Motion %.0f%%", data->menu->slowMotionSpeed * 100.0f), 1.0f);
+                }
+            } else if (GetLibretroSpeed() != 1.0f) {
+                if (GetLibretroSpeed() > 1.0f) SetLibretroVolume(data->savedVolume);
+                SetLibretroSpeed(1.0f);
+                ShowLibretroMessage("Normal Speed", 1.0f);
+            }
+        }
+
+        bool wasFastForwarding = GetLibretroSpeed() > 1.0f;
+        if (GetLibretroSpeed() > 1.0f) {
+            int steps = (int)GetLibretroSpeed();
+            if (steps < 1) steps = 1;
+            for (int i = 0; i < steps; i++) UpdateLibretro();
+        } else {
+            UpdateLibretro();
+        }
+        if (wasFastForwarding && GetLibretroSpeed() <= 1.0f) {
+            SetLibretroVolume(data->savedVolume);
+        }
     }
 
     UpdateLibretroMenu();
