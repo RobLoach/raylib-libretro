@@ -354,7 +354,7 @@ static const char *GetLibretroCoreOption(const char *key) {
  * @return The directory that's currently configured for the libretro directory. The application directory by default, or NULL if it's an incorrect directory.
  */
 static const char* GetLibretroDirectory(int directory) {
-    const char* appDir = GetApplicationDirectory();
+    static char cleaned[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char* output = NULL;
     switch (directory) {
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: output = LibretroCore.saveDirectory; break;
@@ -365,11 +365,15 @@ static const char* GetLibretroDirectory(int directory) {
         default: return NULL;
     }
 
-    if (output == NULL || output[0] == '\0')
-        return GetApplicationDirectory();
+    const char* result = (output == NULL || output[0] == '\0') ? GetApplicationDirectory() : output;
 
-    // TODO: Resolve to an absolute path.
-    return output;
+    // Strip trailing slash to prevent double slashes when building file paths.
+    TextCopy(cleaned, result);
+    int len = (int)TextLength(cleaned);
+    while (len > 1 && (cleaned[len - 1] == '/' || cleaned[len - 1] == '\\')) {
+        cleaned[--len] = '\0';
+    }
+    return cleaned;
 }
 
 static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count) {
