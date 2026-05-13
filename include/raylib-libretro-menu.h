@@ -536,8 +536,9 @@ static void LibretroMenuGetNthToken(const char* str, int n, char* out, int outSi
         while (*pipe && *pipe != '|') pipe++;
         if (idx == n) {
             int len = (int)(pipe - p);
+            if (len < 0) len = 0;
             if (len >= outSize) len = outSize - 1;
-            memcpy(out, p, (unsigned int)len);
+            if (len > 0) memcpy(out, p, (unsigned int)len);
             out[len] = '\0';
             return;
         }
