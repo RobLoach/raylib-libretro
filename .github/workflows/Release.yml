@@ -22,15 +22,15 @@ jobs:
       - name: Package
         run: |
           cd install
-          zip -r ../raylib-libretro-linux-x86_64.zip .
+          zip -r ../raylib-libretro-linux-amd64.zip .
       - name: Upload
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: raylib-libretro-linux-x86_64.zip
-          asset_name: raylib-libretro-linux-x86_64.zip
+          asset_path: raylib-libretro-linux-amd64.zip
+          asset_name: raylib-libretro-linux-amd64.zip
           asset_content_type: application/zip
 
   build-windows:
@@ -46,15 +46,15 @@ jobs:
       - name: Install
         run: cmake --install build --config Release
       - name: Package
-        run: Compress-Archive -Path install\* -DestinationPath raylib-libretro-windows-x86_64.zip
+        run: Compress-Archive -Path install\* -DestinationPath raylib-libretro-windows-amd64.zip
       - name: Upload
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: raylib-libretro-windows-x86_64.zip
-          asset_name: raylib-libretro-windows-x86_64.zip
+          asset_path: raylib-libretro-windows-amd64.zip
+          asset_name: raylib-libretro-windows-amd64.zip
           asset_content_type: application/zip
 
   build-macos:
@@ -72,15 +72,15 @@ jobs:
       - name: Package
         run: |
           cd install
-          zip -r ../raylib-libretro-macos.zip .
+          zip -r ../raylib-libretro-macos-arm64.zip .
       - name: Upload
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: raylib-libretro-macos.zip
-          asset_name: raylib-libretro-macos.zip
+          asset_path: raylib-libretro-macos-arm64.zip
+          asset_name: raylib-libretro-macos-arm64.zip
           asset_content_type: application/zip
 
   build-android:
@@ -118,4 +118,32 @@ jobs:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: raylib-libretro-android-arm64.zip
           asset_name: raylib-libretro-android-arm64.zip
+          asset_content_type: application/zip
+
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+      - name: Configure
+        run: emcmake cmake -B build -DPLATFORM=Web -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Install
+        run: cmake --install build
+      - name: Package
+        run: |
+          cd install
+          zip -r ../raylib-libretro-web-wasm32.zip .
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: raylib-libretro-web-wasm32.zip
+          asset_name: raylib-libretro-web-wasm32.zip
           asset_content_type: application/zip
