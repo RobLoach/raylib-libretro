@@ -82,6 +82,7 @@ typedef struct LibretroMenu {
     nk_rune keyQuit;
     nk_rune keyVolumeUp;
     nk_rune keyVolumeDown;
+    nk_rune keyMute;
     nk_rune keyFastForward;
     int fastForwardSpeed;
     nk_rune keySlowMotion;
@@ -330,6 +331,7 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.keyQuit        = (nk_rune)NK_KEY_NONE;
     menu.keyVolumeUp    = (nk_rune)'=';
     menu.keyVolumeDown  = (nk_rune)'-';
+    menu.keyMute        = (nk_rune)'M';
     menu.keyFastForward = (nk_rune)'F';
     menu.fastForwardSpeed = 3;
     menu.keySlowMotion = (nk_rune)'G';
@@ -470,6 +472,8 @@ LibretroMenu* InitLibretroMenu(void) {
             w = nk_console_key(keysTree, "Volume Up", &menu.keyVolumeUp);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Volume Down", &menu.keyVolumeDown);
+            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            w = nk_console_key(keysTree, "Mute", &menu.keyMute);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Fast Forward", &menu.keyFastForward);
             nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
@@ -675,6 +679,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyQuit",       (int)menu.keyQuit);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyMute",        (int)menu.keyMute);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
@@ -802,6 +807,7 @@ static bool LoadLibretroMenuSettings(void) {
     SetExitKey(NuklearKeyToKeyboardKey(menu.keyQuit));
     menu.keyVolumeUp    = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
     menu.keyVolumeDown  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
+    menu.keyMute        = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyMute",        (int)menu.keyMute);
     menu.keyFastForward = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
     menu.fastForwardSpeed = rlconfig_get_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
     if (menu.fastForwardSpeed < 2) menu.fastForwardSpeed = 2;
