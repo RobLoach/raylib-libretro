@@ -394,7 +394,8 @@ static const char* LibretroResolveAbsoluteDirectory(const char* path) {
     if (path[0] == '/') return path;
 #endif
     static char absPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    snprintf(absPath, sizeof(absPath), "%s/%s", GetWorkingDirectory(), path);
+    int n = snprintf(absPath, sizeof(absPath), "%s/%s", GetWorkingDirectory(), path);
+    if (n < 0 || (size_t)n >= sizeof(absPath)) return path;
     return absPath;
 }
 

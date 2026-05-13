@@ -9,6 +9,7 @@ target_include_directories(raylib-libretro PUBLIC
     ../vendor/raygui/src
     ../vendor/raylib-app
 )
-install(TARGETS raylib-libretro DESTINATION bin)
-install(FILES ../README.md DESTINATION share/raylib-libretro)
-install(FILES ../LICENSE DESTINATION share/raylib-libretro)
+
+install(TARGETS raylib-libretro DESTINATION .)
+install(FILES ../README.md DESTINATION .)
+install(FILES ../LICENSE DESTINATION .)

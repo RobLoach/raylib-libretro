@@ -229,7 +229,10 @@ static RLibretroConfig* rlconfig_load(const char *filename) {
             char *end = strchr(line, ']');
             if (end) {
                 *end = '\0';
-                snprintf(section, sizeof(section), "%s", line + 1);
+                size_t secLen = (size_t)(end - (line + 1));
+                if (secLen >= sizeof(section)) secLen = sizeof(section) - 1;
+                memcpy(section, line + 1, secLen);
+                section[secLen] = '\0';
                 RLibretroConfigTrim(section);
             }
             continue;
