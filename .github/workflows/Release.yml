@@ -122,6 +122,10 @@ jobs:
 
   build-web:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -138,7 +142,7 @@ jobs:
         run: |
           cd install
           zip -r ../raylib-libretro-web-wasm32.zip .
-      - name: Upload
+      - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -147,3 +151,8 @@ jobs:
           asset_path: raylib-libretro-web-wasm32.zip
           asset_name: raylib-libretro-web-wasm32.zip
           asset_content_type: application/zip
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./install
