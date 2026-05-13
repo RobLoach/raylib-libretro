@@ -538,7 +538,7 @@ static void LibretroMenuGetNthToken(const char* str, int n, char* out, int outSi
             int len = (int)(pipe - p);
             if (len < 0) len = 0;
             if (len >= outSize) len = outSize - 1;
-            if (len > 0) memcpy(out, p, (unsigned int)len);
+            if (len > 0) memcpy(out, p, (size_t)len);
             out[len] = '\0';
             return;
         }
@@ -580,7 +580,7 @@ static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
         while (*pipe && *pipe != '|') pipe++;
         int len = (int)(pipe - p);
         char tok[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
-        if (len < LIBRETRO_CORE_VARIABLE_VALUE_LEN) memcpy(tok, p, (unsigned int)len);
+        if (len < LIBRETRO_CORE_VARIABLE_VALUE_LEN) memcpy(tok, p, (size_t)len);
         if (TextIsEqual(tok, value)) return idx;
         if (!*pipe) break;
         p = pipe + 1;
