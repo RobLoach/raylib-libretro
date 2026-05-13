@@ -1612,6 +1612,7 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
     }
 
     switch (LibretroCore.pixelFormat) {
+        case RETRO_PIXEL_FORMAT_UNKNOWN:
         case RETRO_PIXEL_FORMAT_RGB565: {
             // For small pitches, we can use the data 1:1, otherwise we need to adjust it.
             if (pitch == width * 2) {
