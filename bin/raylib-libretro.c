@@ -118,11 +118,6 @@ bool Init(void** userData, int argc, char** argv) {
     // Parse the command line arguments.
     const char* corePath = (argc > 1) ? argv[1] : NULL;
     const char* gameFile = (argc > 2) ? argv[2] : NULL;
-#ifdef __EMSCRIPTEN__
-    if (!corePath) {
-        corePath = "/resources/fceumm_libretro.wasm";
-    }
-#endif
 
     // If only a game file is given, try to detect the core from the cache.
     if (gameFile && !corePath) {
