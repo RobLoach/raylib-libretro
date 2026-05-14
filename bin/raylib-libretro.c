@@ -217,6 +217,52 @@ bool UpdateDrawFrame(void* userData) {
 
     UpdateLibretroMenu();
 
+    // Handle drag-and-drop to load a game or core.
+    if (IsFileDropped()) {
+        FilePathList dropped = LoadDroppedFiles();
+        if (dropped.count > 0) {
+            const char* droppedPath = dropped.paths[0];
+            const char* ext = GetFileExtension(droppedPath);
+            bool isCore = TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib");
+
+            if (isCore) {
+                SaveLibretroAllSettings();
+                UnloadLibretroGame();
+                CloseLibretro();
+                if (InitLibretro(droppedPath)) {
+                    LoadLibretroCoreOptions();
+                    SetLibretroVolume(menu.volumeSelected);
+                    BuildLibretroMenuOptions(data->menu);
+                    data->menu->active = true;
+                }
+            } else {
+                bool coreReady = IsLibretroReady();
+                if (!coreReady) {
+                    const char* corePath = FindCoreForGame(droppedPath);
+                    if (corePath) {
+                        coreReady = InitLibretro(corePath);
+                        if (coreReady) {
+                            LoadLibretroCoreOptions();
+                            SetLibretroVolume(menu.volumeSelected);
+                        }
+                    }
+                } else if (IsLibretroGameReady()) {
+                    UnloadLibretroGame();
+                }
+
+                if (coreReady) {
+                    if (LoadLibretroGame(droppedPath)) {
+                        BuildLibretroMenuOptions(data->menu);
+                        data->menu->active = false;
+                    }
+                } else {
+                    ShowLibretroMessage("No core found for this file", 2.0f);
+                }
+            }
+        }
+        UnloadDroppedFiles(dropped);
+    }
+
     // Check if the core or menu asks to be shutdown.
     if (LibretroShouldClose()) {
         RewindBufferFree(&data->rewind);
