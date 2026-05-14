@@ -95,6 +95,31 @@ typedef struct {
     float savedVolume;
 } AppData;
 
+static bool AppInitCore(AppData* data, const char* corePath) {
+    if (!InitLibretro(corePath)) return false;
+    LoadLibretroCoreOptions();
+    SetLibretroVolume(data->menu->volumeSelected);
+    return true;
+}
+
+static void AppLoadGame(AppData* data, const char* gamePath) {
+    bool coreReady = IsLibretroReady();
+    if (!coreReady) {
+        const char* corePath = FindCoreForGame(gamePath);
+        if (corePath) coreReady = AppInitCore(data, corePath);
+    } else if (IsLibretroGameReady()) {
+        UnloadLibretroGame();
+    }
+    if (coreReady) {
+        if (LoadLibretroGame(gamePath)) {
+            BuildLibretroMenuOptions(data->menu);
+            data->menu->active = false;
+        }
+    } else {
+        ShowLibretroMessage("No core found for this file", 2.0f);
+    }
+}
+
 bool Init(void** userData, int argc, char** argv) {
     SetWindowMinSize(400, 300);
     SetExitKey(KEY_NULL);
@@ -119,28 +144,13 @@ bool Init(void** userData, int argc, char** argv) {
     const char* corePath = (argc > 1) ? argv[1] : NULL;
     const char* gameFile = (argc > 2) ? argv[2] : NULL;
 
-    // If only a game file is given, try to detect the core from the cache.
-    if (gameFile && !corePath) {
-        corePath = FindCoreForGame(gameFile);
-        if (corePath) {
-            TraceLog(LOG_INFO, "LIBRETRO: Auto-detected core: %s", corePath);
-        } else {
-            TraceLog(LOG_WARNING, "LIBRETRO: No core found for game: %s", gameFile);
-        }
-    }
-
     if (corePath) {
-        // Initialize the given core.
-        if (InitLibretro(corePath)) {
-            // Apply any previously saved options before the game starts.
-            LoadLibretroCoreOptions();
-            SetLibretroVolume(data->menu->volumeSelected);
-
-            if (LoadLibretroGame(gameFile)) {
-                BuildLibretroMenuOptions(data->menu);
-                data->menu->active = false;
-            }
+        if (AppInitCore(data, corePath) && LoadLibretroGame(gameFile)) {
+            BuildLibretroMenuOptions(data->menu);
+            data->menu->active = false;
         }
+    } else if (gameFile) {
+        AppLoadGame(data, gameFile);
     }
 
     return true;
@@ -222,42 +232,16 @@ bool UpdateDrawFrame(void* userData) {
         FilePathList dropped = LoadDroppedFiles();
         if (dropped.count > 0) {
             const char* droppedPath = dropped.paths[0];
-            const char* ext = GetFileExtension(droppedPath);
-            bool isCore = TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib") || TextIsEqual(ext, ".wasm");
-
-            if (isCore) {
+            if (IsLibretroCoreFile(droppedPath)) {
                 SaveLibretroAllSettings();
                 UnloadLibretroGame();
                 CloseLibretro();
-                if (InitLibretro(droppedPath)) {
-                    LoadLibretroCoreOptions();
-                    SetLibretroVolume(menu.volumeSelected);
+                if (AppInitCore(data, droppedPath)) {
                     BuildLibretroMenuOptions(data->menu);
                     data->menu->active = true;
                 }
             } else {
-                bool coreReady = IsLibretroReady();
-                if (!coreReady) {
-                    const char* corePath = FindCoreForGame(droppedPath);
-                    if (corePath) {
-                        coreReady = InitLibretro(corePath);
-                        if (coreReady) {
-                            LoadLibretroCoreOptions();
-                            SetLibretroVolume(menu.volumeSelected);
-                        }
-                    }
-                } else if (IsLibretroGameReady()) {
-                    UnloadLibretroGame();
-                }
-
-                if (coreReady) {
-                    if (LoadLibretroGame(droppedPath)) {
-                        BuildLibretroMenuOptions(data->menu);
-                        data->menu->active = false;
-                    }
-                } else {
-                    ShowLibretroMessage("No core found for this file", 2.0f);
-                }
+                AppLoadGame(data, droppedPath);
             }
         }
         UnloadDroppedFiles(dropped);

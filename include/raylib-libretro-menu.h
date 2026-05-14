@@ -294,15 +294,17 @@ static void MenuLoadGameClicked(nk_console* widget, void* user_data) {
 
 #define LIBRETRO_CORE_CACHE_SECTION "core_cache"
 
+static bool IsLibretroCoreFile(const char* path) {
+    const char* ext = GetFileExtension(path);
+    return TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib") || TextIsEqual(ext, ".wasm");
+}
+
 static int LibretroCoreDirectoryFileCount(const char* dir) {
     if (!dir || !dir[0] || !DirectoryExists(dir)) return 0;
     FilePathList files = LoadDirectoryFiles(dir);
     int count = 0;
     for (unsigned int i = 0; i < files.count; i++) {
-        const char* ext = GetFileExtension(files.paths[i]);
-        if (TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib") || TextIsEqual(ext, ".wasm")) {
-            count++;
-        }
+        if (IsLibretroCoreFile(files.paths[i])) count++;
     }
     UnloadDirectoryFiles(files);
     return count;
@@ -335,9 +337,7 @@ static void ScanLibretroCoreDirectory(void) {
     int coreIndex = 0;
     for (unsigned int i = 0; i < files.count; i++) {
         const char* ext = GetFileExtension(files.paths[i]);
-        if (!TextIsEqual(ext, ".so") && !TextIsEqual(ext, ".dll") && !TextIsEqual(ext, ".dylib") && !TextIsEqual(ext, ".wasm")) {
-            continue;
-        }
+        if (!IsLibretroCoreFile(files.paths[i])) continue;
         if (!InitLibretroEx(files.paths[i], true)) continue;
         if (TextLength(LibretroCore.validExtensions) == 0) continue;
 
