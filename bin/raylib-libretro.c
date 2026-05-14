@@ -329,7 +329,7 @@ bool UpdateDrawFrame(void* userData) {
     }
 
     // Mute
-    else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyMute)) && !menu.active) {
+    else if (IsKeyPressed(NuklearKeyToKeyboardKey(menu.keyMute)) && !menu.active) {
         if (!data->muted) {
             data->savedVolumeBeforeMute = GetLibretroVolume();
             SetLibretroVolume(0.0f);
