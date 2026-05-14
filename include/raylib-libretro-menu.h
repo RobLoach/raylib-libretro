@@ -292,6 +292,103 @@ static void MenuLoadGameClicked(nk_console* widget, void* user_data) {
     NK_UNUSED(user_data);
 }
 
+#define LIBRETRO_CORE_CACHE_SECTION "core_cache"
+
+static int LibretroCoreDirectoryFileCount(const char* dir) {
+    if (!dir || !dir[0] || !DirectoryExists(dir)) return 0;
+    FilePathList files = LoadDirectoryFiles(dir);
+    int count = 0;
+    for (unsigned int i = 0; i < files.count; i++) {
+        const char* ext = GetFileExtension(files.paths[i]);
+        if (TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib")) {
+            count++;
+        }
+    }
+    UnloadDirectoryFiles(files);
+    return count;
+}
+
+static void ScanLibretroCoreDirectory(void) {
+#ifdef RAYLIB_LIBRETRO_CONFIG_H
+    if (!menu.cfg) return;
+    const char* dir = LibretroCore.coreDirectory;
+    if (!dir || !dir[0]) return;
+
+    int currentCount = LibretroCoreDirectoryFileCount(dir);
+    int cachedCount = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", -1);
+    if (cachedCount == currentCount) {
+        int cached = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
+        TraceLog(LOG_INFO, "LIBRETRO: Core cache valid (%d cores)", cached);
+        return;
+    }
+
+    TraceLog(LOG_INFO, "LIBRETRO: Rescanning cores in %s", dir);
+    rlconfig_clear_section(menu.cfg, LIBRETRO_CORE_CACHE_SECTION);
+    rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", currentCount);
+
+    if (!DirectoryExists(dir)) {
+        rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
+        return;
+    }
+
+    FilePathList files = LoadDirectoryFiles(dir);
+    int coreIndex = 0;
+    for (unsigned int i = 0; i < files.count; i++) {
+        const char* ext = GetFileExtension(files.paths[i]);
+        if (!TextIsEqual(ext, ".so") && !TextIsEqual(ext, ".dll") && !TextIsEqual(ext, ".dylib")) {
+            continue;
+        }
+        if (!InitLibretroEx(files.paths[i], true)) continue;
+        if (TextLength(LibretroCore.validExtensions) == 0) continue;
+
+        char keyPath[64], keyExts[64];
+        TextCopy(keyPath, TextFormat("core_%d_path", coreIndex));
+        TextCopy(keyExts, TextFormat("core_%d_extensions", coreIndex));
+        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath, files.paths[i]);
+        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyExts, LibretroCore.validExtensions);
+        TraceLog(LOG_INFO, "LIBRETRO: Cached %s (%s)", LibretroCore.libraryName, LibretroCore.validExtensions);
+        coreIndex++;
+    }
+    UnloadDirectoryFiles(files);
+
+    rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", coreIndex);
+    rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
+    TraceLog(LOG_INFO, "LIBRETRO: Cached %d cores in %s", coreIndex, dir);
+#endif
+}
+
+static const char* FindCoreForGame(const char* gamePath) {
+#ifdef RAYLIB_LIBRETRO_CONFIG_H
+    if (!menu.cfg || !gamePath || !gamePath[0]) return NULL;
+
+    const char* gameExt = GetFileExtension(gamePath);
+    if (!gameExt || !gameExt[0]) return NULL;
+    if (gameExt[0] == '.') gameExt++;
+
+    char gameExtLower[32] = {0};
+    TextCopy(gameExtLower, TextToLower(gameExt));
+
+    int count = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
+    for (int i = 0; i < count; i++) {
+        char keyExts[64], keyPath[64];
+        TextCopy(keyExts, TextFormat("core_%d_extensions", i));
+        TextCopy(keyPath, TextFormat("core_%d_path", i));
+
+        const char* extensions = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyExts);
+        if (!extensions) continue;
+
+        int extCount = 0;
+        char** extList = TextSplit(extensions, '|', &extCount);
+        for (int j = 0; j < extCount; j++) {
+            if (TextIsEqual(extList[j], gameExtLower)) {
+                return rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath);
+            }
+        }
+    }
+#endif
+    return NULL;
+}
+
 static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
@@ -365,6 +462,7 @@ LibretroMenu* InitLibretroMenu(void) {
 #endif
     TextCopy(LibretroCore.coreDirectory, "cores");
     LoadLibretroMenuSettings();
+    ScanLibretroCoreDirectory();
 
     // Build the Menu
     menu.resumeButton = nk_console_button_onclick(menu.console, "Resume", &MenuResumeClicked);

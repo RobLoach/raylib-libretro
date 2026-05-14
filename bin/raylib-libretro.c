@@ -117,11 +117,23 @@ bool Init(void** userData, int argc, char** argv) {
 
     // Parse the command line arguments.
     const char* corePath = (argc > 1) ? argv[1] : NULL;
+    const char* gameFile = (argc > 2) ? argv[2] : NULL;
 #ifdef __EMSCRIPTEN__
     if (!corePath) {
         corePath = "/resources/fceumm_libretro.wasm";
     }
 #endif
+
+    // If only a game file is given, try to detect the core from the cache.
+    if (gameFile && !corePath) {
+        corePath = FindCoreForGame(gameFile);
+        if (corePath) {
+            TraceLog(LOG_INFO, "LIBRETRO: Auto-detected core: %s", corePath);
+        } else {
+            TraceLog(LOG_WARNING, "LIBRETRO: No core found for game: %s", gameFile);
+        }
+    }
+
     if (corePath) {
         // Initialize the given core.
         if (InitLibretro(corePath)) {
@@ -129,8 +141,6 @@ bool Init(void** userData, int argc, char** argv) {
             LoadLibretroCoreOptions();
             SetLibretroVolume(data->menu->volumeSelected);
 
-            // Load the given game.
-            const char* gameFile = (argc > 2) ? argv[2] : NULL;
             if (LoadLibretroGame(gameFile)) {
                 BuildLibretroMenuOptions(data->menu);
                 data->menu->active = false;
