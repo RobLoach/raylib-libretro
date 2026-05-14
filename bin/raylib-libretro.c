@@ -223,7 +223,7 @@ bool UpdateDrawFrame(void* userData) {
         if (dropped.count > 0) {
             const char* droppedPath = dropped.paths[0];
             const char* ext = GetFileExtension(droppedPath);
-            bool isCore = TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib");
+            bool isCore = TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib") || TextIsEqual(ext, ".wasm");
 
             if (isCore) {
                 SaveLibretroAllSettings();

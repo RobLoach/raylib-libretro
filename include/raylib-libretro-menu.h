@@ -300,7 +300,7 @@ static int LibretroCoreDirectoryFileCount(const char* dir) {
     int count = 0;
     for (unsigned int i = 0; i < files.count; i++) {
         const char* ext = GetFileExtension(files.paths[i]);
-        if (TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib")) {
+        if (TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib") || TextIsEqual(ext, ".wasm")) {
             count++;
         }
     }
@@ -335,7 +335,7 @@ static void ScanLibretroCoreDirectory(void) {
     int coreIndex = 0;
     for (unsigned int i = 0; i < files.count; i++) {
         const char* ext = GetFileExtension(files.paths[i]);
-        if (!TextIsEqual(ext, ".so") && !TextIsEqual(ext, ".dll") && !TextIsEqual(ext, ".dylib")) {
+        if (!TextIsEqual(ext, ".so") && !TextIsEqual(ext, ".dll") && !TextIsEqual(ext, ".dylib") && !TextIsEqual(ext, ".wasm")) {
             continue;
         }
         if (!InitLibretroEx(files.paths[i], true)) continue;
