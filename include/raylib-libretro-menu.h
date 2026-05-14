@@ -287,6 +287,15 @@ static void MenuCloseGameClicked(nk_console* widget, void* user_data) {
     UpdateLibretroMenuVisibility();
 }
 
+static void ScanLibretroCoreDirectory(void);
+
+static void MenuCoreDirChanged(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    LibretroMenuSettingChanged(widget, user_data);
+    ScanLibretroCoreDirectory();
+}
+
 static void MenuLoadGameClicked(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     NK_UNUSED(user_data);
@@ -316,9 +325,18 @@ static void ScanLibretroCoreDirectory(void) {
     const char* dir = LibretroCore.coreDirectory;
     if (!dir || !dir[0]) return;
 
+    // If a core is already loaded we can't peek at other cores; just invalidate
+    // so the next launch performs a full rescan.
+    if (IsLibretroReady()) {
+        rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", -1);
+        rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
+        return;
+    }
+
     int currentCount = LibretroCoreDirectoryFileCount(dir);
     int cachedCount = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", -1);
-    if (cachedCount == currentCount) {
+    const char* cachedDir = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "dir_path");
+    if (cachedCount == currentCount && cachedDir && TextIsEqual(cachedDir, dir)) {
         int cached = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
         TraceLog(LOG_INFO, "LIBRETRO: Core cache valid (%d cores)", cached);
         return;
@@ -327,6 +345,7 @@ static void ScanLibretroCoreDirectory(void) {
     TraceLog(LOG_INFO, "LIBRETRO: Rescanning cores in %s", dir);
     rlconfig_clear_section(menu.cfg, LIBRETRO_CORE_CACHE_SECTION);
     rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", currentCount);
+    rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "dir_path", dir);
 
     if (!DirectoryExists(dir)) {
         rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
@@ -580,7 +599,7 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console* directoryTree = nk_console_tree(settings, "Directories", nk_false);
         {
             nk_console* coreDirectory = nk_console_dir(directoryTree, "Cores", LibretroCore.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuCoreDirChanged, NULL, NULL);
 
             nk_console* saveDirectory = nk_console_dir(directoryTree, "Saves", LibretroCore.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(saveDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);

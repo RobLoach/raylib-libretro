@@ -106,17 +106,21 @@ static void AppLoadGame(AppData* data, const char* gamePath) {
     bool coreReady = IsLibretroReady();
     if (!coreReady) {
         const char* corePath = FindCoreForGame(gamePath);
-        if (corePath) coreReady = AppInitCore(data, corePath);
+        if (!corePath) {
+            ShowLibretroMessage("No core found for this file", 2.0f);
+            return;
+        }
+        coreReady = AppInitCore(data, corePath);
+        if (!coreReady) {
+            ShowLibretroMessage("Failed to load core", 2.0f);
+            return;
+        }
     } else if (IsLibretroGameReady()) {
         UnloadLibretroGame();
     }
-    if (coreReady) {
-        if (LoadLibretroGame(gamePath)) {
-            BuildLibretroMenuOptions(data->menu);
-            data->menu->active = false;
-        }
-    } else {
-        ShowLibretroMessage("No core found for this file", 2.0f);
+    if (LoadLibretroGame(gamePath)) {
+        BuildLibretroMenuOptions(data->menu);
+        data->menu->active = false;
     }
 }
 
