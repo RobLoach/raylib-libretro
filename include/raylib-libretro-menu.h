@@ -363,6 +363,7 @@ LibretroMenu* InitLibretroMenu(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     menu.cfg = rlconfig_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
 #endif
+    TextCopy(LibretroCore.coreDirectory, "cores");
     LoadLibretroMenuSettings();
 
     // Build the Menu
