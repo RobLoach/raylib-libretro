@@ -83,11 +83,42 @@ if ("${PLATFORM}" STREQUAL "Web")
     set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".html")
     download_cores(
         "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/fceumm_libretro.zip"
+        "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/snes9x_libretro.zip"
     )
     target_link_options(${PROJECT_NAME} PUBLIC
         -sUSE_GLFW=3
         -sMAIN_MODULE=1
         --preload-file "${CMAKE_SOURCE_DIR}/cores@/cores"
     )
-
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+        download_cores(
+            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/fceumm_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/snes9x_libretro.so.zip"
+        )
+    elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+        download_cores(
+            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/fceumm_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/snes9x_libretro.so.zip"
+        )
+    endif()
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    if (CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+        download_cores(
+            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/fceumm_libretro.dll.zip"
+            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/snes9x_libretro.dll.zip"
+        )
+    endif()
+elseif (APPLE)
+    if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+        download_cores(
+            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/fceumm_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/snes9x_libretro.dylib.zip"
+        )
+    else()
+        download_cores(
+            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/fceumm_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/snes9x_libretro.dylib.zip"
+        )
+    endif()
 endif()
