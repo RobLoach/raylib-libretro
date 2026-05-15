@@ -101,6 +101,16 @@ bool Init(void** userData, int argc, char** argv) {
     SetWindowMinSize(400, 300);
     SetExitKey(KEY_NULL);
 
+    BeginDrawing();
+        ClearBackground(BLACK);
+        const char* loadingText = "Loading";
+        int fontSize = 20;
+        DrawText(loadingText,
+            (GetScreenWidth()  - MeasureText(loadingText, fontSize)) / 2,
+            (GetScreenHeight() - fontSize) / 2,
+            fontSize, GRAY);
+    EndDrawing();
+
     AppData* data = (AppData*)MemAlloc(sizeof(AppData));
     memset(data, 0, sizeof(AppData));
     *userData = data;
@@ -118,26 +128,24 @@ bool Init(void** userData, int argc, char** argv) {
     }
 
     // Parse the command line arguments.
-    const char* corePath = (argc > 1) ? argv[1] : NULL;
-#ifdef __EMSCRIPTEN__
-    if (!corePath) {
-        corePath = "/resources/fceumm_libretro.wasm";
-    }
-#endif
-    if (corePath) {
-        // Initialize the given core.
-        if (InitLibretro(corePath)) {
-            // Apply any previously saved options before the game starts.
-            LoadLibretroCoreOptions();
-            SetLibretroVolume(data->menu->volumeSelected);
-
-            // Load the given game.
-            const char* gameFile = (argc > 2) ? argv[2] : NULL;
-            if (LoadLibretroGame(gameFile)) {
-                BuildLibretroMenuOptions(data->menu);
-                data->menu->active = false;
-            }
+    // -L/--libretro <core> sets the core; the first non-flag argument is the game file.
+    const char* corePath = NULL;
+    const char* gameFile = NULL;
+    for (int i = 1; i < argc; i++) {
+        if ((TextIsEqual(argv[i], "-L") || TextIsEqual(argv[i], "--libretro")) && i + 1 < argc) {
+            corePath = argv[++i];
+        } else if (!gameFile) {
+            gameFile = argv[i];
         }
+    }
+
+    if (corePath) {
+        if (MenuInitCore(corePath) && LoadLibretroGame(gameFile)) {
+            BuildLibretroMenuOptions(data->menu);
+            data->menu->active = false;
+        }
+    } else if (gameFile) {
+        MenuLoadGame(gameFile);
     }
 
     return true;
@@ -214,6 +222,26 @@ bool UpdateDrawFrame(void* userData) {
 
     UpdateLibretroMenu();
 
+    // Handle drag-and-drop to load a game or core.
+    if (IsFileDropped()) {
+        FilePathList dropped = LoadDroppedFiles();
+        if (dropped.count > 0) {
+            const char* droppedPath = dropped.paths[0];
+            SaveLibretroAllSettings();
+            CloseLibretro();
+            if (IsLibretroCoreFile(droppedPath)) {
+                if (MenuInitCore(droppedPath)) {
+                    BuildLibretroMenuOptions(data->menu);
+                    data->menu->active = true;
+                }
+            } else {
+                // MenuLoadGame autodetects a core for the dropped game via FindCoreForGame().
+                MenuLoadGame(droppedPath);
+            }
+        }
+        UnloadDroppedFiles(dropped);
+    }
+
     // Check if the core or menu asks to be shutdown.
     if (LibretroShouldClose()) {
         RewindBufferFree(&data->rewind);
@@ -254,16 +282,18 @@ bool UpdateDrawFrame(void* userData) {
     // Screenshot
     else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyScreenshot))) {
         const char* screenshotsDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
-        const char* screenshotName = NULL;
+        bool taken = false;
         for (int i = 1; i < 1000; i++) {
-            screenshotName = TextFormat("%s/screenshot-%i.png", screenshotsDir, i);
+            const char* screenshotName = TextFormat("%s/screenshot-%i.png", screenshotsDir, i);
             if (!FileExists(screenshotName)) {
                 TakeScreenshot(screenshotName);
+                ShowLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0f);
+                taken = true;
                 break;
             }
         }
-        if (screenshotName) {
-            ShowLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0f);
+        if (!taken) {
+            ShowLibretroMessage("Screenshot slots full", 2.0f);
         }
     }
 
