@@ -2392,6 +2392,14 @@ static void CloseLibretro() {
         memset(&LibretroCore.audio_callback, 0, sizeof(LibretroCore.audio_callback));
     }
 
+    // Drop any callbacks the core registered into its own .text — dylib_close()
+    // below invalidates those addresses, and a follow-up InitLibretro() with a
+    // different core that doesn't re-register them would call freed memory.
+    LibretroCore.keyboard_event = NULL;
+    LibretroCore.options_update_display_callback = NULL;
+    memset(&LibretroCore.runloop_frame_time, 0, sizeof(LibretroCore.runloop_frame_time));
+    LibretroCore.runloop_frame_time_last = 0;
+
     // Call retro_deinit() to deinitialize the core.
     if (LibretroCore.retro_deinit != NULL) {
         LibretroCore.retro_deinit();

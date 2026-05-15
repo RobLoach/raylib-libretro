@@ -438,42 +438,41 @@ static bool MenuInitCore(const char* corePath) {
     return true;
 }
 
-static void MenuLoadGame(const char* gamePath) {
+static bool MenuLoadGame(const char* gamePath) {
     // Unload the current game if it's a thing.
     if (IsLibretroGameReady()) {
         UnloadLibretroGame();
-    }
-    if (IsLibretroReady()) {
-        CloseLibretro();
     }
 
     // Detect a workable core.
     const char* corePath = FindCoreForGame(gamePath);
     if (!corePath) {
         ShowLibretroMessage("No core found for this file", 2.0f);
-        return;
+        return false;
     }
 
     // Load the core
     if (!MenuInitCore(corePath)) {
         ShowLibretroMessage("Failed to load core", 2.0f);
-        return;
+        return false;
     }
 
     // Load the game
-    if (LoadLibretroGame(gamePath)) {
-        BuildLibretroMenuOptions(&menu);
-        menu.active = false;
-    }
-    else {
+    if (!LoadLibretroGame(gamePath)) {
         ShowLibretroMessage("Failed to load game", 2.0f);
+        return false;
     }
+
+    BuildLibretroMenuOptions(&menu);
+    menu.active = false;
+    return true;
 }
 
 static void MenuGameFileChanged(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     char* path = (char*)user_data;
     if (path && path[0]) {
+        CloseLibretro();
         MenuLoadGame(path);
         path[0] = '\0';
     }
