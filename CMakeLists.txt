@@ -18,16 +18,16 @@ endif()
 add_subdirectory(include)
 add_subdirectory(lib)
 
-# Directory where downloaded resources are extracted
-if (NOT DEFINED RESOURCES_DIR)
-    set(RESOURCES_DIR "${CMAKE_BINARY_DIR}/resources")
+# Directory where cores are extracted
+if (NOT DEFINED CORES_DIR)
+    set(CORES_DIR "${CMAKE_SOURCE_DIR}/cores")
 endif()
 
-# download_resources(<url> [<url> ...])
-# Downloads each zip URL to the build directory and extracts it into RESOURCES_DIR.
+# download_cores(<url> [<url> ...])
+# Downloads each zip URL to the build directory and extracts it into CORES_DIR.
 # Already-downloaded archives are skipped on subsequent runs.
-function(download_resources)
-    file(MAKE_DIRECTORY "${RESOURCES_DIR}")
+function(download_cores)
+    file(MAKE_DIRECTORY "${CORES_DIR}")
     foreach(URL IN LISTS ARGN)
         get_filename_component(ARCHIVE_NAME "${URL}" NAME)
         set(ARCHIVE_PATH "${CMAKE_BINARY_DIR}/${ARCHIVE_NAME}")
@@ -46,10 +46,10 @@ function(download_resources)
             endif()
         endif()
 
-        message(STATUS "Extracting ${ARCHIVE_NAME} to ${RESOURCES_DIR}")
+        message(STATUS "Extracting ${ARCHIVE_NAME} to ${CORES_DIR}")
         execute_process(
             COMMAND ${CMAKE_COMMAND} -E tar xf "${ARCHIVE_PATH}"
-            WORKING_DIRECTORY "${RESOURCES_DIR}"
+            WORKING_DIRECTORY "${CORES_DIR}"
             RESULT_VARIABLE EXTRACT_RESULT
         )
         if (NOT EXTRACT_RESULT EQUAL 0)
@@ -81,8 +81,7 @@ endif()
 if ("${PLATFORM}" STREQUAL "Web")
     set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "index")
     set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".html")
-    set(RESOURCES_DIR "${CMAKE_SOURCE_DIR}/cores")
-    download_resources(
+    download_cores(
         "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/fceumm_libretro.zip"
     )
     target_link_options(${PROJECT_NAME} PUBLIC
