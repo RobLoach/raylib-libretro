@@ -282,21 +282,19 @@ static void MenuResumeClicked(nk_console* widget, void* user_data) {
     }
 }
 
-/*
 // Close Game has been removed for now, since it's not really needed.
-static void MenuCloseGameClicked(nk_console* widget, void* user_data) {
-    NK_UNUSED(widget);
-    NK_UNUSED(user_data);
-    if (!IsLibretroReady()) {
-        return;
-    }
-    if (IsLibretroGameReady()) {
-        UnloadLibretroGame();
-    }
-    CloseLibretro();
-    UpdateLibretroMenuVisibility();
-}
-*/
+// static void MenuCloseGameClicked(nk_console* widget, void* user_data) {
+//     NK_UNUSED(widget);
+//     NK_UNUSED(user_data);
+//     if (!IsLibretroReady()) {
+//         return;
+//     }
+//     if (IsLibretroGameReady()) {
+//         UnloadLibretroGame();
+//     }
+//     CloseLibretro();
+//     UpdateLibretroMenuVisibility();
+// }
 
 static void ScanLibretroCoreDirectory(void);
 
