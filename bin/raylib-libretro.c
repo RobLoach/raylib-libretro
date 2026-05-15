@@ -126,8 +126,16 @@ bool Init(void** userData, int argc, char** argv) {
     }
 
     // Parse the command line arguments.
-    const char* corePath = (argc > 1) ? argv[1] : NULL;
-    const char* gameFile = (argc > 2) ? argv[2] : NULL;
+    // -L/--libretro <core> sets the core; the first non-flag argument is the game file.
+    const char* corePath = NULL;
+    const char* gameFile = NULL;
+    for (int i = 1; i < argc; i++) {
+        if ((TextIsEqual(argv[i], "-L") || TextIsEqual(argv[i], "--libretro")) && i + 1 < argc) {
+            corePath = argv[++i];
+        } else if (!gameFile) {
+            gameFile = argv[i];
+        }
+    }
 
     if (corePath) {
         if (MenuInitCore(corePath) && LoadLibretroGame(gameFile)) {
