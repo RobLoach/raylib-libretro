@@ -545,6 +545,9 @@ LibretroMenu* InitLibretroMenu(void) {
     // Load Game
     nk_console* loadGame = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
     nk_console_add_event_handler(loadGame, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
+    if (menu.fileBrowserStartDirectory[0] != '\0') {
+        nk_console_file_set_directory(loadGame, menu.fileBrowserStartDirectory);
+    }
 
     // Close Game
     menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
