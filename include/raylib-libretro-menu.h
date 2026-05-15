@@ -58,6 +58,7 @@ typedef struct LibretroMenu {
     bool shouldQuit;
     nk_bool fullscreen;
     nk_console* optionsMenu;              // "Core Options" submenu node
+    nk_console* loadGameWidget;
     nk_console* saveStateButton;
     nk_console* loadStateButton;
     nk_console* resumeButton;
@@ -315,6 +316,13 @@ static void MenuCoreDirChanged(nk_console* widget, void* user_data) {
     ScanLibretroCoreDirectory();
 }
 
+static void MenuContentDirChanged(nk_console* widget, void* user_data) {
+    MenuDirChanged(widget, user_data);
+    if (menu.loadGameWidget && menu.fileBrowserStartDirectory[0] != '\0') {
+        nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
+    }
+}
+
 #define LIBRETRO_CORE_CACHE_SECTION "core_cache"
 
 static bool IsLibretroCoreFile(const char* path) {
@@ -543,10 +551,10 @@ LibretroMenu* InitLibretroMenu(void) {
 
 
     // Load Game
-    nk_console* loadGame = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-    nk_console_add_event_handler(loadGame, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
+    menu.loadGameWidget = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+    nk_console_add_event_handler(menu.loadGameWidget, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
     if (menu.fileBrowserStartDirectory[0] != '\0') {
-        nk_console_file_set_directory(loadGame, menu.fileBrowserStartDirectory);
+        nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
     }
 
     // Close Game
@@ -671,7 +679,7 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_add_event_handler(playlistsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
             nk_console* fileBrowserStartDirectory = nk_console_dir(directoryTree, "Content", menu.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
+            nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuContentDirChanged, NULL, NULL);
         }
     }
 

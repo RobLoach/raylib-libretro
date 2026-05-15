@@ -88,7 +88,7 @@ if ("${PLATFORM}" STREQUAL "Web")
     target_link_options(${PROJECT_NAME} PUBLIC
         -sUSE_GLFW=3
         -sMAIN_MODULE=1
-        --preload-file "${CMAKE_SOURCE_DIR}/cores@/cores"
+        --preload-file "${CORES_DIR}@/cores"
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
