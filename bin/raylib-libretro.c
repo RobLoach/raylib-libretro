@@ -227,7 +227,6 @@ bool UpdateDrawFrame(void* userData) {
             const char* droppedPath = dropped.paths[0];
             if (IsLibretroCoreFile(droppedPath)) {
                 SaveLibretroAllSettings();
-                UnloadLibretroGame();
                 CloseLibretro();
                 if (MenuInitCore(droppedPath)) {
                     BuildLibretroMenuOptions(data->menu);

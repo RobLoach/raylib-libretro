@@ -368,7 +368,6 @@ static void ScanLibretroCoreDirectory(void) {
     FilePathList files = LoadDirectoryFiles(dir);
     int coreIndex = 0;
     for (unsigned int i = 0; i < files.count; i++) {
-        const char* ext = GetFileExtension(files.paths[i]);
         if (!IsLibretroCoreFile(files.paths[i])) continue;
         if (!InitLibretroEx(files.paths[i], true)) continue;
         if (TextLength(LibretroCore.validExtensions) == 0) continue;
