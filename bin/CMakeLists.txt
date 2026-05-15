@@ -13,6 +13,7 @@ target_include_directories(raylib-libretro PUBLIC
 install(TARGETS raylib-libretro DESTINATION .)
 install(FILES ../README.md DESTINATION .)
 install(FILES ../LICENSE DESTINATION .)
+install(DIRECTORY "${CORES_DIR}/" DESTINATION cores)
 
 # Web
 if ("${PLATFORM}" STREQUAL "Web")
