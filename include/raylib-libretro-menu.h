@@ -58,10 +58,11 @@ typedef struct LibretroMenu {
     bool shouldQuit;
     nk_bool fullscreen;
     nk_console* optionsMenu;              // "Core Options" submenu node
+    nk_console* loadGameWidget;
     nk_console* saveStateButton;
     nk_console* loadStateButton;
     nk_console* resumeButton;
-    nk_console* closeGameButton;
+    //nk_console* closeGameButton;
     int shaderSelectedIndex;
     int textureFilterIndex;
     int themeSelectedIndex;
@@ -88,6 +89,13 @@ typedef struct LibretroMenu {
     float slowMotionSpeed;
     int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
     nk_bool optionCheckboxValues[128];    // per-option checkbox state for enabled/disabled options
+    char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char systemDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char playlistsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char fileBrowserStartDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
 #endif
@@ -274,22 +282,201 @@ static void MenuResumeClicked(nk_console* widget, void* user_data) {
     }
 }
 
-static void MenuCloseGameClicked(nk_console* widget, void* user_data) {
-    NK_UNUSED(widget);
-    NK_UNUSED(user_data);
-    if (!IsLibretroReady()) {
+// Close Game has been removed for now, since it's not really needed.
+// static void MenuCloseGameClicked(nk_console* widget, void* user_data) {
+//     NK_UNUSED(widget);
+//     NK_UNUSED(user_data);
+//     if (!IsLibretroReady()) {
+//         return;
+//     }
+//     if (IsLibretroGameReady()) {
+//         UnloadLibretroGame();
+//     }
+//     CloseLibretro();
+//     UpdateLibretroMenuVisibility();
+// }
+
+static void ScanLibretroCoreDirectory(void);
+
+static void LibretroApplyDirectories(void) {
+    TextCopy(LibretroCore.coreDirectory,            menu.coreDirectory);
+    TextCopy(LibretroCore.saveDirectory,            menu.saveDirectory);
+    TextCopy(LibretroCore.coreAssetsDirectory,      menu.coreAssetsDirectory);
+    TextCopy(LibretroCore.systemDirectory,          menu.systemDirectory);
+    TextCopy(LibretroCore.playlistsDirectory,       menu.playlistsDirectory);
+    TextCopy(LibretroCore.fileBrowserStartDirectory, menu.fileBrowserStartDirectory);
+}
+
+static void MenuDirChanged(nk_console* widget, void* user_data) {
+    LibretroMenuSettingChanged(widget, user_data);
+    LibretroApplyDirectories();
+}
+
+static void MenuCoreDirChanged(nk_console* widget, void* user_data) {
+    MenuDirChanged(widget, user_data);
+    ScanLibretroCoreDirectory();
+}
+
+static void MenuContentDirChanged(nk_console* widget, void* user_data) {
+    MenuDirChanged(widget, user_data);
+    if (menu.loadGameWidget && menu.fileBrowserStartDirectory[0] != '\0') {
+        nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
+    }
+}
+
+#define LIBRETRO_CORE_CACHE_SECTION "core_cache"
+
+static bool IsLibretroCoreFile(const char* path) {
+    const char* ext = GetFileExtension(path);
+    return TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib") || TextIsEqual(ext, ".wasm");
+}
+
+static int LibretroCoreDirectoryFileCount(const char* dir) {
+    if (!dir || !dir[0] || !DirectoryExists(dir)) return 0;
+    FilePathList files = LoadDirectoryFiles(dir);
+    int count = 0;
+    for (unsigned int i = 0; i < files.count; i++) {
+        if (IsLibretroCoreFile(files.paths[i])) count++;
+    }
+    UnloadDirectoryFiles(files);
+    return count;
+}
+
+static void ScanLibretroCoreDirectory(void) {
+#ifdef RAYLIB_LIBRETRO_CONFIG_H
+    if (!menu.cfg) return;
+    const char* dir = menu.coreDirectory;
+    if (!dir || !dir[0]) return;
+
+    // If a core is already loaded we can't peek at other cores; just invalidate
+    // so the next launch performs a full rescan.
+    if (IsLibretroReady()) {
+        rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", -1);
+        rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
         return;
     }
+
+    int currentCount = LibretroCoreDirectoryFileCount(dir);
+    int cachedCount = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", -1);
+    const char* cachedDir = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "dir_path");
+    if (cachedCount == currentCount && cachedDir && TextIsEqual(cachedDir, dir)) {
+        int cached = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
+        TraceLog(LOG_INFO, "LIBRETRO: Core cache valid (%d cores)", cached);
+        return;
+    }
+
+    TraceLog(LOG_INFO, "LIBRETRO: Rescanning cores in %s", dir);
+    rlconfig_clear_section(menu.cfg, LIBRETRO_CORE_CACHE_SECTION);
+    rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", currentCount);
+    rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "dir_path", dir);
+
+    if (!DirectoryExists(dir)) {
+        rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
+        return;
+    }
+
+    FilePathList files = LoadDirectoryFiles(dir);
+    int coreIndex = 0;
+    for (unsigned int i = 0; i < files.count; i++) {
+        if (!IsLibretroCoreFile(files.paths[i])) continue;
+        if (!InitLibretroEx(files.paths[i], true)) continue;
+        if (TextLength(LibretroCore.validExtensions) == 0) continue;
+
+        char keyPath[64], keyExts[64];
+        TextCopy(keyPath, TextFormat("core_%d_path", coreIndex));
+        TextCopy(keyExts, TextFormat("core_%d_extensions", coreIndex));
+        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath, files.paths[i]);
+        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyExts, LibretroCore.validExtensions);
+        TraceLog(LOG_INFO, "LIBRETRO: Cached %s (%s)", LibretroCore.libraryName, LibretroCore.validExtensions);
+        coreIndex++;
+    }
+    UnloadDirectoryFiles(files);
+
+    rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", coreIndex);
+    rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
+    TraceLog(LOG_INFO, "LIBRETRO: Cached %d cores in %s", coreIndex, dir);
+#endif
+}
+
+static const char* FindCoreForGame(const char* gamePath) {
+#ifdef RAYLIB_LIBRETRO_CONFIG_H
+    if (!menu.cfg || !gamePath || !gamePath[0]) return NULL;
+
+    const char* gameExt = GetFileExtension(gamePath);
+    if (!gameExt || !gameExt[0]) return NULL;
+    if (gameExt[0] == '.') gameExt++;
+
+    char gameExtLower[32] = {0};
+    TextCopy(gameExtLower, TextToLower(gameExt));
+
+    int count = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
+    for (int i = 0; i < count; i++) {
+        char keyExts[64], keyPath[64];
+        TextCopy(keyExts, TextFormat("core_%d_extensions", i));
+        TextCopy(keyPath, TextFormat("core_%d_path", i));
+
+        const char* extensions = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyExts);
+        if (!extensions) continue;
+
+        int extCount = 0;
+        char** extList = TextSplit(extensions, '|', &extCount);
+        for (int j = 0; j < extCount; j++) {
+            if (TextIsEqual(extList[j], gameExtLower)) {
+                return rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath);
+            }
+        }
+    }
+#endif
+    return NULL;
+}
+
+static bool MenuInitCore(const char* corePath) {
+    LibretroApplyDirectories();
+    if (!InitLibretro(corePath)) return false;
+    LoadLibretroCoreOptions();
+    SetLibretroVolume(menu.volumeSelected);
+    return true;
+}
+
+static bool MenuLoadGame(const char* gamePath) {
+    // Unload the current game if it's a thing.
     if (IsLibretroGameReady()) {
         UnloadLibretroGame();
     }
-    CloseLibretro();
-    UpdateLibretroMenuVisibility();
+
+    // Detect a workable core.
+    const char* corePath = FindCoreForGame(gamePath);
+    if (!corePath) {
+        ShowLibretroMessage("No core found for this file", 2.0f);
+        return false;
+    }
+
+    // Load the core
+    if (!MenuInitCore(corePath)) {
+        ShowLibretroMessage("Failed to load core", 2.0f);
+        return false;
+    }
+
+    // Load the game
+    if (!LoadLibretroGame(gamePath)) {
+        ShowLibretroMessage("Failed to load game", 2.0f);
+        return false;
+    }
+
+    BuildLibretroMenuOptions(&menu);
+    menu.active = false;
+    return true;
 }
 
-static void MenuLoadGameClicked(nk_console* widget, void* user_data) {
+static void MenuGameFileChanged(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
-    NK_UNUSED(user_data);
+    char* path = (char*)user_data;
+    if (path && path[0]) {
+        SaveLibretroAllSettings();
+        CloseLibretro();
+        MenuLoadGame(path);
+        path[0] = '\0';
+    }
 }
 
 static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
@@ -363,8 +550,10 @@ LibretroMenu* InitLibretroMenu(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     menu.cfg = rlconfig_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
 #endif
-    TextCopy(LibretroCore.coreDirectory, "cores");
+    TextCopy(menu.coreDirectory, "cores");
     LoadLibretroMenuSettings();
+    LibretroApplyDirectories();
+    ScanLibretroCoreDirectory();
 
     // Build the Menu
     menu.resumeButton = nk_console_button_onclick(menu.console, "Resume", &MenuResumeClicked);
@@ -373,11 +562,15 @@ LibretroMenu* InitLibretroMenu(void) {
 
 
     // Load Game
-    nk_console_button_onclick(menu.console, "Load Game", &MenuLoadGameClicked);
+    menu.loadGameWidget = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+    nk_console_add_event_handler(menu.loadGameWidget, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
+    if (menu.fileBrowserStartDirectory[0] != '\0') {
+        nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
+    }
 
     // Close Game
-    menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
-    nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_X);
+    //menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
+    //nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_X);
 
     // Settings
     nk_console* settings = nk_console_button(menu.console, "Settings");
@@ -481,23 +674,23 @@ LibretroMenu* InitLibretroMenu(void) {
         // Directories
         nk_console* directoryTree = nk_console_tree(settings, "Directories", nk_false);
         {
-            nk_console* coreDirectory = nk_console_dir(directoryTree, "Cores", LibretroCore.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* coreDirectory = nk_console_dir(directoryTree, "Cores", menu.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuCoreDirChanged, NULL, NULL);
 
-            nk_console* saveDirectory = nk_console_dir(directoryTree, "Saves", LibretroCore.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(saveDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* saveDirectory = nk_console_dir(directoryTree, "Saves", menu.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(saveDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* coreAssetsDirectory = nk_console_dir(directoryTree, "Assets", LibretroCore.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(coreAssetsDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* coreAssetsDirectory = nk_console_dir(directoryTree, "Assets", menu.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(coreAssetsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* systemDirectory = nk_console_dir(directoryTree, "System", LibretroCore.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(systemDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* systemDirectory = nk_console_dir(directoryTree, "System", menu.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(systemDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* playlistsDirectory = nk_console_dir(directoryTree, "Playlists", LibretroCore.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(playlistsDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* playlistsDirectory = nk_console_dir(directoryTree, "Playlists", menu.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(playlistsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* fileBrowserStartDirectory = nk_console_dir(directoryTree, "Content", LibretroCore.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* fileBrowserStartDirectory = nk_console_dir(directoryTree, "Content", menu.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuContentDirChanged, NULL, NULL);
         }
     }
 
@@ -509,20 +702,27 @@ LibretroMenu* InitLibretroMenu(void) {
             NK_SYMBOL_TRIANGLE_LEFT);
     }
 
-    // Save State
-    menu.saveStateButton = nk_console_button(menu.console, "Save State");
-    nk_console_add_event(menu.saveStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuSaveStateClicked);
-    nk_console_button_set_symbol(menu.saveStateButton, NK_SYMBOL_RECT_SOLID);
+    {
+        nk_console* saveStateRow = nk_console_row_begin(menu.console);
+        // Save State
+        menu.saveStateButton = nk_console_button(saveStateRow, "Save State");
+        nk_console_add_event(menu.saveStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuSaveStateClicked);
+        nk_console_button_set_symbol(menu.saveStateButton, NK_SYMBOL_RECT_SOLID);
 
-    // Load State
-    menu.loadStateButton = nk_console_button(menu.console, "Load State");
-    nk_console_add_event(menu.loadStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuLoadStateClicked);
-    nk_console_button_set_symbol(menu.loadStateButton, NK_SYMBOL_RECT_OUTLINE);
+        // Load State
+        menu.loadStateButton = nk_console_button(saveStateRow, "Load State");
+        nk_console_add_event(menu.loadStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuLoadStateClicked);
+        nk_console_button_set_symbol(menu.loadStateButton, NK_SYMBOL_RECT_OUTLINE);
+        nk_console_row_end(saveStateRow);
+    }
 
     // Quit
     nk_console* quitButton = nk_console_button(menu.console, "Quit");
     nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuQuitClicked);
     nk_console_button_set_symbol(quitButton, NK_SYMBOL_X);
+    #ifdef __EMSCRIPTEN__ // Don't show quit on web.
+    quitButton->visible = false;
+    #endif
 
     menu.active = true;
     return &menu;
@@ -680,12 +880,12 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "slowMotionSpeed", (int)(menu.slowMotionSpeed * 10.0f));
-    rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.saveDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreAssetsDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.systemDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.playlistsDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.fileBrowserStartDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(menu.coreDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(menu.saveDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(menu.coreAssetsDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroResolveAbsoluteDirectory(menu.systemDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroResolveAbsoluteDirectory(menu.playlistsDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory", LibretroResolveAbsoluteDirectory(menu.fileBrowserStartDirectory));
 #endif
 }
 
@@ -814,17 +1014,17 @@ static bool LoadLibretroMenuSettings(void) {
     if (menu.slowMotionSpeed > 0.9f) menu.slowMotionSpeed = 0.9f;
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
-    if (coreDirectory) TextCopy(LibretroCore.coreDirectory, coreDirectory);
+    if (coreDirectory) TextCopy(menu.coreDirectory, coreDirectory);
     const char* saveDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "saveDirectory");
-    if (saveDirectory) TextCopy(LibretroCore.saveDirectory, saveDirectory);
+    if (saveDirectory) TextCopy(menu.saveDirectory, saveDirectory);
     const char* coreAssetsDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreAssetsDirectory");
-    if (coreAssetsDirectory) TextCopy(LibretroCore.coreAssetsDirectory, coreAssetsDirectory);
-    const char* systemDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "gamesDirectory");
-    if (systemDirectory) TextCopy(LibretroCore.systemDirectory, systemDirectory);
+    if (coreAssetsDirectory) TextCopy(menu.coreAssetsDirectory, coreAssetsDirectory);
+    const char* systemDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "systemDirectory");
+    if (systemDirectory) TextCopy(menu.systemDirectory, systemDirectory);
     const char* playlistsDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "playlistsDirectory");
-    if (playlistsDirectory) TextCopy(LibretroCore.playlistsDirectory, playlistsDirectory);
+    if (playlistsDirectory) TextCopy(menu.playlistsDirectory, playlistsDirectory);
     const char* fileBrowserStartDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory");
-    if (fileBrowserStartDirectory) TextCopy(LibretroCore.fileBrowserStartDirectory, fileBrowserStartDirectory);
+    if (fileBrowserStartDirectory) TextCopy(menu.fileBrowserStartDirectory, fileBrowserStartDirectory);
 
     TraceLog(LOG_INFO, "MENU: Loaded menu settings from %s", RAYLIB_LIBRETRO_CFG_FILE);
     return true;
@@ -869,10 +1069,13 @@ static void UpdateLibretroMenuVisibility(void) {
     // Disable game-dependent items when no game is loaded.
     nk_bool gameReady = (nk_bool)IsLibretroGameReady();
     if (menu.optionsMenu) menu.optionsMenu->visible = LibretroCore.variableCount > 0 && IsLibretroReady();
-    if (menu.saveStateButton) menu.saveStateButton->visible = gameReady;
-    if (menu.loadStateButton) menu.loadStateButton->visible = gameReady;
+    if (menu.saveStateButton) {
+        //menu.saveStateButton->visible = gameReady;
+        menu.saveStateButton->parent->visible = gameReady;
+    }
+    //if (menu.loadStateButton) menu.loadStateButton->visible = gameReady;
     if (menu.resumeButton) menu.resumeButton->visible = gameReady;
-    if (menu.closeGameButton) menu.closeGameButton->visible = gameReady;
+    //if (menu.closeGameButton) menu.closeGameButton->visible = gameReady;
 }
 
 void UpdateLibretroMenu(void) {
@@ -913,9 +1116,9 @@ void DrawLibretroMenu(void) {
     if (menu.ctx == NULL) {
         return;
     }
-    if (!menu.active) {
-        return;
-    }
+    // Always draw when a context exists so nk_clear runs every frame nk_begin
+    // ran in UpdateLibretroMenu — otherwise a callback that toggles menu.active
+    // off mid-frame leaves win->seq == ctx->seq and trips the next nk_begin.
     DrawNuklear(menu.ctx);
 }
 
