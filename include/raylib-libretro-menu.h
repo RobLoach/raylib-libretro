@@ -88,6 +88,12 @@ typedef struct LibretroMenu {
     float slowMotionSpeed;
     int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
     nk_bool optionCheckboxValues[128];    // per-option checkbox state for enabled/disabled options
+    char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char systemDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char playlistsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char fileBrowserStartDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
 #endif
@@ -289,10 +295,22 @@ static void MenuCloseGameClicked(nk_console* widget, void* user_data) {
 
 static void ScanLibretroCoreDirectory(void);
 
-static void MenuCoreDirChanged(nk_console* widget, void* user_data) {
-    NK_UNUSED(widget);
-    NK_UNUSED(user_data);
+static void LibretroApplyDirectories(void) {
+    TextCopy(LibretroCore.coreDirectory,            menu.coreDirectory);
+    TextCopy(LibretroCore.saveDirectory,            menu.saveDirectory);
+    TextCopy(LibretroCore.coreAssetsDirectory,      menu.coreAssetsDirectory);
+    TextCopy(LibretroCore.systemDirectory,          menu.systemDirectory);
+    TextCopy(LibretroCore.playlistsDirectory,       menu.playlistsDirectory);
+    TextCopy(LibretroCore.fileBrowserStartDirectory, menu.fileBrowserStartDirectory);
+}
+
+static void MenuDirChanged(nk_console* widget, void* user_data) {
     LibretroMenuSettingChanged(widget, user_data);
+    LibretroApplyDirectories();
+}
+
+static void MenuCoreDirChanged(nk_console* widget, void* user_data) {
+    MenuDirChanged(widget, user_data);
     ScanLibretroCoreDirectory();
 }
 
@@ -317,7 +335,7 @@ static int LibretroCoreDirectoryFileCount(const char* dir) {
 static void ScanLibretroCoreDirectory(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return;
-    const char* dir = LibretroCore.coreDirectory;
+    const char* dir = menu.coreDirectory;
     if (!dir || !dir[0]) return;
 
     // If a core is already loaded we can't peek at other cores; just invalidate
@@ -404,6 +422,7 @@ static const char* FindCoreForGame(const char* gamePath) {
 }
 
 static bool MenuInitCore(const char* corePath) {
+    LibretroApplyDirectories();
     if (!InitLibretro(corePath)) return false;
     LoadLibretroCoreOptions();
     SetLibretroVolume(menu.volumeSelected);
@@ -514,8 +533,9 @@ LibretroMenu* InitLibretroMenu(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     menu.cfg = rlconfig_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
 #endif
-    TextCopy(LibretroCore.coreDirectory, "cores");
+    TextCopy(menu.coreDirectory, "cores");
     LoadLibretroMenuSettings();
+    LibretroApplyDirectories();
     ScanLibretroCoreDirectory();
 
     // Build the Menu
@@ -634,23 +654,23 @@ LibretroMenu* InitLibretroMenu(void) {
         // Directories
         nk_console* directoryTree = nk_console_tree(settings, "Directories", nk_false);
         {
-            nk_console* coreDirectory = nk_console_dir(directoryTree, "Cores", LibretroCore.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* coreDirectory = nk_console_dir(directoryTree, "Cores", menu.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuCoreDirChanged, NULL, NULL);
 
-            nk_console* saveDirectory = nk_console_dir(directoryTree, "Saves", LibretroCore.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(saveDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* saveDirectory = nk_console_dir(directoryTree, "Saves", menu.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(saveDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* coreAssetsDirectory = nk_console_dir(directoryTree, "Assets", LibretroCore.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(coreAssetsDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* coreAssetsDirectory = nk_console_dir(directoryTree, "Assets", menu.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(coreAssetsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* systemDirectory = nk_console_dir(directoryTree, "System", LibretroCore.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(systemDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* systemDirectory = nk_console_dir(directoryTree, "System", menu.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(systemDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* playlistsDirectory = nk_console_dir(directoryTree, "Playlists", LibretroCore.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(playlistsDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* playlistsDirectory = nk_console_dir(directoryTree, "Playlists", menu.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(playlistsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* fileBrowserStartDirectory = nk_console_dir(directoryTree, "Content", LibretroCore.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* fileBrowserStartDirectory = nk_console_dir(directoryTree, "Content", menu.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
         }
     }
 
@@ -833,12 +853,12 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "slowMotionSpeed", (int)(menu.slowMotionSpeed * 10.0f));
-    rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.saveDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.coreAssetsDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.systemDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.playlistsDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory", LibretroResolveAbsoluteDirectory(LibretroCore.fileBrowserStartDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(menu.coreDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(menu.saveDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(menu.coreAssetsDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroResolveAbsoluteDirectory(menu.systemDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroResolveAbsoluteDirectory(menu.playlistsDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory", LibretroResolveAbsoluteDirectory(menu.fileBrowserStartDirectory));
 #endif
 }
 
@@ -967,17 +987,17 @@ static bool LoadLibretroMenuSettings(void) {
     if (menu.slowMotionSpeed > 0.9f) menu.slowMotionSpeed = 0.9f;
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
-    if (coreDirectory) TextCopy(LibretroCore.coreDirectory, coreDirectory);
+    if (coreDirectory) TextCopy(menu.coreDirectory, coreDirectory);
     const char* saveDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "saveDirectory");
-    if (saveDirectory) TextCopy(LibretroCore.saveDirectory, saveDirectory);
+    if (saveDirectory) TextCopy(menu.saveDirectory, saveDirectory);
     const char* coreAssetsDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreAssetsDirectory");
-    if (coreAssetsDirectory) TextCopy(LibretroCore.coreAssetsDirectory, coreAssetsDirectory);
-    const char* systemDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "gamesDirectory");
-    if (systemDirectory) TextCopy(LibretroCore.systemDirectory, systemDirectory);
+    if (coreAssetsDirectory) TextCopy(menu.coreAssetsDirectory, coreAssetsDirectory);
+    const char* systemDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "systemDirectory");
+    if (systemDirectory) TextCopy(menu.systemDirectory, systemDirectory);
     const char* playlistsDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "playlistsDirectory");
-    if (playlistsDirectory) TextCopy(LibretroCore.playlistsDirectory, playlistsDirectory);
+    if (playlistsDirectory) TextCopy(menu.playlistsDirectory, playlistsDirectory);
     const char* fileBrowserStartDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory");
-    if (fileBrowserStartDirectory) TextCopy(LibretroCore.fileBrowserStartDirectory, fileBrowserStartDirectory);
+    if (fileBrowserStartDirectory) TextCopy(menu.fileBrowserStartDirectory, fileBrowserStartDirectory);
 
     TraceLog(LOG_INFO, "MENU: Loaded menu settings from %s", RAYLIB_LIBRETRO_CFG_FILE);
     return true;
