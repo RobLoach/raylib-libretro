@@ -62,7 +62,7 @@ typedef struct LibretroMenu {
     nk_console* saveStateButton;
     nk_console* loadStateButton;
     nk_console* resumeButton;
-    nk_console* closeGameButton;
+    //nk_console* closeGameButton;
     int shaderSelectedIndex;
     int textureFilterIndex;
     int themeSelectedIndex;
@@ -282,6 +282,8 @@ static void MenuResumeClicked(nk_console* widget, void* user_data) {
     }
 }
 
+/*
+// Close Game has been removed for now, since it's not really needed.
 static void MenuCloseGameClicked(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     NK_UNUSED(user_data);
@@ -294,6 +296,7 @@ static void MenuCloseGameClicked(nk_console* widget, void* user_data) {
     CloseLibretro();
     UpdateLibretroMenuVisibility();
 }
+*/
 
 static void ScanLibretroCoreDirectory(void);
 
@@ -438,24 +441,34 @@ static bool MenuInitCore(const char* corePath) {
 }
 
 static void MenuLoadGame(const char* gamePath) {
-    bool coreReady = IsLibretroReady();
-    if (!coreReady) {
-        const char* corePath = FindCoreForGame(gamePath);
-        if (!corePath) {
-            ShowLibretroMessage("No core found for this file", 2.0f);
-            return;
-        }
-        coreReady = MenuInitCore(corePath);
-        if (!coreReady) {
-            ShowLibretroMessage("Failed to load core", 2.0f);
-            return;
-        }
-    } else if (IsLibretroGameReady()) {
+    // Unload the current game if it's a thing.
+    if (IsLibretroGameReady()) {
         UnloadLibretroGame();
     }
+    if (IsLibretroReady()) {
+        CloseLibretro();
+    }
+
+    // Detect a workable core.
+    const char* corePath = FindCoreForGame(gamePath);
+    if (!corePath) {
+        ShowLibretroMessage("No core found for this file", 2.0f);
+        return;
+    }
+
+    // Load the core
+    if (!MenuInitCore(corePath)) {
+        ShowLibretroMessage("Failed to load core", 2.0f);
+        return;
+    }
+
+    // Load the game
     if (LoadLibretroGame(gamePath)) {
         BuildLibretroMenuOptions(&menu);
         menu.active = false;
+    }
+    else {
+        ShowLibretroMessage("Failed to load game", 2.0f);
     }
 }
 
@@ -558,8 +571,8 @@ LibretroMenu* InitLibretroMenu(void) {
     }
 
     // Close Game
-    menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
-    nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_X);
+    //menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
+    //nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_X);
 
     // Settings
     nk_console* settings = nk_console_button(menu.console, "Settings");
@@ -691,15 +704,19 @@ LibretroMenu* InitLibretroMenu(void) {
             NK_SYMBOL_TRIANGLE_LEFT);
     }
 
-    // Save State
-    menu.saveStateButton = nk_console_button(menu.console, "Save State");
-    nk_console_add_event(menu.saveStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuSaveStateClicked);
-    nk_console_button_set_symbol(menu.saveStateButton, NK_SYMBOL_RECT_SOLID);
+    {
+        nk_console* saveStateRow = nk_console_row_begin(menu.console);
+        // Save State
+        menu.saveStateButton = nk_console_button(saveStateRow, "Save State");
+        nk_console_add_event(menu.saveStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuSaveStateClicked);
+        nk_console_button_set_symbol(menu.saveStateButton, NK_SYMBOL_RECT_SOLID);
 
-    // Load State
-    menu.loadStateButton = nk_console_button(menu.console, "Load State");
-    nk_console_add_event(menu.loadStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuLoadStateClicked);
-    nk_console_button_set_symbol(menu.loadStateButton, NK_SYMBOL_RECT_OUTLINE);
+        // Load State
+        menu.loadStateButton = nk_console_button(saveStateRow, "Load State");
+        nk_console_add_event(menu.loadStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuLoadStateClicked);
+        nk_console_button_set_symbol(menu.loadStateButton, NK_SYMBOL_RECT_OUTLINE);
+        nk_console_row_end(saveStateRow);
+    }
 
     // Quit
     nk_console* quitButton = nk_console_button(menu.console, "Quit");
@@ -1051,10 +1068,13 @@ static void UpdateLibretroMenuVisibility(void) {
     // Disable game-dependent items when no game is loaded.
     nk_bool gameReady = (nk_bool)IsLibretroGameReady();
     if (menu.optionsMenu) menu.optionsMenu->visible = LibretroCore.variableCount > 0 && IsLibretroReady();
-    if (menu.saveStateButton) menu.saveStateButton->visible = gameReady;
-    if (menu.loadStateButton) menu.loadStateButton->visible = gameReady;
+    if (menu.saveStateButton) {
+        //menu.saveStateButton->visible = gameReady;
+        menu.saveStateButton->parent->visible = gameReady;
+    }
+    //if (menu.loadStateButton) menu.loadStateButton->visible = gameReady;
     if (menu.resumeButton) menu.resumeButton->visible = gameReady;
-    if (menu.closeGameButton) menu.closeGameButton->visible = gameReady;
+    //if (menu.closeGameButton) menu.closeGameButton->visible = gameReady;
 }
 
 void UpdateLibretroMenu(void) {
@@ -1095,9 +1115,9 @@ void DrawLibretroMenu(void) {
     if (menu.ctx == NULL) {
         return;
     }
-    if (!menu.active) {
-        return;
-    }
+    // Always draw when a context exists so nk_clear runs every frame nk_begin
+    // ran in UpdateLibretroMenu — otherwise a callback that toggles menu.active
+    // off mid-frame leaves win->seq == ctx->seq and trips the next nk_begin.
     DrawNuklear(menu.ctx);
 }
 

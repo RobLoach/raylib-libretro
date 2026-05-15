@@ -228,7 +228,6 @@ typedef struct rLibretro {
     retro_keyboard_event_t keyboard_event;
     retro_core_options_update_display_callback_t options_update_display_callback;
     struct retro_vfs_interface vfs_interface;
-    // struct retro_game_info_ext game_info_ext;
 
     // Input descriptors (RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS)
     struct retro_input_descriptor *inputDescriptors;
@@ -272,6 +271,14 @@ typedef struct rLibretro {
 
     // Loaded content path (empty if no content loaded).
     char contentPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+
+    // Backing storage and struct for RETRO_ENVIRONMENT_GET_GAME_INFO_EXT.
+    // Pointers in gameInfoExt reference these buffers (or are NULL).
+    char contentDir[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char contentName[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char contentExt[16];
+    struct retro_game_info_ext gameInfoExt;
+    bool gameInfoExtValid;
 
     // Directory configuration. Empty string means use GetApplicationDirectory().
     // TODO: Change this to be MemAlloc-ed?
@@ -386,15 +393,22 @@ static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *c
     return LibretroCore.controllerInfo;
 }
 
+// Returns an absolute path for `path`. The result is either the input pointer
+// (already absolute) or a pointer into a non-reentrant static buffer; copy it
+// before calling again if you need to keep both values.
 static const char* LibretroResolveAbsoluteDirectory(const char* path) {
     if (!path || path[0] == '\0') return path;
+    if (path[0] == '/' || path[0] == '\\') return path;
 #if defined(_WIN32)
-    if (path[1] == ':' || path[0] == '\\') return path;
-#else
-    if (path[0] == '/') return path;
+    if (path[1] == ':') return path;
 #endif
     static char absPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    int n = snprintf(absPath, sizeof(absPath), "%s/%s", GetWorkingDirectory(), path);
+#if defined(_WIN32)
+    const char sep = '\\';
+#else
+    const char sep = '/';
+#endif
+    int n = snprintf(absPath, sizeof(absPath), "%s%c%s", GetWorkingDirectory(), sep, path);
     if (n < 0 || (size_t)n >= sizeof(absPath)) return path;
     return absPath;
 }
@@ -1270,12 +1284,9 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_GAME_INFO_EXT: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_GAME_INFO_EXT not implemented");
-            // const struct retro_game_info_ext ** game_info_ext = (const struct retro_game_info_ext **)data;
-            // *game_info_ext = &LibretroCore.game_info_ext;
-            // LibretroCore.game_info_ext.archive_file
-
-            return false;
+            if (data == NULL || !LibretroCore.gameInfoExtValid) return false;
+            *(const struct retro_game_info_ext **)data = &LibretroCore.gameInfoExt;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {
@@ -1935,6 +1946,46 @@ static bool LibretroInitAudioVideo() {
     return true;
 }
 
+// Populate LibretroCore.gameInfoExt from LibretroCore.contentPath for
+// RETRO_ENVIRONMENT_GET_GAME_INFO_EXT. Caller must set contentPath first.
+// `data`/`size` are only valid while retro_load_game() is executing.
+static void LibretroPopulateGameInfoExt(const void *data, size_t size) {
+    memset(&LibretroCore.gameInfoExt, 0, sizeof(LibretroCore.gameInfoExt));
+    LibretroCore.contentDir[0]  = '\0';
+    LibretroCore.contentName[0] = '\0';
+    LibretroCore.contentExt[0]  = '\0';
+    LibretroCore.gameInfoExtValid = false;
+
+    if (LibretroCore.contentPath[0] == '\0') return;
+
+    TextCopy(LibretroCore.contentDir,  GetDirectoryPath(LibretroCore.contentPath));
+    TextCopy(LibretroCore.contentName, GetFileNameWithoutExt(LibretroCore.contentPath));
+
+    // Extension without leading dot, lower-cased.
+    const char *ext = GetFileExtension(LibretroCore.contentPath);
+    if (ext != NULL && ext[0] == '.') ext++;
+    if (ext != NULL) {
+        size_t i = 0;
+        for (; ext[i] != '\0' && i + 1 < sizeof(LibretroCore.contentExt); i++) {
+            char c = ext[i];
+            if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+            LibretroCore.contentExt[i] = c;
+        }
+        LibretroCore.contentExt[i] = '\0';
+    }
+
+    LibretroCore.gameInfoExt.full_path       = LibretroCore.contentPath;
+    LibretroCore.gameInfoExt.dir             = LibretroCore.contentDir;
+    LibretroCore.gameInfoExt.name            = LibretroCore.contentName;
+    LibretroCore.gameInfoExt.ext             = LibretroCore.contentExt;
+    LibretroCore.gameInfoExt.meta            = "";
+    LibretroCore.gameInfoExt.data            = data;
+    LibretroCore.gameInfoExt.size            = size;
+    LibretroCore.gameInfoExt.file_in_archive = false;
+    LibretroCore.gameInfoExt.persistent_data = false;
+    LibretroCore.gameInfoExtValid            = true;
+}
+
 static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSize) {
     if (!IsLibretroReady()) {
         TraceLog(LOG_ERROR, "LIBRETRO: Core is required before loading a game");
@@ -1958,6 +2009,7 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
     info.data = fileData;
     info.size = (size_t)dataSize;
     info.meta = "";
+    LibretroPopulateGameInfoExt(fileData, (size_t)dataSize);
     if (!LibretroCore.retro_load_game(&info)) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with retro_load_game()");
         LibretroCore.loaded = false;
@@ -1986,10 +2038,11 @@ static bool LoadLibretroGame(const char* gameFile) {
         info.size = 0;
         info.path = NULL;
         info.meta = "";
+        LibretroCore.contentPath[0] = '\0';
+        LibretroPopulateGameInfoExt(NULL, 0);
         if (LibretroCore.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded without content");
             LibretroCore.loaded = true;
-            LibretroCore.contentPath[0] = '\0';
             return LibretroInitAudioVideo();
         }
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load core without content");
@@ -2009,15 +2062,18 @@ static bool LoadLibretroGame(const char* gameFile) {
         info.data = NULL;
         info.size = 0;
         info.path = gameFile;
+        TextCopy(LibretroCore.contentPath, gameFile);
+        LibretroPopulateGameInfoExt(NULL, 0);
         if (LibretroCore.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded content with full path");
             LibretroCore.loaded = true;
-            TextCopy(LibretroCore.contentPath, gameFile);
             return LibretroInitAudioVideo();
         }
         else {
             TraceLog(LOG_ERROR, "LIBRETRO: Failed to load full path");
             LibretroCore.loaded = false;
+            LibretroCore.contentPath[0] = '\0';
+            LibretroCore.gameInfoExtValid = false;
             return false;
         }
     }
@@ -2317,6 +2373,8 @@ static void UnloadLibretroGame() {
     LibretroCore.retro_run = NULL;
     LibretroCore.loaded = false;
     LibretroCore.contentPath[0] = '\0';
+    LibretroCore.gameInfoExtValid = false;
+    memset(&LibretroCore.gameInfoExt, 0, sizeof(LibretroCore.gameInfoExt));
 }
 
 /**
