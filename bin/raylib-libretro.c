@@ -95,35 +95,6 @@ typedef struct {
     float savedVolume;
 } AppData;
 
-static bool AppInitCore(AppData* data, const char* corePath) {
-    if (!InitLibretro(corePath)) return false;
-    LoadLibretroCoreOptions();
-    SetLibretroVolume(data->menu->volumeSelected);
-    return true;
-}
-
-static void AppLoadGame(AppData* data, const char* gamePath) {
-    bool coreReady = IsLibretroReady();
-    if (!coreReady) {
-        const char* corePath = FindCoreForGame(gamePath);
-        if (!corePath) {
-            ShowLibretroMessage("No core found for this file", 2.0f);
-            return;
-        }
-        coreReady = AppInitCore(data, corePath);
-        if (!coreReady) {
-            ShowLibretroMessage("Failed to load core", 2.0f);
-            return;
-        }
-    } else if (IsLibretroGameReady()) {
-        UnloadLibretroGame();
-    }
-    if (LoadLibretroGame(gamePath)) {
-        BuildLibretroMenuOptions(data->menu);
-        data->menu->active = false;
-    }
-}
-
 bool Init(void** userData, int argc, char** argv) {
     SetWindowMinSize(400, 300);
     SetExitKey(KEY_NULL);
@@ -149,12 +120,12 @@ bool Init(void** userData, int argc, char** argv) {
     const char* gameFile = (argc > 2) ? argv[2] : NULL;
 
     if (corePath) {
-        if (AppInitCore(data, corePath) && LoadLibretroGame(gameFile)) {
+        if (MenuInitCore(corePath) && LoadLibretroGame(gameFile)) {
             BuildLibretroMenuOptions(data->menu);
             data->menu->active = false;
         }
     } else if (gameFile) {
-        AppLoadGame(data, gameFile);
+        MenuLoadGame(gameFile);
     }
 
     return true;
@@ -240,12 +211,12 @@ bool UpdateDrawFrame(void* userData) {
                 SaveLibretroAllSettings();
                 UnloadLibretroGame();
                 CloseLibretro();
-                if (AppInitCore(data, droppedPath)) {
+                if (MenuInitCore(droppedPath)) {
                     BuildLibretroMenuOptions(data->menu);
                     data->menu->active = true;
                 }
             } else {
-                AppLoadGame(data, droppedPath);
+                MenuLoadGame(droppedPath);
             }
         }
         UnloadDroppedFiles(dropped);

@@ -296,11 +296,6 @@ static void MenuCoreDirChanged(nk_console* widget, void* user_data) {
     ScanLibretroCoreDirectory();
 }
 
-static void MenuLoadGameClicked(nk_console* widget, void* user_data) {
-    NK_UNUSED(widget);
-    NK_UNUSED(user_data);
-}
-
 #define LIBRETRO_CORE_CACHE_SECTION "core_cache"
 
 static bool IsLibretroCoreFile(const char* path) {
@@ -408,6 +403,45 @@ static const char* FindCoreForGame(const char* gamePath) {
     return NULL;
 }
 
+static bool MenuInitCore(const char* corePath) {
+    if (!InitLibretro(corePath)) return false;
+    LoadLibretroCoreOptions();
+    SetLibretroVolume(menu.volumeSelected);
+    return true;
+}
+
+static void MenuLoadGame(const char* gamePath) {
+    bool coreReady = IsLibretroReady();
+    if (!coreReady) {
+        const char* corePath = FindCoreForGame(gamePath);
+        if (!corePath) {
+            ShowLibretroMessage("No core found for this file", 2.0f);
+            return;
+        }
+        coreReady = MenuInitCore(corePath);
+        if (!coreReady) {
+            ShowLibretroMessage("Failed to load core", 2.0f);
+            return;
+        }
+    } else if (IsLibretroGameReady()) {
+        UnloadLibretroGame();
+    }
+    if (LoadLibretroGame(gamePath)) {
+        BuildLibretroMenuOptions(&menu);
+        menu.active = false;
+    }
+}
+
+static char s_loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH] = {0};
+
+static void MenuGameFileChanged(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    if (s_loadGamePath[0]) {
+        MenuLoadGame(s_loadGamePath);
+    }
+}
+
 static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
@@ -490,7 +524,8 @@ LibretroMenu* InitLibretroMenu(void) {
 
 
     // Load Game
-    nk_console_button_onclick(menu.console, "Load Game", &MenuLoadGameClicked);
+    nk_console* loadGame = nk_console_file_action(menu.console, "Load Game", s_loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+    nk_console_add_event_handler(loadGame, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, NULL, NULL);
 
     // Close Game
     menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
