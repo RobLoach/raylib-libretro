@@ -81,7 +81,10 @@ endif()
 if ("${PLATFORM}" STREQUAL "Web")
     set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "index")
     set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".html")
-    file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/cores")
+    set(RESOURCES_DIR "${CMAKE_SOURCE_DIR}/cores")
+    download_resources(
+        "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/fceumm_libretro.zip"
+    )
     target_link_options(${PROJECT_NAME} PUBLIC
         -sUSE_GLFW=3
         -sMAIN_MODULE=1
