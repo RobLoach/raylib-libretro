@@ -107,7 +107,10 @@ install(DIRECTORY "${CORES_DIR}/" DESTINATION cores)
 
 # Web
 if ("${PLATFORM}" STREQUAL "Web")
-    install(FILES index.data DESTINATION .)
-    install(FILES index.js DESTINATION .)
-    install(FILES index.wasm DESTINATION .)
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/index.data"
+        "${CMAKE_CURRENT_BINARY_DIR}/index.js"
+        "${CMAKE_CURRENT_BINARY_DIR}/index.wasm"
+        DESTINATION .
+    )
 endif()
