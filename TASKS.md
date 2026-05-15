@@ -3,7 +3,7 @@
 ## GUI
 
 - [x] Add nuklear_console with dependencies nuklear_gamepad, c-vector, nuklear
-- [ ] Load Game button to load a file. Then select a Core for it if it doesn't detect.
+- [x] Load Game button to load a file. Then select a Core for it if it doesn't detect.
 - [x] Core Options
 - [ ] Rebindable Inputs
 - [ ] History
@@ -46,4 +46,4 @@
 - [ ] Gamepad auto-detection and mapping
 - [x] Analog stick support for cores that use it
 - [ ] Multi-player / multi-gamepad assignment
-- [ ] Command-line ROM drag-and-drop onto window
+- [x] Command-line ROM drag-and-drop onto window

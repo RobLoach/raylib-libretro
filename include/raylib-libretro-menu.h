@@ -439,6 +439,7 @@ static void MenuGameFileChanged(nk_console* widget, void* user_data) {
     NK_UNUSED(user_data);
     if (s_loadGamePath[0]) {
         MenuLoadGame(s_loadGamePath);
+        s_loadGamePath[0] = '\0';
     }
 }
 
