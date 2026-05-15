@@ -121,4 +121,9 @@ elseif (APPLE)
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/snes9x_libretro.dylib.zip"
         )
     endif()
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    download_cores(
+        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/fceumm_libretro_android.so.zip"
+        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/snes9x_libretro_android.so.zip"
+    )
 endif()
