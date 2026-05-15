@@ -225,14 +225,15 @@ bool UpdateDrawFrame(void* userData) {
         FilePathList dropped = LoadDroppedFiles();
         if (dropped.count > 0) {
             const char* droppedPath = dropped.paths[0];
+            SaveLibretroAllSettings();
+            CloseLibretro();
             if (IsLibretroCoreFile(droppedPath)) {
-                SaveLibretroAllSettings();
-                CloseLibretro();
                 if (MenuInitCore(droppedPath)) {
                     BuildLibretroMenuOptions(data->menu);
                     data->menu->active = true;
                 }
             } else {
+                // MenuLoadGame autodetects a core for the dropped game via FindCoreForGame().
                 MenuLoadGame(droppedPath);
             }
         }
