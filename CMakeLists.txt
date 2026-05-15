@@ -20,7 +20,7 @@ add_subdirectory(lib)
 
 # Directory where cores are extracted
 if (NOT DEFINED CORES_DIR)
-    set(CORES_DIR "${CMAKE_SOURCE_DIR}/cores")
+    set(CORES_DIR "${CMAKE_BINARY_DIR}/cores")
 endif()
 
 # download_cores(<url> [<url> ...])
