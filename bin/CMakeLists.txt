@@ -82,6 +82,11 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
         )
     endif()
 elseif (APPLE)
+    target_link_libraries(raylib-libretro PUBLIC
+        "-framework IOKit"
+        "-framework Cocoa"
+        "-framework OpenGL"
+    )
     if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
         download_cores(
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/fceumm_libretro.dylib.zip"
