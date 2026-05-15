@@ -472,6 +472,7 @@ static void MenuGameFileChanged(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     char* path = (char*)user_data;
     if (path && path[0]) {
+        SaveLibretroAllSettings();
         CloseLibretro();
         MenuLoadGame(path);
         path[0] = '\0';
@@ -719,6 +720,9 @@ LibretroMenu* InitLibretroMenu(void) {
     nk_console* quitButton = nk_console_button(menu.console, "Quit");
     nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuQuitClicked);
     nk_console_button_set_symbol(quitButton, NK_SYMBOL_X);
+    #ifdef __EMSCRIPTEN__ // Don't show quit on web.
+    quitButton->visible = false;
+    #endif
 
     menu.active = true;
     return &menu;

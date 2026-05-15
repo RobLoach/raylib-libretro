@@ -280,16 +280,18 @@ bool UpdateDrawFrame(void* userData) {
     // Screenshot
     else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyScreenshot))) {
         const char* screenshotsDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
-        const char* screenshotName = NULL;
+        bool taken = false;
         for (int i = 1; i < 1000; i++) {
-            screenshotName = TextFormat("%s/screenshot-%i.png", screenshotsDir, i);
+            const char* screenshotName = TextFormat("%s/screenshot-%i.png", screenshotsDir, i);
             if (!FileExists(screenshotName)) {
                 TakeScreenshot(screenshotName);
+                ShowLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0f);
+                taken = true;
                 break;
             }
         }
-        if (screenshotName) {
-            ShowLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0f);
+        if (!taken) {
+            ShowLibretroMessage("Screenshot slots full", 2.0f);
         }
     }
 

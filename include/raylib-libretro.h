@@ -361,7 +361,11 @@ static const char *GetLibretroCoreOption(const char *key) {
  * @return The directory that's currently configured for the libretro directory. The application directory by default, or NULL if it's an incorrect directory.
  */
 static const char* GetLibretroDirectory(int directory) {
-    static char cleaned[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    // Rotating buffer pool so multiple calls in one expression don't clobber each other.
+    #define RAYLIB_LIBRETRO_DIR_BUFFERS 4
+    static char buffers[RAYLIB_LIBRETRO_DIR_BUFFERS][RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    static int bufferIndex = 0;
+
     char* output = NULL;
     switch (directory) {
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: output = LibretroCore.saveDirectory; break;
@@ -373,6 +377,9 @@ static const char* GetLibretroDirectory(int directory) {
     }
 
     const char* result = (output == NULL || output[0] == '\0') ? GetApplicationDirectory() : output;
+
+    char* cleaned = buffers[bufferIndex];
+    bufferIndex = (bufferIndex + 1) % RAYLIB_LIBRETRO_DIR_BUFFERS;
 
     // Strip trailing slash to prevent double slashes when building file paths.
     TextCopy(cleaned, result);
@@ -1482,7 +1489,9 @@ static void UpdateLibretro() {
         InitLibretroVideo();
     }
 
-    LibretroCore.gameTimeNSEC += (retro_perf_tick_t)((double)GetFrameTime() * 1000000000.0);
+    if (IsLibretroGameReady()) {
+        LibretroCore.gameTimeNSEC += (retro_perf_tick_t)((double)GetFrameTime() * 1000000000.0);
+    }
 
     // Update the game loop timer.
     if (LibretroCore.runloop_frame_time.callback) {
@@ -2029,6 +2038,11 @@ static bool LoadLibretroGame(const char* gameFile) {
     if (!IsLibretroReady()) {
         TraceLog(LOG_ERROR, "LIBRETRO: Core is required before loading a game");
         return false;
+    }
+
+    // Unload any prior game so the core sees a clean retro_load_game().
+    if (IsLibretroGameReady()) {
+        UnloadLibretroGame();
     }
 
     // Load empty game.
