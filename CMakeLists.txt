@@ -30,9 +30,3 @@ if(BUILD_RAYLIB_LIBRETRO)
     add_subdirectory(bin)
 endif()
 
-# OSX
-if (APPLE)
-    target_link_libraries(${PROJECT_NAME} "-framework IOKit")
-    target_link_libraries(${PROJECT_NAME} "-framework Cocoa")
-    target_link_libraries(${PROJECT_NAME} "-framework OpenGL")
-endif()
