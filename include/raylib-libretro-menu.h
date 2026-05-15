@@ -94,6 +94,7 @@ typedef struct LibretroMenu {
     char systemDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char playlistsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char fileBrowserStartDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
 #endif
@@ -450,14 +451,12 @@ static void MenuLoadGame(const char* gamePath) {
     }
 }
 
-static char s_loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH] = {0};
-
 static void MenuGameFileChanged(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
-    NK_UNUSED(user_data);
-    if (s_loadGamePath[0]) {
-        MenuLoadGame(s_loadGamePath);
-        s_loadGamePath[0] = '\0';
+    char* path = (char*)user_data;
+    if (path && path[0]) {
+        MenuLoadGame(path);
+        path[0] = '\0';
     }
 }
 
@@ -544,8 +543,8 @@ LibretroMenu* InitLibretroMenu(void) {
 
 
     // Load Game
-    nk_console* loadGame = nk_console_file_action(menu.console, "Load Game", s_loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-    nk_console_add_event_handler(loadGame, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, NULL, NULL);
+    nk_console* loadGame = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+    nk_console_add_event_handler(loadGame, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
 
     // Close Game
     menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
