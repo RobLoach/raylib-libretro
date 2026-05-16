@@ -96,6 +96,8 @@ typedef struct {
     LibretroMenu* menu;
     RewindBuffer rewind;
     float savedVolume;
+    bool muted;
+    float savedVolumeBeforeMute;
 } AppData;
 
 static bool LoadGameFile(const char* gameFile) {
@@ -398,6 +400,21 @@ bool UpdateDrawFrame(void* userData) {
         vol = GetLibretroVolume();
         menu.volumeSelected = vol;
         ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0f);
+    }
+
+    // Mute
+    else if (IsKeyPressed(NuklearKeyToKeyboardKey(menu.keyMute)) && !menu.active) {
+        if (!data->muted) {
+            data->savedVolumeBeforeMute = GetLibretroVolume();
+            SetLibretroVolume(0.0f);
+            data->muted = true;
+            ShowLibretroMessage("Muted", 1.0f);
+        } else {
+            SetLibretroVolume(data->savedVolumeBeforeMute);
+            menu.volumeSelected = data->savedVolumeBeforeMute;
+            data->muted = false;
+            ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(data->savedVolumeBeforeMute * 10.0f + 0.5f) * 10), 1.0f);
+        }
     }
 
     return true;

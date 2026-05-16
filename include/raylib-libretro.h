@@ -2392,6 +2392,36 @@ static void UnloadLibretroGame() {
 }
 
 /**
+ * Reset all per-core data fields so that a subsequent InitLibretro() starts
+ * with a clean slate. Must be called after the dylib is closed.
+ */
+static void LibretroResetCoreState() {
+    memset(LibretroCore.variableKeys,        0, sizeof(LibretroCore.variableKeys));
+    memset(LibretroCore.variableValues,      0, sizeof(LibretroCore.variableValues));
+    memset(LibretroCore.variableLabels,      0, sizeof(LibretroCore.variableLabels));
+    memset(LibretroCore.variableValuesList,  0, sizeof(LibretroCore.variableValuesList));
+    memset(LibretroCore.variableDisplayList, 0, sizeof(LibretroCore.variableDisplayList));
+    memset(LibretroCore.variableTooltips,    0, sizeof(LibretroCore.variableTooltips));
+    memset(LibretroCore.variableVisible,     0, sizeof(LibretroCore.variableVisible));
+    LibretroCore.variableCount          = 0;
+    LibretroCore.variableOptionsVersion = 0;
+    LibretroCore.variablesDirty         = false;
+    LibretroCore.variablesVisibilityDirty = false;
+
+    LibretroCore.rotation    = 0;
+    LibretroCore.width       = 0;
+    LibretroCore.height      = 0;
+    LibretroCore.fps         = 0;
+    LibretroCore.sampleRate  = 0.0;
+    LibretroCore.aspectRatio = 0.0f;
+
+    memset(&LibretroCore.vfs_interface, 0, sizeof(LibretroCore.vfs_interface));
+
+    memset(LibretroCore.osdMessage, 0, sizeof(LibretroCore.osdMessage));
+    LibretroCore.osdEndTime = 0.0;
+}
+
+/**
  * Close the libretro core.
  */
 static void CloseLibretro() {
@@ -2440,6 +2470,8 @@ static void CloseLibretro() {
         dylib_close(LibretroCore.handle);
         LibretroCore.handle = NULL;
     }
+
+    LibretroResetCoreState();
 }
 
 /**
