@@ -139,6 +139,10 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 // Shared config file used by SaveLibretroCoreOptions / LoadLibretroCoreOptions.
 // Keys are prefixed with the core name: "CoreName.key=value"
 #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
+/**
+ * The amount of controller ports with rumble support.
+ */
+#define RAYLIB_LIBRETRO_RUMBLE_PORTS 4
 
 // Dynamic loading methods.
 #define LoadLibretroMethodHandle(V, S) do {\
@@ -288,6 +292,9 @@ typedef struct rLibretro {
     char systemDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char playlistsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char fileBrowserStartDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+
+    float rumbleStrong[RAYLIB_LIBRETRO_RUMBLE_PORTS];
+    float rumbleWeak[RAYLIB_LIBRETRO_RUMBLE_PORTS];
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -565,6 +572,20 @@ static void LibretroPerfLog() {
     TraceLog(LOG_INFO, "LIBRETRO: Timer %s: %i - %i", LibretroCore.perf_counter_last->ident, LibretroCore.perf_counter_last->start, LibretroCore.perf_counter_last->total);
 }
 
+static bool LibretroSetRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
+    if (port >= RAYLIB_LIBRETRO_RUMBLE_PORTS) {
+        return false;
+    }
+    float normalized = (float)strength / 65535.0f;
+    if (effect == RETRO_RUMBLE_STRONG) {
+        LibretroCore.rumbleStrong[port] = normalized;
+    } else {
+        LibretroCore.rumbleWeak[port] = normalized;
+    }
+    SetGamepadVibration((int)port, LibretroCore.rumbleStrong[port], LibretroCore.rumbleWeak[port], 3600.0f);
+    return true;
+}
+
 static bool LibretroSetEnvironment(unsigned cmd, void * data) {
     switch (cmd) {
         case RETRO_ENVIRONMENT_SET_ROTATION: {
@@ -817,8 +838,12 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE not implemented");
-            return false;
+            struct retro_rumble_interface *rumble = (struct retro_rumble_interface*)data;
+            if (rumble == NULL) {
+                return false;
+            }
+            rumble->set_rumble_state = LibretroSetRumbleState;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES: {
