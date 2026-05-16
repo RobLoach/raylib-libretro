@@ -154,7 +154,7 @@ bool Init(void** userData, int argc, char** argv) {
             data->menu->active = false;
         }
     } else if (gameFile) {
-        MenuLoadGame(gameFile);
+        data->menu->active = !MenuLoadGame(gameFile);
     }
 
     return true;
@@ -245,7 +245,7 @@ bool UpdateDrawFrame(void* userData) {
                 }
             } else {
                 // MenuLoadGame autodetects a core for the dropped game via FindCoreForGame().
-                MenuLoadGame(droppedPath);
+                data->menu->active = !MenuLoadGame(droppedPath);
             }
         }
         UnloadDroppedFiles(dropped);

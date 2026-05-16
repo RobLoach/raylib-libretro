@@ -60,6 +60,11 @@ typedef struct rLibretroPhysFS {
 
 static rLibretroPhysFS LibretroPhysFS = {0};
 
+/**
+ * Initialize PhysFS so LoadLibretroGamePhysFS() can mount archives.
+ *
+ * @return \c true on success, \c false if PhysFS initialization failed.
+ */
 static bool InitLibretroPhysFS(void) {
     if (LibretroPhysFS.ready) return true;
     if (!InitPhysFS()) {
@@ -70,6 +75,9 @@ static bool InitLibretroPhysFS(void) {
     return true;
 }
 
+/**
+ * Tear down PhysFS, unmounting any active /game mount.
+ */
 static void CloseLibretroPhysFS(void) {
     if (LibretroPhysFS.mountSource[0] != '\0') {
         UnmountPhysFS(LibretroPhysFS.mountSource);
@@ -81,11 +89,19 @@ static void CloseLibretroPhysFS(void) {
     }
 }
 
-// Pick the ROM file inside /game after a zip mount. First preference: an entry
-// whose basename (minus extension) matches the zip's own basename. Fallback:
-// the first entry whose extension is in the core's validExtensions list.
-// Subdirectories are searched recursively. Returns NULL when nothing matched;
-// the caller MemFree()s the result.
+/**
+ * Pick the ROM file inside /game after the caller has already mounted a zip file.
+ *
+ * Will find the first entry that matches...
+ *   1. The same basename without the extension. For example: mario.zip > mario.nes
+ *   2. The first entry whose extension appears in the core's retro_system_info::valid_extensions
+ *
+ * Subdirectories are searched recursively.
+ *
+ * @param zipFile Path of the original archive (used to derive the basename).
+ * @return Heap-allocated virtual path under /game that the caller must
+ *         MemFree(), or NULL if no candidate matched.
+ */
 static char* LibretroPhysFSPickFileInZip(const char* zipFile) {
     FilePathList entries = LoadDirectoryFilesFromPhysFSEx("/game", NULL, true);
     if (entries.count == 0) {
@@ -125,6 +141,13 @@ static char* LibretroPhysFSPickFileInZip(const char* zipFile) {
     return picked;
 }
 
+/**
+ * Zip-aware replacement for LoadLibretroGame().
+ *
+ * @param gameFile OS path to the ROM or .zip. May be NULL for a
+ *                 content-less core load.
+ * @return \c true on success, \c false on failure.
+ */
 static bool LoadLibretroGamePhysFS(const char* gameFile) {
     if (gameFile == NULL) {
         return LoadLibretroGame(NULL);

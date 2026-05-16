@@ -400,9 +400,20 @@ static void ScanLibretroCoreDirectory(void) {
 #endif
 }
 
-// For .zip inputs, peek inside via PhysFS and return the first inner-file
-// extension that matches any core's valid_extensions. Caller frees with
-// MemFree(). Returns NULL if nothing matched.
+/**
+ * Peek inside a .zip and return the first inner-file extension that any
+ * cached core advertises in its valid_extensions.
+ *
+ * Mounts the archive at a scratch PhysFS namespace ("/peek") so an active
+ * /game mount used by an in-flight load is not disturbed, enumerates the
+ * archive recursively, and matches against the core cache built by
+ * raylib-libretro-config.h.
+ *
+ * @param zipPath OS path to a .zip archive.
+ * @return Heap-allocated lower-case extension (without the leading dot)
+ *         that the caller must MemFree(), or NULL if no inner file matched
+ *         any known core or PhysFS is unavailable.
+ */
 static char* FindZipInnerExtensionForCore(const char* zipPath) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!IsPhysFSReady() && !InitLibretroPhysFS()) return NULL;
@@ -504,7 +515,7 @@ static bool MenuLoadGame(const char* gamePath) {
     // Detect a workable core.
     const char* corePath = FindCoreForGame(gamePath);
     if (!corePath) {
-        ShowLibretroMessage("No core found for this file", 2.0f);
+        ShowLibretroMessage(TextFormat("No core found for %s", GetFileName(gamePath)), 2.0f);
         return false;
     }
 
@@ -531,7 +542,7 @@ static void MenuGameFileChanged(nk_console* widget, void* user_data) {
     if (path && path[0]) {
         SaveLibretroAllSettings();
         CloseLibretro();
-        MenuLoadGame(path);
+        menu.active = !MenuLoadGame(path);
         path[0] = '\0';
     }
 }

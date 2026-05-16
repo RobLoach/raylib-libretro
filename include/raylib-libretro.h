@@ -2104,8 +2104,19 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
     return true;
 }
 
-// libretro extension lists look like "nes|smc|gba"; raylib's IsFileExtension
-// wants ".nes;.smc;.gba" (semicolon-separated, dot-prefixed). Convert in place.
+/**
+ * Translate a libretro pipe-separated extension list into the
+ * semicolon-separated, dot-prefixed form expected by raylib's
+ * IsFileExtension().
+ *
+ * Example: "nes|smc|gba" → ".nes;.smc;.gba".
+ *
+ * @param exts        Source list. Must not be NULL.
+ * @param pattern     Output buffer.
+ * @param patternSize Capacity of @p pattern in bytes. Output is always
+ *                    NUL-terminated when @p patternSize > 0; the result is
+ *                    truncated if the buffer is too small.
+ */
 static void LibretroBuildExtPattern(const char *exts, char *pattern, size_t patternSize) {
     if (patternSize == 0) return;
     size_t p = 0;
@@ -2121,10 +2132,19 @@ static void LibretroBuildExtPattern(const char *exts, char *pattern, size_t patt
     pattern[p] = '\0';
 }
 
-// Look up the effective need_fullpath for a given content file. Returns the
-// global LibretroCore.needFullpath unless a content_info_override matches the
-// file extension. Sets *persistent (if non-NULL) to the override's persistent
-// flag when an override matched, false otherwise.
+/**
+ * Resolve the effective need_fullpath flag for a given content file,
+ * honoring any RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE entry whose
+ * extension list matches @p path.
+ *
+ * @param path       Content path to inspect. May be NULL, in which case the
+ *                   global retro_system_info::need_fullpath value is
+ *                   returned.
+ * @param persistent Optional out-param set to the matching override's
+ *                   persistent_data flag, or \c false when no override
+ *                   matched. May be NULL.
+ * @return The effective need_fullpath for the given path.
+ */
 static bool LibretroResolveNeedFullpath(const char *path, bool *persistent) {
     if (persistent) *persistent = false;
     if (path == NULL) return LibretroCore.needFullpath;
@@ -2140,13 +2160,25 @@ static bool LibretroResolveNeedFullpath(const char *path, bool *persistent) {
     return LibretroCore.needFullpath;
 }
 
-// Load game data into the core, with full control over the path stored on
-// LibretroCore.contentPath and over persistent_data ownership.
-//
-// When persistent is true (typically from a CONTENT_INFO_OVERRIDE), ownership
-// of `fileData` transfers to LibretroCore.persistentGameData and the buffer is
-// freed in UnloadLibretroGame(). Otherwise the caller continues to own
-// `fileData` and may free it once this returns.
+/**
+ * Load game data into the core, with full control over the path stored on
+ * LibretroCore.contentPath and over persistent_data ownership.
+ *
+ * When @p persistent is true (typically from a CONTENT_INFO_OVERRIDE
+ * declaring persistent_data), ownership of @p fileData transfers to
+ * LibretroCore.persistentGameData and the buffer is released by
+ * UnloadLibretroGame(). When false, the caller retains ownership and may
+ * free @p fileData immediately after this returns.
+ *
+ * @param fileData    ROM data. Must not be NULL.
+ * @param dataSize    Size of @p fileData in bytes.
+ * @param contentPath Optional path stored on LibretroCore.contentPath and
+ *                    surfaced via RETRO_ENVIRONMENT_GET_GAME_INFO_EXT. May
+ *                    be NULL.
+ * @param persistent  See RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE; when
+ *                    \c true, the buffer is kept alive until retro_deinit().
+ * @return \c true on success, \c false on failure.
+ */
 static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize, const char* contentPath, bool persistent) {
     if (!IsLibretroReady()) {
         TraceLog(LOG_ERROR, "LIBRETRO: Core is required before loading a game");
@@ -2188,14 +2220,25 @@ static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize, 
     return true;
 }
 
-// Accessor for frontend code that needs the core's reported valid extensions
-// (libretro pipe-separated, e.g. "fds|nes|unf").
+/**
+ * Get the loaded core's reported valid content extensions.
+ *
+ * @return The pipe-separated extension list straight from
+ *         retro_system_info::valid_extensions (e.g. "fds|nes|unf"), or an
+ *         empty string if no core is loaded.
+ */
 static const char* GetLibretroValidExtensions(void) {
     return LibretroCore.validExtensions;
 }
 
-// True if the core declared block_extract — frontends should not extract
-// archives before handing them to the core.
+/**
+ * Whether the loaded core declared block_extract.
+ *
+ * When \c true, frontends must not extract archives before handing them to
+ * the core — the core wants the raw archive path.
+ *
+ * @return \c true if the core set block_extract, \c false otherwise.
+ */
 static bool IsLibretroBlockExtract(void) {
     return LibretroCore.blockExtract;
 }
