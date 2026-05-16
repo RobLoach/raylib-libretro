@@ -104,35 +104,11 @@ static bool LoadGameFile(const char* gameFile) {
     if (IsLibretroGameReady()) {
         UnloadLibretroGame();
     }
+#ifdef RAYLIB_ZIP_H
     if (gameFile && IsFileExtension(gameFile, ".zip")) {
-        Zip archive = LoadZip(gameFile);
-        if (!IsZipValid(archive)) {
-            TraceLog(LOG_ERROR, "LIBRETRO: Failed to open zip: %s", gameFile);
-            UnloadZip(archive);
-            return false;
-        }
-        FilePathList files = LoadDirectoryFilesFromZip(archive, NULL);
-        if (files.count == 0) {
-            TraceLog(LOG_ERROR, "LIBRETRO: No files found in zip: %s", gameFile);
-            UnloadDirectoryFiles(files);
-            UnloadZip(archive);
-            return false;
-        }
-        int dataSize = 0;
-        unsigned char* gameData = LoadFileDataFromZip(archive, files.paths[0], &dataSize);
-        UnloadDirectoryFiles(files);
-        UnloadZip(archive);
-        if (gameData == NULL || dataSize == 0) {
-            TraceLog(LOG_ERROR, "LIBRETRO: Failed to extract content from zip: %s", gameFile);
-            return false;
-        }
-        bool result = LoadLibretroGameFromMemory(gameData, dataSize);
-        MemFree(gameData);
-        if (result) {
-            TextCopy(LibretroCore.contentPath, gameFile);
-        }
-        return result;
+        return MenuLoadGameFromZip(gameFile);
     }
+#endif
     return LoadLibretroGame(gameFile);
 }
 
@@ -177,12 +153,6 @@ bool Init(void** userData, int argc, char** argv) {
             gameFile = argv[i];
         }
     }
-#ifdef __EMSCRIPTEN__
-    if (!corePath) {
-        corePath = "/resources/fceumm_libretro.wasm";
-    }
-#endif
-
     if (corePath) {
         if (MenuInitCore(corePath) && LoadGameFile(gameFile)) {
             BuildLibretroMenuOptions(data->menu);

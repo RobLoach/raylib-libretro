@@ -439,6 +439,39 @@ static bool MenuInitCore(const char* corePath) {
     return true;
 }
 
+#ifdef RAYLIB_ZIP_H
+static bool MenuLoadGameFromZip(const char* gamePath) {
+    if (LibretroCore.needFullpath) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Core requires full path, cannot load from zip");
+        return false;
+    }
+    Zip archive = LoadZip(gamePath);
+    if (!IsZipValid(archive)) {
+        UnloadZip(archive);
+        return false;
+    }
+    FilePathList files = LoadDirectoryFilesFromZip(archive, NULL);
+    if (files.count == 0) {
+        UnloadDirectoryFiles(files);
+        UnloadZip(archive);
+        return false;
+    }
+    int dataSize = 0;
+    unsigned char* gameData = LoadFileDataFromZip(archive, files.paths[0], &dataSize);
+    UnloadDirectoryFiles(files);
+    UnloadZip(archive);
+    if (!gameData || dataSize == 0) {
+        return false;
+    }
+    bool result = LoadLibretroGameFromMemory(gameData, dataSize);
+    MemFree(gameData);
+    if (result) {
+        TextCopy(LibretroCore.contentPath, gamePath);
+    }
+    return result;
+}
+#endif
+
 static bool MenuLoadGame(const char* gamePath) {
     // Unload the current game if it's a thing.
     if (IsLibretroGameReady()) {
@@ -461,33 +494,13 @@ static bool MenuLoadGame(const char* gamePath) {
     // Load the game
 #ifdef RAYLIB_ZIP_H
     if (IsFileExtension(gamePath, ".zip")) {
-        Zip archive = LoadZip(gamePath);
-        if (IsZipValid(archive)) {
-            FilePathList files = LoadDirectoryFilesFromZip(archive, NULL);
-            if (files.count > 0) {
-                int dataSize = 0;
-                unsigned char* gameData = LoadFileDataFromZip(archive, files.paths[0], &dataSize);
-                UnloadDirectoryFiles(files);
-                UnloadZip(archive);
-                if (gameData && dataSize > 0) {
-                    bool result = LoadLibretroGameFromMemory(gameData, dataSize);
-                    MemFree(gameData);
-                    if (result) {
-                        TextCopy(LibretroCore.contentPath, gamePath);
-                        BuildLibretroMenuOptions(&menu);
-                        menu.active = false;
-                        return true;
-                    }
-                }
-            } else {
-                UnloadDirectoryFiles(files);
-                UnloadZip(archive);
-            }
-        } else {
-            UnloadZip(archive);
+        if (!MenuLoadGameFromZip(gamePath)) {
+            ShowLibretroMessage("Failed to load game from zip", 2.0f);
+            return false;
         }
-        ShowLibretroMessage("Failed to load game from zip", 2.0f);
-        return false;
+        BuildLibretroMenuOptions(&menu);
+        menu.active = false;
+        return true;
     }
 #endif
     if (!LoadLibretroGame(gamePath)) {
