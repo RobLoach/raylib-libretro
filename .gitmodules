@@ -36,3 +36,13 @@
 [submodule "vendor/hashmap"]
 	path = vendor/hashmap
 	url = git@github.com:RolandMarchand/hashmap.h.git
+[submodule "vendor/raylib-physfs"]
+	path = vendor/raylib-physfs
+	url = https://github.com/RobLoach/raylib-physfs.git
+    ignore = dirty
+    branch = master
+[submodule "vendor/physfs"]
+	path = vendor/physfs
+	url = https://github.com/icculus/physfs.git
+    ignore = dirty
+    branch = main

@@ -42,6 +42,7 @@
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
 #include "../../vendor/nuklear_gamepad/nuklear_gamepad.h"
 #include "../vendor/nuklear_console/nuklear_console.h"
+#include "raylib-libretro-physfs.h"
 
 typedef enum LibretroMenuStyle {
     LIBRETRO_MENU_STYLE_DRACULA,
@@ -458,8 +459,8 @@ static bool MenuLoadGame(const char* gamePath) {
         return false;
     }
 
-    // Load the game
-    if (!LoadLibretroGame(gamePath)) {
+    // Load the game (PhysFS-aware so .zip archives Just Work).
+    if (!LoadLibretroGamePhysFS(gamePath)) {
         ShowLibretroMessage("Failed to load game", 2.0f);
         return false;
     }

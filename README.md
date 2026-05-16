@@ -10,6 +10,13 @@
 raylib-libretro [core] [game]
 ```
 
+`[game]` can be a loose ROM file or a `.zip` archive. Archives are mounted
+through [PhysFS](https://icculus.org/physfs/) at a virtual `/game` path —
+the ROM inside the archive is picked by basename match (e.g. `mario.zip`
+→ `mario.nes`), falling back to the first entry matching the core's
+supported extensions. Cores that set `block_extract=true` receive the
+archive path directly so they can handle it themselves.
+
 ## Controls
 
 | Control            | Keyboard    |
@@ -49,6 +56,8 @@ cd build
 cmake ..
 make
 bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
+# Or with a .zip:
+bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.zip
 ```
 
 ### Mac OSX
