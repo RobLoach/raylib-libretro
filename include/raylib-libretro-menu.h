@@ -400,6 +400,52 @@ static void ScanLibretroCoreDirectory(void) {
 #endif
 }
 
+// For .zip inputs, peek inside via PhysFS and return the first inner-file
+// extension that matches any core's valid_extensions. Caller frees with
+// MemFree(). Returns NULL if nothing matched.
+static char* FindZipInnerExtensionForCore(const char* zipPath) {
+#ifdef RAYLIB_LIBRETRO_CONFIG_H
+    if (!IsPhysFSReady() && !InitLibretroPhysFS()) return NULL;
+    // Mount at a scratch point to avoid clobbering any /game mount in flight.
+    if (!MountPhysFS(zipPath, "/peek")) return NULL;
+
+    FilePathList entries = LoadDirectoryFilesFromPhysFSEx("/peek", NULL, true);
+    char* result = NULL;
+    int coreCount = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
+
+    for (unsigned int e = 0; e < entries.count && result == NULL; e++) {
+        const char* innerExt = GetFileExtension(entries.paths[e]);
+        if (!innerExt || !innerExt[0]) continue;
+        if (innerExt[0] == '.') innerExt++;
+        char innerLower[32] = {0};
+        TextCopy(innerLower, TextToLower(innerExt));
+
+        for (int i = 0; i < coreCount; i++) {
+            const char* exts = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
+                                            TextFormat("core_%d_extensions", i));
+            if (!exts) continue;
+            int extCount = 0;
+            char** extList = TextSplit(exts, '|', &extCount);
+            for (int j = 0; j < extCount; j++) {
+                if (TextIsEqual(extList[j], innerLower)) {
+                    result = (char*)MemAlloc(32);
+                    TextCopy(result, innerLower);
+                    break;
+                }
+            }
+            if (result) break;
+        }
+    }
+
+    UnloadDirectoryFiles(entries);
+    UnmountPhysFS(zipPath);
+    return result;
+#else
+    (void)zipPath;
+    return NULL;
+#endif
+}
+
 static const char* FindCoreForGame(const char* gamePath) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg || !gamePath || !gamePath[0]) return NULL;
@@ -410,6 +456,13 @@ static const char* FindCoreForGame(const char* gamePath) {
 
     char gameExtLower[32] = {0};
     TextCopy(gameExtLower, TextToLower(gameExt));
+
+    // If the path is a .zip, look up the actual ROM extension from inside.
+    char* zipInner = NULL;
+    if (TextIsEqual(gameExtLower, "zip")) {
+        zipInner = FindZipInnerExtensionForCore(gamePath);
+        if (zipInner) TextCopy(gameExtLower, zipInner);
+    }
 
     int count = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
     for (int i = 0; i < count; i++) {
@@ -424,10 +477,12 @@ static const char* FindCoreForGame(const char* gamePath) {
         char** extList = TextSplit(extensions, '|', &extCount);
         for (int j = 0; j < extCount; j++) {
             if (TextIsEqual(extList[j], gameExtLower)) {
+                if (zipInner) MemFree(zipInner);
                 return rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath);
             }
         }
     }
+    if (zipInner) MemFree(zipInner);
 #endif
     return NULL;
 }

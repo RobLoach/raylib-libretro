@@ -1054,8 +1054,12 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: {
-            // This is not supported because the framebuffer format may not match the expected PixelFormat.
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER not supported");
+            static bool get_current_software_framebuffer_warned = false;
+            if (!get_current_software_framebuffer_warned) {
+                // This is not supported because the framebuffer format may not match the expected PixelFormat.
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER not supported");
+                get_current_software_framebuffer_warned = true;
+            }
             return false;
         }
 
