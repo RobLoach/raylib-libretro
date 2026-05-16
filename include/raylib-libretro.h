@@ -139,6 +139,7 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 // Shared config file used by SaveLibretroCoreOptions / LoadLibretroCoreOptions.
 // Keys are prefixed with the core name: "CoreName.key=value"
 #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
+#define RAYLIB_LIBRETRO_RUMBLE_PORTS 4
 
 // Dynamic loading methods.
 #define LoadLibretroMethodHandle(V, S) do {\
@@ -289,9 +290,8 @@ typedef struct rLibretro {
     char playlistsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char fileBrowserStartDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 
-    // Rumble state per port (RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE)
-    float rumbleStrong[4];
-    float rumbleWeak[4];
+    float rumbleStrong[RAYLIB_LIBRETRO_RUMBLE_PORTS];
+    float rumbleWeak[RAYLIB_LIBRETRO_RUMBLE_PORTS];
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -570,7 +570,7 @@ static void LibretroPerfLog() {
 }
 
 static bool LibretroSetRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
-    if (port >= 4) {
+    if (port >= RAYLIB_LIBRETRO_RUMBLE_PORTS) {
         return false;
     }
     float normalized = (float)strength / 65535.0f;
@@ -836,9 +836,10 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 
         case RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE: {
             struct retro_rumble_interface *rumble = (struct retro_rumble_interface*)data;
-            if (rumble != NULL) {
-                rumble->set_rumble_state = LibretroSetRumbleState;
+            if (rumble == NULL) {
+                return false;
             }
+            rumble->set_rumble_state = LibretroSetRumbleState;
             return true;
         }
 
