@@ -47,8 +47,6 @@ static bool LoadLibretroGamePhysFS(const char* gameFile);   // Zip-aware replace
 #ifndef RAYLIB_LIBRETRO_PHYSFS_IMPLEMENTATION_ONCE
 #define RAYLIB_LIBRETRO_PHYSFS_IMPLEMENTATION_ONCE
 
-#include <stdio.h>
-
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -59,6 +57,16 @@ typedef struct rLibretroPhysFS {
 } rLibretroPhysFS;
 
 static rLibretroPhysFS LibretroPhysFS = {0};
+
+/**
+ * Unmounts the game mount.
+ */
+static void LibretroPhysFSClearMount(void) {
+    if (LibretroPhysFS.mountSource[0] != '\0') {
+        UnmountPhysFS(LibretroPhysFS.mountSource);
+        LibretroPhysFS.mountSource[0] = '\0';
+    }
+}
 
 /**
  * Initialize PhysFS so LoadLibretroGamePhysFS() can mount archives.
@@ -79,10 +87,7 @@ static bool InitLibretroPhysFS(void) {
  * Tear down PhysFS, unmounting any active /game mount.
  */
 static void CloseLibretroPhysFS(void) {
-    if (LibretroPhysFS.mountSource[0] != '\0') {
-        UnmountPhysFS(LibretroPhysFS.mountSource);
-        LibretroPhysFS.mountSource[0] = '\0';
-    }
+    LibretroPhysFSClearMount();
     if (LibretroPhysFS.ready) {
         ClosePhysFS();
         LibretroPhysFS.ready = false;
@@ -99,46 +104,47 @@ static void CloseLibretroPhysFS(void) {
  * Subdirectories are searched recursively.
  *
  * @param zipFile Path of the original archive (used to derive the basename).
- * @return Heap-allocated virtual path under /game that the caller must
- *         MemFree(), or NULL if no candidate matched.
+ * @param outPath Caller-provided buffer (at least RAYLIB_LIBRETRO_VFS_MAX_PATH
+ *                bytes) that receives the virtual path on success.
+ * @return \c true if a candidate was found and copied into @p outPath.
  */
-static char* LibretroPhysFSPickFileInZip(const char* zipFile) {
+static bool LibretroPhysFSPickFileInZip(const char* zipFile, char* outPath) {
     FilePathList entries = LoadDirectoryFilesFromPhysFSEx("/game", NULL, true);
     if (entries.count == 0) {
         UnloadDirectoryFiles(entries);
-        return NULL;
+        return false;
     }
 
     const char* zipBase = GetFileNameWithoutExt(zipFile);
-    char* picked = NULL;
+    bool found = false;
 
     // Pass 1: basename match (any depth).
     for (unsigned int i = 0; i < entries.count; i++) {
         const char* name = GetFileName(entries.paths[i]);
         if (TextIsEqual(GetFileNameWithoutExt(name), zipBase)) {
-            picked = (char*)MemAlloc(RAYLIB_LIBRETRO_VFS_MAX_PATH);
-            TextCopy(picked, entries.paths[i]);
+            TextCopy(outPath, entries.paths[i]);
+            found = true;
             break;
         }
     }
 
     // Pass 2: first entry whose extension is in validExtensions (any depth).
     const char* exts = GetLibretroValidExtensions();
-    if (picked == NULL && exts != NULL && exts[0] != '\0') {
+    if (!found && exts != NULL && exts[0] != '\0') {
         char pattern[256];
         LibretroBuildExtPattern(exts, pattern, sizeof(pattern));
         for (unsigned int i = 0; i < entries.count; i++) {
             const char* name = GetFileName(entries.paths[i]);
             if (IsFileExtension(name, pattern)) {
-                picked = (char*)MemAlloc(RAYLIB_LIBRETRO_VFS_MAX_PATH);
-                TextCopy(picked, entries.paths[i]);
+                TextCopy(outPath, entries.paths[i]);
+                found = true;
                 break;
             }
         }
     }
 
     UnloadDirectoryFiles(entries);
-    return picked;
+    return found;
 }
 
 /**
@@ -164,10 +170,7 @@ static bool LoadLibretroGamePhysFS(const char* gameFile) {
     }
 
     // Drop any prior mount before establishing a new one.
-    if (LibretroPhysFS.mountSource[0] != '\0') {
-        UnmountPhysFS(LibretroPhysFS.mountSource);
-        LibretroPhysFS.mountSource[0] = '\0';
-    }
+    LibretroPhysFSClearMount();
 
     bool isZip = IsFileExtension(gameFile, ".zip");
     bool treatAsArchive = isZip && !IsLibretroBlockExtract();
@@ -182,40 +185,30 @@ static bool LoadLibretroGamePhysFS(const char* gameFile) {
     // Resolve the virtual ROM path inside /game.
     char virtualPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     if (treatAsArchive) {
-        char* picked = LibretroPhysFSPickFileInZip(gameFile);
-        if (picked == NULL) {
+        if (!LibretroPhysFSPickFileInZip(gameFile, virtualPath)) {
             TraceLog(LOG_ERROR, "LIBRETRO: No suitable ROM found inside %s", gameFile);
-            UnmountPhysFS(mountSource);
-            LibretroPhysFS.mountSource[0] = '\0';
+            LibretroPhysFSClearMount();
             return false;
         }
-        TextCopy(virtualPath, picked);
-        MemFree(picked);
     } else {
-        snprintf(virtualPath, sizeof(virtualPath), "/game/%s", GetFileName(gameFile));
+        TextCopy(virtualPath, TextFormat("/game/%s", GetFileName(gameFile)));
     }
 
     // Per-extension content_info_override may flip need_fullpath for the
     // picked ROM (e.g. fceumm declares need_fullpath=false for .nes).
     bool persistent = false;
-    bool needFullpath = LibretroResolveNeedFullpath(virtualPath, &persistent);
-
-    if (needFullpath) {
+    if (GetLibretroNeedFullpath(virtualPath, &persistent)) {
         // Fullpath cores that don't honor the libretro VFS would fopen()
         // /game/* and fail. Hand them the original OS path; archives are
         // rejected (unless block_extract pushed them through the regular
         // file path above).
         if (treatAsArchive) {
             TraceLog(LOG_ERROR, "LIBRETRO: Core requires a real file path; .zip not supported");
-            UnmountPhysFS(mountSource);
-            LibretroPhysFS.mountSource[0] = '\0';
+            LibretroPhysFSClearMount();
             return false;
         }
         bool ok = LoadLibretroGame(gameFile);
-        if (!ok) {
-            UnmountPhysFS(mountSource);
-            LibretroPhysFS.mountSource[0] = '\0';
-        }
+        if (!ok) LibretroPhysFSClearMount();
         return ok;
     }
 
@@ -224,18 +217,14 @@ static bool LoadLibretroGamePhysFS(const char* gameFile) {
     unsigned char* gameData = LoadFileDataFromPhysFS(virtualPath, &size);
     if (gameData == NULL || size == 0) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to read game data from %s", virtualPath);
-        if (gameData != NULL) UnloadFileData(gameData);
-        UnmountPhysFS(mountSource);
-        LibretroPhysFS.mountSource[0] = '\0';
+        UnloadFileData(gameData);
+        LibretroPhysFSClearMount();
         return false;
     }
 
     bool ok = LoadLibretroGameFromMemoryEx(gameData, size, virtualPath, persistent);
-    if (!ok) {
-        UnmountPhysFS(mountSource);
-        LibretroPhysFS.mountSource[0] = '\0';
-    }
-    if (!persistent) {
+    if (!ok) LibretroPhysFSClearMount();
+    if (!ok || !persistent) {
         UnloadFileData(gameData);
     }
     return ok;

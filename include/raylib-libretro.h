@@ -89,7 +89,7 @@ static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned
 static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count);    // Get controller info; count set to number of ports.
 static const char* GetLibretroValidExtensions(void);                                       // Valid extensions reported by the core (pipe-separated).
 static bool IsLibretroBlockExtract(void);                                                  // Whether the core forbids the frontend from extracting archives.
-static bool LibretroResolveNeedFullpath(const char* path, bool* persistent);               // Effective need_fullpath for a given path, honoring CONTENT_INFO_OVERRIDE.
+static bool GetLibretroNeedFullpath(const char* path, bool* persistent);               // Effective need_fullpath for a given path, honoring CONTENT_INFO_OVERRIDE.
 static void LibretroBuildExtPattern(const char* exts, char* pattern, size_t patternSize); // Translate "ext1|ext2" to ".ext1;.ext2" for IsFileExtension.
 static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize,
     const char* contentPath, bool persistent);                                             // Load from memory with contentPath + persistent_data ownership.
@@ -2133,9 +2133,9 @@ static void LibretroBuildExtPattern(const char *exts, char *pattern, size_t patt
 }
 
 /**
- * Resolve the effective need_fullpath flag for a given content file,
- * honoring any RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE entry whose
- * extension list matches @p path.
+ * Retrieve whether or not the libretro core requires a full path for a given content file.
+ *
+ * This honors RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE calls.
  *
  * @param path       Content path to inspect. May be NULL, in which case the
  *                   global retro_system_info::need_fullpath value is
@@ -2145,7 +2145,7 @@ static void LibretroBuildExtPattern(const char *exts, char *pattern, size_t patt
  *                   matched. May be NULL.
  * @return The effective need_fullpath for the given path.
  */
-static bool LibretroResolveNeedFullpath(const char *path, bool *persistent) {
+static bool GetLibretroNeedFullpath(const char *path, bool *persistent) {
     if (persistent) *persistent = false;
     if (path == NULL) return LibretroCore.needFullpath;
 
@@ -2279,9 +2279,7 @@ static bool LoadLibretroGame(const char* gameFile) {
 
     // Resolve need_fullpath via CONTENT_INFO_OVERRIDE if the core set one.
     bool persistent = false;
-    bool needFullpath = LibretroResolveNeedFullpath(gameFile, &persistent);
-
-    if (needFullpath) {
+    if (GetLibretroNeedFullpath(gameFile, &persistent)) {
         struct retro_game_info info;
         info.data = NULL;
         info.size = 0;
@@ -2306,12 +2304,12 @@ static bool LoadLibretroGame(const char* gameFile) {
     if (gameData == NULL || size == 0) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with LoadFileData()");
         LibretroCore.loaded = false;
-        if (gameData != NULL) UnloadFileData(gameData);
+        UnloadFileData(gameData);
         return false;
     }
 
     bool ok = LoadLibretroGameFromMemoryEx(gameData, size, gameFile, persistent);
-    if (!persistent) {
+    if (!ok || !persistent) {
         UnloadFileData(gameData);
     }
     return ok;
