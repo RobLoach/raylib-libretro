@@ -139,6 +139,9 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 // Shared config file used by SaveLibretroCoreOptions / LoadLibretroCoreOptions.
 // Keys are prefixed with the core name: "CoreName.key=value"
 #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
+/**
+ * The amount of controller ports with rumble support.
+ */
 #define RAYLIB_LIBRETRO_RUMBLE_PORTS 4
 
 // Dynamic loading methods.
