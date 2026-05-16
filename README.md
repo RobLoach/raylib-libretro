@@ -55,9 +55,11 @@ mkdir build
 cd build
 cmake ..
 make
-bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
+bin/raylib-libretro -L ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
 # Or with a .zip:
-bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.zip
+bin/raylib-libretro -L ~/.config/retroarch/cores/fceumm_libretro.so smb.zip
+# Or with autodetection of cores in the cores directory
+bin/raylib-libretro smb.nes
 ```
 
 ### Mac OSX
@@ -66,10 +68,10 @@ bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.zip
 - Run the above compile instructions
 - After installing RetroArch and some cores, you should be able to run the below:
     ```bash
-    bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib ~/Desktop/smb.nes
+    bin/raylib-libretro -L ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib ~/Desktop/smb.nes
     ```
 
-## Basic Usage
+## API Usage
 
 ```c
 InitLibretro("fceumm.so");
