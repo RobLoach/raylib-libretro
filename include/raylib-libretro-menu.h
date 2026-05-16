@@ -527,8 +527,15 @@ static bool MenuLoadGame(const char* gamePath) {
 
     // Load the game (PhysFS-aware so .zip archives Just Work).
     if (!LoadLibretroGamePhysFS(gamePath)) {
-        ShowLibretroMessage("Failed to load game", 2.0f);
-        return false;
+        if (IsLibretroGameRequired()) {
+            ShowLibretroMessage("Failed to load game", 2.0f);
+            return false;
+        }
+        // Core supports running without content; fall back to standalone.
+        if (!LoadLibretroGame(NULL)) {
+            ShowLibretroMessage("Failed to load core", 2.0f);
+            return false;
+        }
     }
 
     BuildLibretroMenuOptions(&menu);
