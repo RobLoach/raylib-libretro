@@ -7,7 +7,17 @@
 ## Usage
 
 ``` sh
-raylib-libretro [core] [game]
+raylib-libretro [game] -L [core]
+```
+
+- `[game]` can be a loose ROM file or a `.zip` archive
+- `[core]` is optional, and is a path to which libretro core to use
+
+### Example
+```
+raylib-libretro -L ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
+raylib-libretro -L ~/.config/retroarch/cores/fceumm_libretro.so smb.zip
+raylib-libretro smb.nes
 ```
 
 ## Controls
@@ -48,7 +58,6 @@ mkdir build
 cd build
 cmake ..
 make
-bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
 ```
 
 ### Mac OSX
@@ -57,10 +66,10 @@ bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
 - Run the above compile instructions
 - After installing RetroArch and some cores, you should be able to run the below:
     ```bash
-    bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib ~/Desktop/smb.nes
+    bin/raylib-libretro -L ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib ~/Desktop/smb.nes
     ```
 
-## Basic Usage
+## API Usage
 
 ```c
 InitLibretro("fceumm.so");

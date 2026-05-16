@@ -42,6 +42,7 @@
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
 #include "../../vendor/nuklear_gamepad/nuklear_gamepad.h"
 #include "../vendor/nuklear_console/nuklear_console.h"
+#include "raylib-libretro-physfs.h"
 
 typedef enum LibretroMenuStyle {
     LIBRETRO_MENU_STYLE_DRACULA,
@@ -399,6 +400,64 @@ static void ScanLibretroCoreDirectory(void) {
 #endif
 }
 
+/**
+ * Peek inside a .zip and return the first inner-file extension that any
+ * cached core advertises in its valid_extensions.
+ *
+ * Mounts the archive at a scratch PhysFS namespace ("/peek") so an active
+ * /game mount used by an in-flight load is not disturbed, enumerates the
+ * archive recursively, and matches against the core cache built by
+ * raylib-libretro-config.h.
+ *
+ * @param zipPath OS path to a .zip archive.
+ * @param outExt  Caller-provided buffer (at least 32 bytes) that receives the
+ *                lower-case extension (without the leading dot) on success.
+ * @return \c true if a matching inner file was found and copied into @p outExt.
+ */
+static bool FindZipInnerExtensionForCore(const char* zipPath, char* outExt) {
+#ifdef RAYLIB_LIBRETRO_CONFIG_H
+    if (!IsPhysFSReady() && !InitLibretroPhysFS()) return false;
+    // Mount at a scratch point to avoid clobbering any /game mount in flight.
+    if (!MountPhysFS(zipPath, "/peek")) return false;
+
+    FilePathList entries = LoadDirectoryFilesFromPhysFSEx("/peek", NULL, true);
+    bool found = false;
+    int coreCount = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
+
+    for (unsigned int e = 0; e < entries.count && !found; e++) {
+        const char* innerExt = GetFileExtension(entries.paths[e]);
+        if (!innerExt || !innerExt[0]) continue;
+        if (innerExt[0] == '.') innerExt++;
+        char innerLower[32] = {0};
+        TextCopy(innerLower, TextToLower(innerExt));
+
+        for (int i = 0; i < coreCount; i++) {
+            const char* exts = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
+                                            TextFormat("core_%d_extensions", i));
+            if (!exts) continue;
+            int extCount = 0;
+            char** extList = TextSplit(exts, '|', &extCount);
+            for (int j = 0; j < extCount; j++) {
+                if (TextIsEqual(extList[j], innerLower)) {
+                    TextCopy(outExt, innerLower);
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+    }
+
+    UnloadDirectoryFiles(entries);
+    UnmountPhysFS(zipPath);
+    return found;
+#else
+    (void)zipPath;
+    (void)outExt;
+    return false;
+#endif
+}
+
 static const char* FindCoreForGame(const char* gamePath) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg || !gamePath || !gamePath[0]) return NULL;
@@ -409,6 +468,14 @@ static const char* FindCoreForGame(const char* gamePath) {
 
     char gameExtLower[32] = {0};
     TextCopy(gameExtLower, TextToLower(gameExt));
+
+    // If the path is a .zip, look up the actual ROM extension from inside.
+    if (TextIsEqual(gameExtLower, "zip")) {
+        char zipInner[32] = {0};
+        if (FindZipInnerExtensionForCore(gamePath, zipInner)) {
+            TextCopy(gameExtLower, zipInner);
+        }
+    }
 
     int count = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
     for (int i = 0; i < count; i++) {
@@ -448,7 +515,7 @@ static bool MenuLoadGame(const char* gamePath) {
     // Detect a workable core.
     const char* corePath = FindCoreForGame(gamePath);
     if (!corePath) {
-        ShowLibretroMessage("No core found for this file", 2.0f);
+        ShowLibretroMessage(TextFormat("No core found for %s", GetFileName(gamePath)), 2.0f);
         return false;
     }
 
@@ -458,10 +525,17 @@ static bool MenuLoadGame(const char* gamePath) {
         return false;
     }
 
-    // Load the game
-    if (!LoadLibretroGame(gamePath)) {
-        ShowLibretroMessage("Failed to load game", 2.0f);
-        return false;
+    // Load the game (PhysFS-aware so .zip archives Just Work).
+    if (!LoadLibretroGamePhysFS(gamePath)) {
+        if (IsLibretroGameRequired()) {
+            ShowLibretroMessage("Failed to load game", 2.0f);
+            return false;
+        }
+        // Core supports running without content; fall back to standalone.
+        if (!LoadLibretroGame(NULL)) {
+            ShowLibretroMessage("Failed to load core", 2.0f);
+            return false;
+        }
     }
 
     BuildLibretroMenuOptions(&menu);
@@ -475,7 +549,7 @@ static void MenuGameFileChanged(nk_console* widget, void* user_data) {
     if (path && path[0]) {
         SaveLibretroAllSettings();
         CloseLibretro();
-        MenuLoadGame(path);
+        menu.active = !MenuLoadGame(path);
         path[0] = '\0';
     }
 }

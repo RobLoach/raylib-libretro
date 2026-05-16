@@ -37,6 +37,13 @@
 #define RAYLIB_LIBRETRO_IMPLEMENTATION
 #include "raylib-libretro.h"
 
+#define PHYSFS_PLATFORM_RAYLIB
+#define RAYLIB_PHYSFS_IMPLEMENTATION
+#include "raylib-physfs.h"
+
+#define RAYLIB_LIBRETRO_PHYSFS_IMPLEMENTATION
+#include "../include/raylib-libretro-physfs.h"
+
 #define RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
 #include "../include/raylib-libretro-shaders.h"
 
@@ -116,6 +123,7 @@ bool Init(void** userData, int argc, char** argv) {
     *userData = data;
 
     InitAudioDevice();
+    InitLibretroPhysFS();
 
     // Load the shaders and the menu.
     LoadLibretroShaders();
@@ -123,6 +131,7 @@ bool Init(void** userData, int argc, char** argv) {
     if (!data->menu) {
         TraceLog(LOG_ERROR, "Failed to initialize menu");
         UnloadLibretroShaders();
+        CloseLibretroPhysFS();
         CloseAudioDevice();
         return false;
     }
@@ -140,12 +149,12 @@ bool Init(void** userData, int argc, char** argv) {
     }
 
     if (corePath) {
-        if (MenuInitCore(corePath) && LoadLibretroGame(gameFile)) {
+        if (MenuInitCore(corePath) && LoadLibretroGamePhysFS(gameFile)) {
             BuildLibretroMenuOptions(data->menu);
             data->menu->active = false;
         }
     } else if (gameFile) {
-        MenuLoadGame(gameFile);
+        data->menu->active = !MenuLoadGame(gameFile);
     }
 
     return true;
@@ -236,7 +245,7 @@ bool UpdateDrawFrame(void* userData) {
                 }
             } else {
                 // MenuLoadGame autodetects a core for the dropped game via FindCoreForGame().
-                MenuLoadGame(droppedPath);
+                data->menu->active = !MenuLoadGame(droppedPath);
             }
         }
         UnloadDroppedFiles(dropped);
@@ -392,6 +401,7 @@ void Close(void* userData) {
     CloseLibretroMenu();
 
     UnloadLibretroShaders();
+    CloseLibretroPhysFS();
     CloseAudioDevice();
     MemFree(data);
 }

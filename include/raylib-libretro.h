@@ -53,40 +53,46 @@ extern "C" {
 static bool InitLibretro(const char* core);   // Initialize the given libretro core
 static bool InitLibretroEx(const char* core, bool peek);   // Initialize the given libretro core
 static bool LoadLibretroGame(const char* gameFile);      // Load the provided content. Provide NULL to load the core without content.
-static bool IsLibretroReady();                           // Whether or not the core was successfully loaded.
-static bool IsLibretroGameReady();                       // Whether or not the game has been loaded.
-static void UpdateLibretro();                            // Run an iteration of the core.
-static bool LibretroShouldClose();                       // Check whether or not the core has requested to shutdown.
-static void DrawLibretro();                              // Draw the libretro state on the screen.
+static bool IsLibretroReady(void);                           // Whether or not the core was successfully loaded.
+static bool IsLibretroGameReady(void);                       // Whether or not the game has been loaded.
+static void UpdateLibretro(void);                            // Run an iteration of the core.
+static bool LibretroShouldClose(void);                       // Check whether or not the core has requested to shutdown.
+static void DrawLibretro(void);                              // Draw the libretro state on the screen.
 static void DrawLibretroTint(Color tint);                // Draw the libretro state on the screen with a tint.
 static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint);
 static void DrawLibretroV(Vector2 position, Color tint);
 static void DrawLibretroTexture(int posX, int posY, Color tint);
 static void DrawLibretroPro(Rectangle destRec, Color tint);
-static const char* GetLibretroName();                    // Get the name of the loaded libretro core.
-static const char* GetLibretroContentName();             // Get the filename (no extension) of the loaded content, or core name if none.
-static const char* GetLibretroVersion();                 // Get the version of the loaded libretro core.
-static unsigned GetLibretroWidth();                      // Get the desired width of the libretro core.
-static unsigned GetLibretroHeight();                     // Get the desired height of the libretro core.
-static unsigned GetLibretroRotation();                   // Get the current screen rotation (0=0°, 1=90°, 2=180°, 3=270°).
-static Texture2D GetLibretroTexture();                   // Retrieve the texture used to render the libretro state.
-static bool IsLibretroGameRequired();               // Determine whether or not the loaded core require content.
-static void ResetLibretro();                             // Reset the currently loaded libretro core.
-static void UnloadLibretroGame();                        // Unload the game that's currently loaded.
-static void CloseLibretro();                             // Close the initialized libretro core.
+static const char* GetLibretroName(void);                    // Get the name of the loaded libretro core.
+static const char* GetLibretroContentName(void);             // Get the filename (no extension) of the loaded content, or core name if none.
+static const char* GetLibretroVersion(void);                 // Get the version of the loaded libretro core.
+static unsigned GetLibretroWidth(void);                      // Get the desired width of the libretro core.
+static unsigned GetLibretroHeight(void);                     // Get the desired height of the libretro core.
+static unsigned GetLibretroRotation(void);                   // Get the current screen rotation (0=0°, 1=90°, 2=180°, 3=270°).
+static Texture2D GetLibretroTexture(void);                   // Retrieve the texture used to render the libretro state.
+static bool IsLibretroGameRequired(void);               // Determine whether or not the loaded core require content.
+static void ResetLibretro(void);                             // Reset the currently loaded libretro core.
+static void UnloadLibretroGame(void);                        // Unload the game that's currently loaded.
+static void CloseLibretro(void);                             // Close the initialized libretro core.
 static void SetLibretroVolume(float volume);             // Set the audio volume (0.0 - 1.0).
-static float GetLibretroVolume();                        // Get the current audio volume.
+static float GetLibretroVolume(void);                        // Get the current audio volume.
 static void SetLibretroSpeed(float speed);               // Set playback speed (1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion).
-static float GetLibretroSpeed();                         // Get the current playback speed.
+static float GetLibretroSpeed(void);                         // Get the current playback speed.
 static bool SetLibretroCoreOption(const char* key, const char* value);  // Set a core option by key.
 static const char* GetLibretroCoreOption(const char* key);              // Get a core option value by key. Returns NULL if not found.
 static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
 static bool SetLibretroSerializedData(void* data, unsigned int size);
 static void ShowLibretroMessage(const char* msg, float duration); // Show an OSD message for the given duration in seconds.
-static bool DrawLibretroMessage(); // Displays the OSD message on the screen. Returns true if there was one.
+static bool DrawLibretroMessage(void); // Displays the OSD message on the screen. Returns true if there was one.
 static const char* GetLibretroDirectory(int directory);
 static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count); // Get input descriptors; count set to number of entries.
 static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count);    // Get controller info; count set to number of ports.
+static const char* GetLibretroValidExtensions(void);                                       // Valid extensions reported by the core (pipe-separated).
+static bool IsLibretroBlockExtract(void);                                                  // Whether the core forbids the frontend from extracting archives.
+static bool GetLibretroNeedFullpath(const char* path, bool* persistent);               // Effective need_fullpath for a given path, honoring CONTENT_INFO_OVERRIDE.
+static void LibretroBuildExtPattern(const char* exts, char* pattern, size_t patternSize); // Translate "ext1|ext2" to ".ext1;.ext2" for IsFileExtension.
+static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize,
+    const char* contentPath, bool persistent);                                             // Load from memory with contentPath + persistent_data ownership.
 
 static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
@@ -128,6 +134,10 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #define LIBRETRO_AUDIO_RING_BUFFER_SIZE 8192
 // Single-sample accumulation buffer size (stereo frames)
 #define LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
+// Per-extension content info overrides (RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE).
+#define LIBRETRO_MAX_CONTENT_INFO_OVERRIDES 16
+#define LIBRETRO_CONTENT_INFO_OVERRIDE_EXTS_LEN 256
+
 // Core options/variables storage limits
 #define LIBRETRO_MAX_CORE_VARIABLES      512
 #define LIBRETRO_CORE_VARIABLE_KEY_LEN   512
@@ -295,6 +305,17 @@ typedef struct rLibretro {
 
     float rumbleStrong[RAYLIB_LIBRETRO_RUMBLE_PORTS];
     float rumbleWeak[RAYLIB_LIBRETRO_RUMBLE_PORTS];
+
+    // Per-extension content info overrides from
+    // RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE.
+    char contentInfoOverrideExts[LIBRETRO_MAX_CONTENT_INFO_OVERRIDES][LIBRETRO_CONTENT_INFO_OVERRIDE_EXTS_LEN];
+    bool contentInfoOverrideNeedFullpath[LIBRETRO_MAX_CONTENT_INFO_OVERRIDES];
+    bool contentInfoOverridePersistent[LIBRETRO_MAX_CONTENT_INFO_OVERRIDES];
+    unsigned contentInfoOverrideCount;
+
+    // Persistent ROM buffer kept alive when an override sets persistent_data=true.
+    unsigned char* persistentGameData;
+    int persistentGameDataSize;
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -447,9 +468,9 @@ static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
     }
 }
 
-static void InitLibretroAudio();  // Forward declaration.
+static void InitLibretroAudio(void);  // Forward declaration.
 
-static void CloseLibretroVideo() {
+static void CloseLibretroVideo(void) {
     // Unload the existing texture if it exists already.
     if (IsTextureValid(LibretroCore.texture)) {
         UnloadTexture(LibretroCore.texture);
@@ -464,7 +485,7 @@ static void CloseLibretroVideo() {
     LibretroCore.textureRebuild = false;
 }
 
-static bool InitLibretroVideo() {
+static bool InitLibretroVideo(void) {
     CloseLibretroVideo();
 
     // Build the rendering image.
@@ -505,7 +526,7 @@ static bool InitLibretroVideo() {
  *
  * @return retro_time_t The current in-game time in microseconds.
  */
-static retro_time_t LibretroGetTimeUSEC() {
+static retro_time_t LibretroGetTimeUSEC(void) {
     return (retro_time_t)(LibretroCore.gameTimeNSEC / 1000);
 }
 
@@ -515,7 +536,7 @@ static retro_time_t LibretroGetTimeUSEC() {
  * @see retro_get_cpu_features_t
  * @return uint64_t Returns a bit-mask of detected CPU features (RETRO_SIMD_*).
  */
-static uint64_t LibretroGetCPUFeatures() {
+static uint64_t LibretroGetCPUFeatures(void) {
     return cpu_features_get();
 }
 
@@ -525,7 +546,7 @@ static uint64_t LibretroGetCPUFeatures() {
  * @see retro_perf_get_counter_t
  * @return retro_perf_tick_t The current value of the high resolution counter.
  */
-static retro_perf_tick_t LibretroGetPerfCounter() {
+static retro_perf_tick_t LibretroGetPerfCounter(void) {
     return LibretroCore.gameTimeNSEC;
 }
 
@@ -564,7 +585,7 @@ static void LibretroPerfStop(struct retro_perf_counter* counter) {
  *
  * @see retro_perf_log_t
  */
-static void LibretroPerfLog() {
+static void LibretroPerfLog(void) {
     // TODO: Use a linked list of counters, and loop through them all.
     if (LibretroCore.perf_counter_last == NULL) {
         return;
@@ -1033,8 +1054,12 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: {
-            // This is not supported because the framebuffer format may not match the expected PixelFormat.
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER not supported");
+            static bool get_current_software_framebuffer_warned = false;
+            if (!get_current_software_framebuffer_warned) {
+                // This is not supported because the framebuffer format may not match the expected PixelFormat.
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER not supported");
+                get_current_software_framebuffer_warned = true;
+            }
             return false;
         }
 
@@ -1311,8 +1336,29 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE not implemented");
-            return false;
+            // NULL data is a feature-probe: the core wants to know if we honor
+            // overrides at all. Return true so it knows to call us again with
+            // its real array.
+            if (data == NULL) return true;
+
+            LibretroCore.contentInfoOverrideCount = 0;
+            const struct retro_system_content_info_override *o =
+                (const struct retro_system_content_info_override *)data;
+            for (; o->extensions != NULL; o++) {
+                if (LibretroCore.contentInfoOverrideCount >= LIBRETRO_MAX_CONTENT_INFO_OVERRIDES) {
+                    TraceLog(LOG_WARNING, "LIBRETRO: Too many content info overrides; dropping rest");
+                    break;
+                }
+                unsigned i = LibretroCore.contentInfoOverrideCount++;
+                TextCopy(LibretroCore.contentInfoOverrideExts[i], o->extensions);
+                LibretroCore.contentInfoOverrideNeedFullpath[i] = o->need_fullpath;
+                LibretroCore.contentInfoOverridePersistent[i]   = o->persistent_data;
+                TraceLog(LOG_INFO, "LIBRETRO: content_info_override: ext=\"%s\" need_fullpath=%s persistent=%s",
+                    o->extensions,
+                    o->need_fullpath ? "true" : "false",
+                    o->persistent_data ? "true" : "false");
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_GAME_INFO_EXT: {
@@ -1487,7 +1533,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
 /**
  * Retrieve the audio/video information for the core.
  */
-static bool LibretroGetAudioVideo() {
+static bool LibretroGetAudioVideo(void) {
     if (LibretroCore.retro_get_system_av_info == NULL) {
         return false;
     }
@@ -1509,7 +1555,7 @@ static bool LibretroGetAudioVideo() {
 /**
  * Runs an iteration of the libretro core.
  */
-static void UpdateLibretro() {
+static void UpdateLibretro(void) {
     if (LibretroCore.textureRebuild) {
         InitLibretroVideo();
     }
@@ -1599,14 +1645,14 @@ static void UpdateLibretro() {
 /**
  * Retrieve whether or not the core has been loaded.
  */
-static bool IsLibretroReady() {
+static bool IsLibretroReady(void) {
     return LibretroCore.handle != NULL;
 }
 
 /**
  * Returns whether or not the libretro core should close.
  */
-static bool LibretroShouldClose() {
+static bool LibretroShouldClose(void) {
     return LibretroCore.shutdown;
 }
 
@@ -1697,7 +1743,7 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
     }
 }
 
-static void LibretroInputPoll() {
+static void LibretroInputPoll(void) {
     // Mouse
     LibretroCore.inputLastMousePosition = LibretroCore.inputMousePosition;
     LibretroCore.inputMousePosition = GetMousePosition();
@@ -1929,7 +1975,7 @@ static void LibretroAudioSample(int16_t left, int16_t right) {
     LibretroCore.singleSampleCount++;
 }
 
-static void CloseLibretroAudio() {
+static void CloseLibretroAudio(void) {
     // Unload the audiostream first.
     if (IsAudioStreamValid(LibretroCore.audioStream)) {
         StopAudioStream(LibretroCore.audioStream);
@@ -1944,7 +1990,7 @@ static void CloseLibretroAudio() {
     LibretroCore.audioRingWritePos = 0;
 }
 
-static void InitLibretroAudio() {
+static void InitLibretroAudio(void) {
     CloseLibretroAudio();
 
     // Allocate the ring buffer (stereo float samples).
@@ -1970,7 +2016,7 @@ static void InitLibretroAudio() {
         (int)LibretroCore.sampleRate, sampleSize, (int)LibretroCore.audioRingBufferSize);
 }
 
-static bool LibretroInitAudioVideo() {
+static bool LibretroInitAudioVideo(void) {
     LibretroGetAudioVideo();
     InitLibretroVideo();
     InitLibretroAudio();
@@ -2058,14 +2104,151 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
     return true;
 }
 
+/**
+ * Translate a libretro pipe-separated extension list into the
+ * semicolon-separated, dot-prefixed form expected by raylib's
+ * IsFileExtension().
+ *
+ * Example: "nes|smc|gba" → ".nes;.smc;.gba".
+ *
+ * @param exts        Source list. Must not be NULL.
+ * @param pattern     Output buffer.
+ * @param patternSize Capacity of @p pattern in bytes. Output is always
+ *                    NUL-terminated when @p patternSize > 0; the result is
+ *                    truncated if the buffer is too small.
+ */
+static void LibretroBuildExtPattern(const char *exts, char *pattern, size_t patternSize) {
+    if (patternSize == 0) return;
+    size_t p = 0;
+    if (p + 1 < patternSize) pattern[p++] = '.';
+    for (const char *v = exts; *v && p + 1 < patternSize; v++) {
+        if (*v == '|') {
+            pattern[p++] = ';';
+            if (p + 1 < patternSize) pattern[p++] = '.';
+        } else {
+            pattern[p++] = *v;
+        }
+    }
+    pattern[p] = '\0';
+}
+
+/**
+ * Retrieve whether or not the libretro core requires a full path for a given content file.
+ *
+ * This honors RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE calls.
+ *
+ * @param path       Content path to inspect. May be NULL, in which case the
+ *                   global retro_system_info::need_fullpath value is
+ *                   returned.
+ * @param persistent Optional out-param set to the matching override's
+ *                   persistent_data flag, or \c false when no override
+ *                   matched. May be NULL.
+ * @return The effective need_fullpath for the given path.
+ */
+static bool GetLibretroNeedFullpath(const char *path, bool *persistent) {
+    if (persistent) *persistent = false;
+    if (path == NULL) return LibretroCore.needFullpath;
+
+    for (unsigned i = 0; i < LibretroCore.contentInfoOverrideCount; i++) {
+        char pattern[LIBRETRO_CONTENT_INFO_OVERRIDE_EXTS_LEN + 16];
+        LibretroBuildExtPattern(LibretroCore.contentInfoOverrideExts[i], pattern, sizeof(pattern));
+        if (IsFileExtension(path, pattern)) {
+            if (persistent) *persistent = LibretroCore.contentInfoOverridePersistent[i];
+            return LibretroCore.contentInfoOverrideNeedFullpath[i];
+        }
+    }
+    return LibretroCore.needFullpath;
+}
+
+/**
+ * Load game data into the core, with full control over the path stored on
+ * LibretroCore.contentPath and over persistent_data ownership.
+ *
+ * When @p persistent is true (typically from a CONTENT_INFO_OVERRIDE
+ * declaring persistent_data), ownership of @p fileData transfers to
+ * LibretroCore.persistentGameData and the buffer is released by
+ * UnloadLibretroGame(). When false, the caller retains ownership and may
+ * free @p fileData immediately after this returns.
+ *
+ * @param fileData    ROM data. Must not be NULL.
+ * @param dataSize    Size of @p fileData in bytes.
+ * @param contentPath Optional path stored on LibretroCore.contentPath and
+ *                    surfaced via RETRO_ENVIRONMENT_GET_GAME_INFO_EXT. May
+ *                    be NULL.
+ * @param persistent  See RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE; when
+ *                    \c true, the buffer is kept alive until retro_deinit().
+ * @return \c true on success, \c false on failure.
+ */
+static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize, const char* contentPath, bool persistent) {
+    if (!IsLibretroReady()) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Core is required before loading a game");
+        return false;
+    }
+    if (fileData == NULL) {
+        return LoadLibretroGame(NULL);
+    }
+
+    if (contentPath != NULL && contentPath[0] != '\0') {
+        TextCopy(LibretroCore.contentPath, contentPath);
+    } else {
+        LibretroCore.contentPath[0] = '\0';
+    }
+
+    struct retro_game_info info;
+    info.path = (contentPath != NULL && contentPath[0] != '\0') ? contentPath : NULL;
+    info.data = fileData;
+    info.size = (size_t)dataSize;
+    info.meta = "";
+    LibretroPopulateGameInfoExt(fileData, (size_t)dataSize);
+    if (!LibretroCore.retro_load_game(&info)) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with retro_load_game()");
+        LibretroCore.loaded = false;
+        return false;
+    }
+
+    if (persistent) {
+        if (LibretroCore.persistentGameData != NULL && LibretroCore.persistentGameData != fileData) {
+            UnloadFileData(LibretroCore.persistentGameData);
+        }
+        LibretroCore.persistentGameData = fileData;
+        LibretroCore.persistentGameDataSize = dataSize;
+    }
+
+    LibretroCore.loaded = LibretroInitAudioVideo();
+    if (!LibretroCore.loaded) return false;
+    TraceLog(LOG_INFO, "LIBRETRO: Loaded content from memory");
+    return true;
+}
+
+/**
+ * Get the loaded core's reported valid content extensions.
+ *
+ * @return The pipe-separated extension list straight from
+ *         retro_system_info::valid_extensions (e.g. "fds|nes|unf"), or an
+ *         empty string if no core is loaded.
+ */
+static const char* GetLibretroValidExtensions(void) {
+    return LibretroCore.validExtensions;
+}
+
+/**
+ * Whether the loaded core declared block_extract.
+ *
+ * When \c true, frontends must not extract archives before handing them to
+ * the core — the core wants the raw archive path.
+ *
+ * @return \c true if the core set block_extract, \c false otherwise.
+ */
+static bool IsLibretroBlockExtract(void) {
+    return LibretroCore.blockExtract;
+}
+
 static bool LoadLibretroGame(const char* gameFile) {
-    // Core needs to be loaded.
     if (!IsLibretroReady()) {
         TraceLog(LOG_ERROR, "LIBRETRO: Core is required before loading a game");
         return false;
     }
 
-    // Unload any prior game so the core sees a clean retro_load_game().
     if (IsLibretroGameReady()) {
         UnloadLibretroGame();
     }
@@ -2088,66 +2271,66 @@ static bool LoadLibretroGame(const char* gameFile) {
         return false;
     }
 
-    // Ensure the game exists.
     if (!FileExists(gameFile)) {
         TraceLog(LOG_ERROR, "LIBRETRO: Given content does not exist: %s", gameFile);
         LibretroCore.loaded = false;
         return false;
     }
 
-    // See if we just need the full path.
-    if (LibretroCore.needFullpath) {
+    // Resolve need_fullpath via CONTENT_INFO_OVERRIDE if the core set one.
+    bool persistent = false;
+    if (GetLibretroNeedFullpath(gameFile, &persistent)) {
         struct retro_game_info info;
         info.data = NULL;
         info.size = 0;
         info.path = gameFile;
+        info.meta = "";
         TextCopy(LibretroCore.contentPath, gameFile);
         LibretroPopulateGameInfoExt(NULL, 0);
         if (LibretroCore.retro_load_game(&info)) {
-            TraceLog(LOG_INFO, "LIBRETRO: Loaded content with full path");
+            TraceLog(LOG_INFO, "LIBRETRO: Loaded content with full path: %s", gameFile);
             LibretroCore.loaded = true;
             return LibretroInitAudioVideo();
         }
-        else {
-            TraceLog(LOG_ERROR, "LIBRETRO: Failed to load full path");
-            LibretroCore.loaded = false;
-            LibretroCore.contentPath[0] = '\0';
-            LibretroCore.gameInfoExtValid = false;
-            return false;
-        }
-    }
-
-    // Load the game data from the given file.
-    int size;
-    unsigned char * gameData = LoadFileData(gameFile, &size);
-    if (size == 0 || gameData == NULL) {
-        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with LoadFileData()");
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load full path: %s", gameFile);
         LibretroCore.loaded = false;
+        LibretroCore.contentPath[0] = '\0';
+        LibretroCore.gameInfoExtValid = false;
         return false;
     }
 
-    TextCopy(LibretroCore.contentPath, gameFile);
-    bool output = LoadLibretroGameFromMemory(gameData, size);
-    UnloadFileData(gameData);
-    return output;
+    int size = 0;
+    unsigned char* gameData = LoadFileData(gameFile, &size);
+    if (gameData == NULL || size == 0) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with LoadFileData()");
+        LibretroCore.loaded = false;
+        UnloadFileData(gameData);
+        return false;
+    }
+
+    bool ok = LoadLibretroGameFromMemoryEx(gameData, size, gameFile, persistent);
+    if (!ok || !persistent) {
+        UnloadFileData(gameData);
+    }
+    return ok;
 }
 
-static const char* GetLibretroName() {
+static const char* GetLibretroName(void) {
     return LibretroCore.libraryName;
 }
 
-static const char* GetLibretroContentName() {
+static const char* GetLibretroContentName(void) {
     if (LibretroCore.contentPath[0] != '\0') {
         return GetFileNameWithoutExt(LibretroCore.contentPath);
     }
     return LibretroCore.libraryName;
 }
 
-static const char* GetLibretroVersion() {
+static const char* GetLibretroVersion(void) {
     return LibretroCore.libraryVersion;
 }
 
-static bool IsLibretroGameRequired() {
+static bool IsLibretroGameRequired(void) {
     return !LibretroCore.supportNoGame;
 }
 
@@ -2280,7 +2463,7 @@ static void DrawLibretroPro(Rectangle destRec, Color tint) {
     DrawTexturePro(LibretroCore.texture, source, destRec, origin, 0, tint);
 }
 
-static bool DrawLibretroMessage() {
+static bool DrawLibretroMessage(void) {
     if (GetTime() > LibretroCore.osdEndTime) {
         return false;
     }
@@ -2334,7 +2517,7 @@ static void DrawLibretroTint(Color tint) {
     DrawTexturePro(LibretroCore.texture, source, dest, origin, rotationDeg, tint);
 }
 
-static void DrawLibretro() {
+static void DrawLibretro(void) {
     DrawLibretroTint(WHITE);
 }
 
@@ -2352,7 +2535,7 @@ static void SetLibretroVolume(float volume) {
     }
 }
 
-static float GetLibretroVolume() {
+static float GetLibretroVolume(void) {
     return LibretroCore.volume;
 }
 
@@ -2366,36 +2549,36 @@ static void SetLibretroSpeed(float speed) {
     }
 }
 
-static float GetLibretroSpeed() {
+static float GetLibretroSpeed(void) {
     return LibretroCore.speed;
 }
 
-static unsigned GetLibretroRotation() {
+static unsigned GetLibretroRotation(void) {
     return LibretroCore.rotation;
 }
 
-static unsigned GetLibretroWidth() {
+static unsigned GetLibretroWidth(void) {
     return LibretroCore.width;
 }
-static unsigned GetLibretroHeight() {
+static unsigned GetLibretroHeight(void) {
     return LibretroCore.height;
 }
 
-static Texture2D GetLibretroTexture() {
+static Texture2D GetLibretroTexture(void) {
     return LibretroCore.texture;
 }
 
 /**
  * Retrieve whether or not the game has been loaded.
  */
-static bool IsLibretroGameReady() {
+static bool IsLibretroGameReady(void) {
     return LibretroCore.loaded && LibretroCore.retro_run != NULL;
 }
 
 /**
  * Reset the libretro core.
  */
-static void ResetLibretro() {
+static void ResetLibretro(void) {
     if (IsLibretroReady() && LibretroCore.retro_reset) {
         LibretroCore.retro_reset();
     }
@@ -2404,7 +2587,7 @@ static void ResetLibretro() {
 /**
  * Unload the active libretro game.
  */
-static void UnloadLibretroGame() {
+static void UnloadLibretroGame(void) {
     if (LibretroCore.retro_unload_game != NULL) {
         LibretroCore.retro_unload_game();
         LibretroCore.retro_unload_game = NULL;
@@ -2414,13 +2597,20 @@ static void UnloadLibretroGame() {
     LibretroCore.contentPath[0] = '\0';
     LibretroCore.gameInfoExtValid = false;
     memset(&LibretroCore.gameInfoExt, 0, sizeof(LibretroCore.gameInfoExt));
+
+    // Release the persistent ROM buffer kept alive for persistent_data=true.
+    if (LibretroCore.persistentGameData != NULL) {
+        UnloadFileData(LibretroCore.persistentGameData);
+        LibretroCore.persistentGameData = NULL;
+        LibretroCore.persistentGameDataSize = 0;
+    }
 }
 
 /**
  * Reset all per-core data fields so that a subsequent InitLibretro() starts
  * with a clean slate. Must be called after the dylib is closed.
  */
-static void LibretroResetCoreState() {
+static void LibretroResetCoreState(void) {
     memset(LibretroCore.variableKeys,        0, sizeof(LibretroCore.variableKeys));
     memset(LibretroCore.variableValues,      0, sizeof(LibretroCore.variableValues));
     memset(LibretroCore.variableLabels,      0, sizeof(LibretroCore.variableLabels));
@@ -2442,6 +2632,14 @@ static void LibretroResetCoreState() {
 
     memset(&LibretroCore.vfs_interface, 0, sizeof(LibretroCore.vfs_interface));
 
+    memset(LibretroCore.contentInfoOverrideExts,        0, sizeof(LibretroCore.contentInfoOverrideExts));
+    memset(LibretroCore.contentInfoOverrideNeedFullpath, 0, sizeof(LibretroCore.contentInfoOverrideNeedFullpath));
+    memset(LibretroCore.contentInfoOverridePersistent,   0, sizeof(LibretroCore.contentInfoOverridePersistent));
+    LibretroCore.contentInfoOverrideCount = 0;
+
+    LibretroCore.supportNoGame = false;
+    LibretroCore.needFullpath  = false;
+
     memset(LibretroCore.osdMessage, 0, sizeof(LibretroCore.osdMessage));
     LibretroCore.osdEndTime = 0.0;
 }
@@ -2449,7 +2647,7 @@ static void LibretroResetCoreState() {
 /**
  * Close the libretro core.
  */
-static void CloseLibretro() {
+static void CloseLibretro(void) {
     // Make sure the game is unloaded prior to unloading the core.
     if (IsLibretroGameReady()) {
         UnloadLibretroGame();

@@ -1,6 +1,15 @@
 # raylib-libretro binary
 add_executable(raylib-libretro
     raylib-libretro.c
+    # PhysFS core (no native platform — the raylib platform shim from
+    # raylib-physfs/physfs_platform_raylib.c is included via raylib-physfs.h
+    # in raylib-libretro.c).
+    ../vendor/physfs/src/physfs.c
+    ../vendor/physfs/src/physfs_byteorder.c
+    ../vendor/physfs/src/physfs_unicode.c
+    ../vendor/physfs/src/physfs_archiver_dir.c
+    ../vendor/physfs/src/physfs_archiver_unpacked.c
+    ../vendor/physfs/src/physfs_archiver_zip.c
 )
 target_link_libraries(raylib-libretro PUBLIC
     raylib-libretro-static
@@ -8,6 +17,24 @@ target_link_libraries(raylib-libretro PUBLIC
 target_include_directories(raylib-libretro PUBLIC
     ../vendor/raygui/src
     ../vendor/raylib-app
+    ../vendor/raylib-physfs
+    ../vendor/physfs/src
+)
+target_compile_definitions(raylib-libretro PRIVATE
+    PHYSFS_SUPPORTS_ZIP=1
+    PHYSFS_SUPPORTS_7Z=0
+    PHYSFS_SUPPORTS_GRP=0
+    PHYSFS_SUPPORTS_WAD=0
+    PHYSFS_SUPPORTS_CSM=0
+    PHYSFS_SUPPORTS_HOG=0
+    PHYSFS_SUPPORTS_MVL=0
+    PHYSFS_SUPPORTS_QPAK=0
+    PHYSFS_SUPPORTS_ROFS=0
+    PHYSFS_SUPPORTS_SLB=0
+    PHYSFS_SUPPORTS_ISO9660=0
+    PHYSFS_SUPPORTS_VDF=0
+    PHYSFS_SUPPORTS_LECARCHIVES=0
+    PHYSFS_SUPPORTS_POD=0
 )
 
 # Directory where cores are extracted

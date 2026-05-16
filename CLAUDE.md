@@ -208,6 +208,8 @@ All dependencies are git submodules in `vendor/`:
 | `c-vector` | Dynamic array / vector utility |
 | `raylib-app` | App framework wrapper (Init/UpdateDrawFrame/Cleanup lifecycle) |
 | `hashmap` | Type-safe string-keyed hash map backing `raylib-libretro-config.h` |
+| `raylib-physfs` | Raylib-style API over PhysFS; ships `physfs_platform_raylib.c` so PhysFS uses raylib's file I/O |
+| `physfs` | Virtual filesystem; mounts ROM `.zip` archives and parent directories at `/game` for libretro |
 
 Always run `git submodule update --init` after cloning or switching branches.
 
