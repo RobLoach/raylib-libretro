@@ -80,17 +80,100 @@ endfunction()
 if ("${PLATFORM}" STREQUAL "Web")
     set_target_properties(raylib-libretro PROPERTIES OUTPUT_NAME "index")
     set_target_properties(raylib-libretro PROPERTIES SUFFIX ".html")
-    download_cores(
-        "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/fceumm_libretro.zip"
-        "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/snes9x_libretro.zip"
-        "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/gambatte_libretro.zip"
-        "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/gpsp_libretro.zip"
-        "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/picodrive_libretro.zip"
+
+    find_program(EMMAKE_EXECUTABLE emmake REQUIRED)
+    find_program(EMCC_EXECUTABLE   emcc   REQUIRED)
+
+    # libretro symbols exported by every side-module core so the MAIN_MODULE
+    # host can resolve them via dlsym after dlopen.
+    set(LIBRETRO_EXPORTS
+        _retro_init _retro_deinit _retro_api_version
+        _retro_get_system_info _retro_get_system_av_info
+        _retro_set_environment _retro_set_video_refresh
+        _retro_set_audio_sample _retro_set_audio_sample_batch
+        _retro_set_input_poll _retro_set_input_state
+        _retro_set_controller_port_device
+        _retro_reset _retro_run
+        _retro_serialize_size _retro_serialize _retro_unserialize
+        _retro_cheat_reset _retro_cheat_set
+        _retro_load_game _retro_load_game_special _retro_unload_game
+        _retro_get_region _retro_get_memory_data _retro_get_memory_size
     )
+    string(REPLACE ";" "," LIBRETRO_EXPORTS_CSV "${LIBRETRO_EXPORTS}")
+
+    file(MAKE_DIRECTORY "${CORES_DIR}")
+    set(LIBRETRO_SIDE_MODULES "")
+
+    # Build a libretro core from source as a wasm SIDE_MODULE that the
+    # MAIN_MODULE host can dlopen at runtime. Each core's stock Makefile
+    # produces a static archive named *_libretro_emscripten.bc; that file is
+    # actually an ar archive that we link as a side module with the libretro
+    # API symbols exported.
+    function(build_libretro_side_module CORE_NAME REPO MAKEFILE)
+        set(SUBDIR "${ARGV3}")
+        set(SRC_DIR "${CMAKE_BINARY_DIR}/cores-src/${CORE_NAME}")
+        if (SUBDIR)
+            set(BUILD_DIR "${SRC_DIR}/${SUBDIR}")
+        else()
+            set(BUILD_DIR "${SRC_DIR}")
+        endif()
+        set(BC_FILE "${BUILD_DIR}/${CORE_NAME}_libretro_emscripten.bc")
+        set(A_FILE  "${BUILD_DIR}/${CORE_NAME}_libretro_emscripten.a")
+        set(SO_FILE "${CORES_DIR}/${CORE_NAME}_libretro.so")
+
+        if (NOT EXISTS "${SRC_DIR}/.git")
+            message(STATUS "Cloning libretro core: ${CORE_NAME}")
+            file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/cores-src")
+            execute_process(
+                COMMAND git clone --depth 1 --recurse-submodules --shallow-submodules
+                        "${REPO}" "${SRC_DIR}"
+                RESULT_VARIABLE CLONE_RC
+            )
+            if (NOT CLONE_RC EQUAL 0)
+                message(WARNING "Failed to clone ${CORE_NAME}; the web build will not include this core.")
+                return()
+            endif()
+
+        endif()
+
+        add_custom_command(
+            OUTPUT "${SO_FILE}"
+            COMMAND "${EMMAKE_EXECUTABLE}" make -f "${MAKEFILE}"
+                    platform=emscripten fpic=-fPIC -j
+            COMMAND ${CMAKE_COMMAND} -E copy "${BC_FILE}" "${A_FILE}"
+            COMMAND "${EMCC_EXECUTABLE}" -O2 -sSIDE_MODULE=2
+                    "-sEXPORTED_FUNCTIONS=${LIBRETRO_EXPORTS_CSV}"
+                    -Wl,--whole-archive "${A_FILE}" -Wl,--no-whole-archive
+                    -o "${SO_FILE}"
+            WORKING_DIRECTORY "${BUILD_DIR}"
+            COMMENT "Building libretro side module: ${CORE_NAME}"
+            VERBATIM
+        )
+
+        list(APPEND LIBRETRO_SIDE_MODULES "${SO_FILE}")
+        set(LIBRETRO_SIDE_MODULES "${LIBRETRO_SIDE_MODULES}" PARENT_SCOPE)
+    endfunction()
+
+    build_libretro_side_module(fceumm    "https://github.com/libretro/libretro-fceumm"   "Makefile.libretro")
+    build_libretro_side_module(snes9x    "https://github.com/libretro/snes9x"            "Makefile"           "libretro")
+    build_libretro_side_module(gambatte  "https://github.com/libretro/gambatte-libretro" "Makefile.libretro")
+    build_libretro_side_module(mgba      "https://github.com/libretro/mgba"              "Makefile.libretro")
+    build_libretro_side_module(picodrive "https://github.com/libretro/picodrive"         "Makefile.libretro")
+
+    if (LIBRETRO_SIDE_MODULES)
+        add_custom_target(libretro-side-modules ALL DEPENDS ${LIBRETRO_SIDE_MODULES})
+        add_dependencies(raylib-libretro libretro-side-modules)
+        # Make the final web binary relink whenever a preloaded core changes.
+        set_property(TARGET raylib-libretro APPEND PROPERTY
+            LINK_DEPENDS ${LIBRETRO_SIDE_MODULES})
+    endif()
+
     target_link_options(raylib-libretro PUBLIC
         -sUSE_GLFW=3
         -sMAIN_MODULE=1
+        -sALLOW_MEMORY_GROWTH=1
         --preload-file "${CORES_DIR}@/cores"
+        --shell-file "${CMAKE_CURRENT_SOURCE_DIR}/shell.html"
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
@@ -98,7 +181,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/fceumm_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/snes9x_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/gambatte_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/gpsp_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mgba_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/picodrive_libretro.so.zip"
         )
     elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
@@ -106,7 +189,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/fceumm_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/snes9x_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/gambatte_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/gpsp_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mgba_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/picodrive_libretro.so.zip"
         )
     endif()
@@ -116,7 +199,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/fceumm_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/snes9x_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/gambatte_libretro.dll.zip"
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/gpsp_libretro.dll.zip"
+            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mgba_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/picodrive_libretro.dll.zip"
         )
     endif()
@@ -131,7 +214,7 @@ elseif (APPLE)
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/fceumm_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/snes9x_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/gambatte_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/gpsp_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mgba_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/picodrive_libretro.dylib.zip"
         )
     else()
@@ -139,7 +222,7 @@ elseif (APPLE)
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/fceumm_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/snes9x_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/gambatte_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/gpsp_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mgba_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/picodrive_libretro.dylib.zip"
         )
     endif()
@@ -148,7 +231,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/fceumm_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/snes9x_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/gambatte_libretro_android.so.zip"
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/gpsp_libretro_android.so.zip"
+        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mgba_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/picodrive_libretro_android.so.zip"
     )
 endif()

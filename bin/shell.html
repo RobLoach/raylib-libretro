@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>raylib-libretro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="shortcut icon" href="https://www.raylib.com/favicon.ico">
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background-color: black;
+        overflow: hidden;
+      }
+      canvas.emscripten {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        border: 0;
+        background-color: black;
+        outline: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <script>
+      // Prevent the browser from intercepting drag-and-drop so the dropped
+      // file reaches the canvas listener installed by emscripten/GLFW.
+      ['dragenter', 'dragover', 'drop'].forEach(function (type) {
+        window.addEventListener(type, function (e) { e.preventDefault(); }, false);
+      });
+
+      var Module = {
+        print: function (text) {
+          if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+          console.log(text);
+        },
+        printErr: function (text) {
+          if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+          console.error(text);
+        },
+        canvas: (function () {
+          var canvas = document.getElementById('canvas');
+          canvas.addEventListener('webglcontextlost', function (e) {
+            alert('WebGL context lost. Please reload the page.');
+            e.preventDefault();
+          }, false);
+          return canvas;
+        })()
+      };
+    </script>
+    {{{ SCRIPT }}}
+  </body>
+</html>
