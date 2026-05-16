@@ -570,9 +570,6 @@ static void LibretroPerfLog() {
 }
 
 static bool LibretroSetRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
-    if (port >= 4) {
-        return false;
-    }
     float normalized = (float)strength / 65535.0f;
     if (effect == RETRO_RUMBLE_STRONG) {
         LibretroCore.rumbleStrong[port] = normalized;
