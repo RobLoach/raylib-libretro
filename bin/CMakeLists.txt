@@ -58,6 +58,9 @@ if ("${PLATFORM}" STREQUAL "Web")
     download_cores(
         "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/fceumm_libretro.zip"
         "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/snes9x_libretro.zip"
+        "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/gambatte_libretro.zip"
+        "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/gpsp_libretro.zip"
+        "https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/picodrive_libretro.zip"
     )
     target_link_options(raylib-libretro PUBLIC
         -sUSE_GLFW=3
@@ -69,11 +72,17 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         download_cores(
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/fceumm_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/snes9x_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/gambatte_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/gpsp_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/picodrive_libretro.so.zip"
         )
     elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
         download_cores(
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/fceumm_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/snes9x_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/gambatte_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/gpsp_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/picodrive_libretro.so.zip"
         )
     endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -81,6 +90,9 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
         download_cores(
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/fceumm_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/snes9x_libretro.dll.zip"
+            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/gambatte_libretro.dll.zip"
+            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/gpsp_libretro.dll.zip"
+            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/picodrive_libretro.dll.zip"
         )
     endif()
 elseif (APPLE)
@@ -93,17 +105,26 @@ elseif (APPLE)
         download_cores(
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/fceumm_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/snes9x_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/gambatte_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/gpsp_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/picodrive_libretro.dylib.zip"
         )
     else()
         download_cores(
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/fceumm_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/snes9x_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/gambatte_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/gpsp_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/picodrive_libretro.dylib.zip"
         )
     endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
     download_cores(
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/fceumm_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/snes9x_libretro_android.so.zip"
+        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/gambatte_libretro_android.so.zip"
+        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/gpsp_libretro_android.so.zip"
+        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/picodrive_libretro_android.so.zip"
     )
 endif()
 
