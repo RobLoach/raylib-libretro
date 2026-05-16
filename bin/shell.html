@@ -50,7 +50,53 @@
             e.preventDefault();
           }, false);
           return canvas;
-        })()
+        })(),
+        // Persist /userdata to IndexedDB so raylib-libretro.cfg, battery saves
+        // and BIOS files survive page reloads. main() is deferred via the
+        // run-dependency mechanism until the initial syncfs(true) completes.
+        preRun: [function () {
+          addRunDependency('idbfs-load');
+          try { FS.mkdir('/userdata'); } catch (e) {}
+          FS.mount(IDBFS, {}, '/userdata');
+          FS.syncfs(true, function (err) {
+            if (err) console.error('IDBFS load failed:', err);
+            try { FS.mkdir('/userdata/saves'); }  catch (e) {}
+            try { FS.mkdir('/userdata/system'); } catch (e) {}
+            removeRunDependency('idbfs-load');
+          });
+        }],
+        postRun: [function () {
+          // Commit any pending in-memory cfg to MEMFS, then push MEMFS to
+          // IDBFS. Called from the periodic timer and from page-hide events.
+          // Calling _SaveLibretroAllSettings is safe between frame callbacks
+          // and is a no-op when no game/core is loaded.
+          function flushPersistence() {
+            try {
+              if (Module && Module._SaveLibretroAllSettings) {
+                Module._SaveLibretroAllSettings();
+              }
+            } catch (e) { console.error('flushPersistence: save failed:', e); }
+            FS.syncfs(false, function (err) {
+              if (err) console.error('IDBFS sync failed:', err);
+            });
+          }
+
+          // Periodic safety-net flush. Once a minute is plenty: pagehide /
+          // visibilitychange already cover tab close and app-switch, and
+          // menu commits go through their own SaveLibretroAllSettings path
+          // on Back navigation.
+          setInterval(flushPersistence, 60000);
+
+          // Catch the user closing the tab / reloading / switching apps
+          // mid-edit, before the in-memory cfg has been committed to disk.
+          // pagehide is the most reliable on mobile and Safari; the
+          // visibilitychange handler covers desktop browsers where pagehide
+          // sometimes lags.
+          window.addEventListener('pagehide', flushPersistence);
+          document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'hidden') flushPersistence();
+          });
+        }]
       };
     </script>
     {{{ SCRIPT }}}

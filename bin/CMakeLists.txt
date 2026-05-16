@@ -109,8 +109,17 @@ if ("${PLATFORM}" STREQUAL "Web")
     # produces a static archive named *_libretro_emscripten.bc; that file is
     # actually an ar archive that we link as a side module with the libretro
     # API symbols exported.
-    function(build_libretro_side_module CORE_NAME REPO MAKEFILE)
-        set(SUBDIR "${ARGV3}")
+    #
+    # Args:
+    #   CORE_NAME  short core name; the output is ${CORE_NAME}_libretro.so
+    #   REPO       git URL
+    #   MAKEFILE   Makefile filename (e.g. Makefile or Makefile.libretro)
+    #   SUBDIR     subdirectory of source to run make in (pass "" for root)
+    #   ARGN...    extra arguments appended to the make command line, used to
+    #              override per-core variables (e.g. STATIC_LINKING=0 forces
+    #              picodrive to include libretro-common in the archive)
+    function(build_libretro_side_module CORE_NAME REPO MAKEFILE SUBDIR)
+        set(EXTRA_MAKE_ARGS "${ARGN}")
         set(SRC_DIR "${CMAKE_BINARY_DIR}/cores-src/${CORE_NAME}")
         if (SUBDIR)
             set(BUILD_DIR "${SRC_DIR}/${SUBDIR}")
@@ -134,12 +143,40 @@ if ("${PLATFORM}" STREQUAL "Web")
                 return()
             endif()
 
+            # Many cores' Makefile.common gates the libretro-common SOURCES_C
+            # block behind `ifneq ($(STATIC_LINKING), 1)`, on the assumption
+            # that a static-linked core's frontend provides those symbols. As
+            # a self-contained side module the core must include them itself,
+            # so neutralise the gate to always-true.
+            if (EXISTS "${SRC_DIR}/Makefile.common")
+                file(READ "${SRC_DIR}/Makefile.common" MK_COMMON)
+                string(REPLACE "ifneq (\$(STATIC_LINKING), 1)" "ifeq (1, 1)"
+                       MK_COMMON_PATCHED "${MK_COMMON}")
+                if (NOT MK_COMMON STREQUAL MK_COMMON_PATCHED)
+                    message(STATUS "Patching ${CORE_NAME}/Makefile.common to always include libretro-common")
+                    file(WRITE "${SRC_DIR}/Makefile.common" "${MK_COMMON_PATCHED}")
+                endif()
+            endif()
+
+            # mgba's libretro-build/Makefile.common defines -DHAVE_CRC32 when
+            # STATIC_LINKING=1, which makes the core call zlib's crc32 instead
+            # of its own internal implementation. We don't provide zlib in the
+            # main module, so drop the define and use mgba's internal crc32.
+            if (EXISTS "${SRC_DIR}/libretro-build/Makefile.common")
+                file(READ "${SRC_DIR}/libretro-build/Makefile.common" MGBA_MK)
+                string(REPLACE "RETRODEFS += -DHAVE_CRC32" "# patched: use internal crc32"
+                       MGBA_MK_PATCHED "${MGBA_MK}")
+                if (NOT MGBA_MK STREQUAL MGBA_MK_PATCHED)
+                    message(STATUS "Patching ${CORE_NAME}/libretro-build/Makefile.common to drop -DHAVE_CRC32")
+                    file(WRITE "${SRC_DIR}/libretro-build/Makefile.common" "${MGBA_MK_PATCHED}")
+                endif()
+            endif()
         endif()
 
         add_custom_command(
             OUTPUT "${SO_FILE}"
             COMMAND "${EMMAKE_EXECUTABLE}" make -f "${MAKEFILE}"
-                    platform=emscripten fpic=-fPIC -j
+                    platform=emscripten fpic=-fPIC ${EXTRA_MAKE_ARGS} -j
             COMMAND ${CMAKE_COMMAND} -E copy "${BC_FILE}" "${A_FILE}"
             COMMAND "${EMCC_EXECUTABLE}" -O2 -sSIDE_MODULE=2
                     "-sEXPORTED_FUNCTIONS=${LIBRETRO_EXPORTS_CSV}"
@@ -154,11 +191,14 @@ if ("${PLATFORM}" STREQUAL "Web")
         set(LIBRETRO_SIDE_MODULES "${LIBRETRO_SIDE_MODULES}" PARENT_SCOPE)
     endfunction()
 
-    build_libretro_side_module(fceumm    "https://github.com/libretro/libretro-fceumm"   "Makefile.libretro")
-    build_libretro_side_module(snes9x    "https://github.com/libretro/snes9x"            "Makefile"           "libretro")
-    build_libretro_side_module(gambatte  "https://github.com/libretro/gambatte-libretro" "Makefile.libretro")
-    build_libretro_side_module(mgba      "https://github.com/libretro/mgba"              "Makefile.libretro")
-    build_libretro_side_module(picodrive "https://github.com/libretro/picodrive"         "Makefile.libretro")
+    build_libretro_side_module(fceumm    "https://github.com/libretro/libretro-fceumm"   "Makefile.libretro" "")
+    build_libretro_side_module(snes9x    "https://github.com/libretro/snes9x"            "Makefile"          "libretro")
+    build_libretro_side_module(gambatte  "https://github.com/libretro/gambatte-libretro" "Makefile.libretro" "")
+    build_libretro_side_module(mgba      "https://github.com/libretro/mgba"              "Makefile.libretro" "")
+    # picodrive's Makefile skips libretro-common (including filestream_vfs_init)
+    # when STATIC_LINKING=1, on the assumption that the frontend provides them.
+    # As a self-contained side module the core must include them itself.
+    build_libretro_side_module(picodrive "https://github.com/libretro/picodrive"         "Makefile.libretro" "" STATIC_LINKING=0)
 
     if (LIBRETRO_SIDE_MODULES)
         add_custom_target(libretro-side-modules ALL DEPENDS ${LIBRETRO_SIDE_MODULES})
@@ -172,6 +212,7 @@ if ("${PLATFORM}" STREQUAL "Web")
         -sUSE_GLFW=3
         -sMAIN_MODULE=1
         -sALLOW_MEMORY_GROWTH=1
+        -lidbfs.js # Emscripten's File System API
         --preload-file "${CORES_DIR}@/cores"
         --shell-file "${CMAKE_CURRENT_SOURCE_DIR}/shell.html"
     )

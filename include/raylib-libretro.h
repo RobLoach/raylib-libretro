@@ -148,7 +148,13 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 
 // Shared config file used by SaveLibretroCoreOptions / LoadLibretroCoreOptions.
 // Keys are prefixed with the core name: "CoreName.key=value"
-#define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
+// On emscripten the file lives in the IDBFS-backed /userdata mount so it
+// persists across page reloads (see bin/shell.html).
+#ifdef __EMSCRIPTEN__
+    #define RAYLIB_LIBRETRO_CFG_FILE "/userdata/raylib-libretro.cfg"
+#else
+    #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
+#endif
 /**
  * The amount of controller ports with rumble support.
  */
@@ -237,6 +243,8 @@ typedef struct rLibretro {
     size_t audioRingBufferSize;
     size_t audioRingWritePos;
     size_t audioRingAvailable;
+    unsigned minimumAudioLatencyMs; // RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY
+    struct retro_audio_buffer_status_callback audio_buffer_status_callback; // RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK
 
     // Callbacks
     retro_keyboard_event_t keyboard_event;
@@ -349,6 +357,10 @@ static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
     TextCopy(LibretroCore.variableTooltips[n],    tooltip       ? tooltip       : "");
     LibretroCore.variableVisible[n] = true;
     LibretroCore.variableCount++;
+    // A new option appeared: cores that register variables after the menu has
+    // been built (e.g. mgba registering GB model options during its deferred
+    // setup on first retro_run) need the Core Options section to refresh.
+    LibretroCore.variablesVisibilityDirty = true;
 }
 
 static const char *LibretroGetCoreVariable(const char *key) {
@@ -1133,6 +1145,12 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 vfs_interface->iface->stat_64 = &raylib_libretro_vfs_stat_64;
             }
 
+            // VFS 5+
+            if (vfs_interface->required_interface_version >= 5) {
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_GET_VFS_INTERFACE version 5+ not supported");
+                return false;
+            }
+
             return true;
         }
 
@@ -1313,13 +1331,37 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK not implemented");
-            return false;
+            // NULL data is the core asking to disable buffer-status reporting.
+            if (data == NULL) {
+                LibretroCore.audio_buffer_status_callback.callback = NULL;
+                TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK disabled");
+                return true;
+            }
+            const struct retro_audio_buffer_status_callback *cb =
+                (const struct retro_audio_buffer_status_callback *)data;
+            LibretroCore.audio_buffer_status_callback = *cb;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK registered");
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY not implemented");
-            return false;
+            if (data == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY no data provided");
+                return false;
+            }
+            unsigned latencyMs = *(const unsigned *)data;
+            if (latencyMs == LibretroCore.minimumAudioLatencyMs) {
+                return true;
+            }
+            LibretroCore.minimumAudioLatencyMs = latencyMs;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY: %u ms", latencyMs);
+            // Reinit audio so the new minimum is reflected in the ring buffer.
+            // Safe before audio init (no-op via the NULL check) and at runtime
+            // (matches the SET_SYSTEM_AV_INFO sample-rate-change path above).
+            if (LibretroCore.audioRingBuffer != NULL && LibretroCore.sampleRate > 0.0) {
+                InitLibretroAudio();
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE: {
@@ -1514,8 +1556,11 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE no data provided");
                 return false;
             }
+            // Report the frontend's preferred output rate so the core can
+            // pick a matching resampler target. This is *not* the core's own
+            // sample rate (that flows from retro_get_system_av_info).
             unsigned *sampleRate = (unsigned *)data;
-            *sampleRate = (unsigned)LibretroCore.sampleRate;
+            *sampleRate = 48000;
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE: %u", *sampleRate);
             return true;
         }
@@ -1632,7 +1677,30 @@ static void UpdateLibretro(void) {
     }
 
     if (IsLibretroGameReady()) {
+        // Report audio buffer occupancy to the core just before retro_run, so
+        // it can decide whether to frameskip to avoid under-runs.
+        if (LibretroCore.audio_buffer_status_callback.callback && LibretroCore.audioRingBufferSize > 0) {
+            unsigned occupancy = (unsigned)((LibretroCore.audioRingAvailable * 100) / LibretroCore.audioRingBufferSize);
+            if (occupancy > 100) occupancy = 100;
+            bool underrun_likely = occupancy < 25;
+            LibretroCore.audio_buffer_status_callback.callback(true, occupancy, underrun_likely);
+        }
+
         LibretroCore.retro_run();
+
+        // Some cores (notably mgba GB/GBC) defer the actual core reset until
+        // the first retro_run, so retro_get_system_av_info called pre-run
+        // returns sample_rate=0. Once we have a frame, re-query AV info and
+        // reinit audio if a valid sample rate has appeared.
+        if (LibretroCore.sampleRate <= 0.0 && LibretroCore.retro_get_system_av_info) {
+            struct retro_system_av_info av = {0};
+            LibretroCore.retro_get_system_av_info(&av);
+            if (av.timing.sample_rate > 0.0) {
+                LibretroCore.sampleRate = av.timing.sample_rate;
+                TraceLog(LOG_INFO, "LIBRETRO: Sample rate now %.2f Hz (post-retro_run); reinitializing audio", LibretroCore.sampleRate);
+                InitLibretroAudio();
+            }
+        }
 
         if (LibretroCore.options_update_display_callback) {
             if (LibretroCore.options_update_display_callback()) {
@@ -1993,8 +2061,24 @@ static void CloseLibretroAudio(void) {
 static void InitLibretroAudio(void) {
     CloseLibretroAudio();
 
-    // Allocate the ring buffer (stereo float samples).
-    LibretroCore.audioRingBufferSize = LIBRETRO_AUDIO_RING_BUFFER_SIZE;
+    // Defer audio setup until we have a usable sample rate. Some cores
+    // (mgba GB/GBC) defer their internal reset until the first retro_run,
+    // so retro_get_system_av_info returns 0 here. UpdateLibretro will
+    // re-call InitLibretroAudio after the first run once the rate appears.
+    if (LibretroCore.sampleRate <= 0.0) {
+        TraceLog(LOG_INFO, "LIBRETRO: Deferring audio init (sample rate not yet known)");
+        return;
+    }
+
+    // Allocate the ring buffer (stereo float samples). At minimum
+    // LIBRETRO_AUDIO_RING_BUFFER_SIZE frames; grown to satisfy the core's
+    // RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY request if any.
+    size_t frames = LIBRETRO_AUDIO_RING_BUFFER_SIZE;
+    if (LibretroCore.minimumAudioLatencyMs > 0) {
+        size_t requested = (size_t)((LibretroCore.minimumAudioLatencyMs / 1000.0) * LibretroCore.sampleRate);
+        if (requested > frames) frames = requested;
+    }
+    LibretroCore.audioRingBufferSize = frames;
     LibretroCore.audioRingBuffer = (float *)MemAlloc(LibretroCore.audioRingBufferSize * 2 * sizeof(float));
     LibretroCore.audioRingWritePos = 0;
     LibretroCore.audioRingAvailable = 0;
@@ -2347,6 +2431,23 @@ static bool InitLibretroEx(const char* core, bool peek) {
         return false;
     }
 
+    // Freshen identity / capability fields before touching the new core, so
+    // a partially-failed load (e.g. dylib_load succeeds but retro_get_system_info
+    // never runs) can't leave the previous core's identity visible. These
+    // fields are intentionally not reset in LibretroResetCoreState so that
+    // the peek path can populate them and CloseLibretro doesn't wipe them
+    // before ScanLibretroCoreDirectory reads them.
+    LibretroCore.corePath[0]        = '\0';
+    LibretroCore.libraryName[0]     = '\0';
+    LibretroCore.libraryVersion[0]  = '\0';
+    LibretroCore.validExtensions[0] = '\0';
+    LibretroCore.needFullpath       = false;
+    LibretroCore.blockExtract       = false;
+    LibretroCore.supportNoGame      = false;
+    LibretroCore.apiVersion         = 0;
+    LibretroCore.performanceLevel   = 0;
+    LibretroCore.pixelFormat        = RETRO_PIXEL_FORMAT_0RGB1555;
+
     // Open the dynamic library.
     LibretroCore.handle = dylib_load(core);
     if (!LibretroCore.handle) {
@@ -2629,6 +2730,8 @@ static void LibretroResetCoreState(void) {
     LibretroCore.fps         = 0;
     LibretroCore.sampleRate  = 0.0;
     LibretroCore.aspectRatio = 0.0f;
+    LibretroCore.minimumAudioLatencyMs = 0;
+    memset(&LibretroCore.audio_buffer_status_callback, 0, sizeof(LibretroCore.audio_buffer_status_callback));
 
     memset(&LibretroCore.vfs_interface, 0, sizeof(LibretroCore.vfs_interface));
 
@@ -2637,8 +2740,34 @@ static void LibretroResetCoreState(void) {
     memset(LibretroCore.contentInfoOverridePersistent,   0, sizeof(LibretroCore.contentInfoOverridePersistent));
     LibretroCore.contentInfoOverrideCount = 0;
 
-    LibretroCore.supportNoGame = false;
-    LibretroCore.needFullpath  = false;
+    // Runtime flags that should not survive a core close. shutdown is the
+    // RETRO_ENVIRONMENT_SHUTDOWN request from the previous core; loaded is
+    // set by retro_load_game and should be implied false once we've closed.
+    //
+    // NOTE: identity fields (corePath, libraryName, libraryVersion,
+    // validExtensions, needFullpath, blockExtract, supportNoGame, apiVersion,
+    // performanceLevel, pixelFormat) are intentionally NOT reset here. The
+    // peek path in InitLibretroEx populates these via retro_get_system_info
+    // and then calls CloseLibretro() before returning; the caller
+    // (ScanLibretroCoreDirectory) reads them off the global afterwards. They
+    // get re-freshened at the start of the next InitLibretroEx.
+    LibretroCore.loaded   = false;
+    LibretroCore.shutdown = false;
+
+    // perf_counter_last points into the now-closed dylib's .data; null it so a
+    // subsequent perf callback can't dereference a freed page.
+    LibretroCore.perf_counter_last = NULL;
+
+    // Playback speed and rumble state belong to the previous core; reset so a
+    // new core starts at 1.0x with motors off rather than inheriting state.
+    LibretroCore.speed = 1.0f;
+    memset(LibretroCore.rumbleStrong, 0, sizeof(LibretroCore.rumbleStrong));
+    memset(LibretroCore.rumbleWeak,   0, sizeof(LibretroCore.rumbleWeak));
+
+    // Per-session counters / accumulators.
+    LibretroCore.gameTimeNSEC      = 0;
+    LibretroCore.singleSampleCount = 0;
+    LibretroCore.audioDropWarnCount = 0;
 
     memset(LibretroCore.osdMessage, 0, sizeof(LibretroCore.osdMessage));
     LibretroCore.osdEndTime = 0.0;

@@ -125,6 +125,10 @@ bool SaveLibretroAllSettings(void);    // Save menu settings + core options in a
 #ifndef RAYLIB_LIBRETRO_MENU_IMPLEMENTATION_ONCE
 #define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION_ONCE
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #define RAYLIB_NUKLEAR_IMPLEMENTATION
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
 
@@ -282,6 +286,16 @@ static void MenuResumeClicked(nk_console* widget, void* user_data) {
     if (IsLibretroGameReady()) {
         menu.active = false;
     }
+}
+
+// Fired when the user navigates back from Settings or Core Options. This is
+// the natural commit point: anything the user just touched in those submenus
+// is now part of the loaded state, so write the cfg out and flush IDBFS so
+// the change survives a page reload / tab close on the web.
+static void MenuCommitSettings(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    SaveLibretroAllSettings();
 }
 
 // Close Game has been removed for now, since it's not really needed.
@@ -627,6 +641,13 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.cfg = rlconfig_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
 #endif
     TextCopy(menu.coreDirectory, "cores");
+#ifdef __EMSCRIPTEN__
+    // Default save/system directories point at the IDBFS mount so they
+    // persist across page reloads. The user can still override via the
+    // Settings menu; saved values take precedence on subsequent runs.
+    if (menu.saveDirectory[0]   == '\0') TextCopy(menu.saveDirectory,   "/userdata/saves");
+    if (menu.systemDirectory[0] == '\0') TextCopy(menu.systemDirectory, "/userdata/system");
+#endif
     LoadLibretroMenuSettings();
     LibretroApplyDirectories();
     ScanLibretroCoreDirectory();
@@ -648,8 +669,24 @@ LibretroMenu* InitLibretroMenu(void) {
     //menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
     //nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_X);
 
+    // Save States
+    {
+        nk_console* saveStateRow = nk_console_row_begin(menu.console);
+        // Save State
+        menu.saveStateButton = nk_console_button(saveStateRow, "Save State");
+        nk_console_add_event(menu.saveStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuSaveStateClicked);
+        nk_console_button_set_symbol(menu.saveStateButton, NK_SYMBOL_RECT_SOLID);
+
+        // Load State
+        menu.loadStateButton = nk_console_button(saveStateRow, "Load State");
+        nk_console_add_event(menu.loadStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuLoadStateClicked);
+        nk_console_button_set_symbol(menu.loadStateButton, NK_SYMBOL_RECT_OUTLINE);
+        nk_console_row_end(saveStateRow);
+    }
+
     // Settings
     nk_console* settings = nk_console_button(menu.console, "Settings");
+    nk_console_add_event(settings, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
     {
         // Back
         nk_console_button_set_symbol(
@@ -693,60 +730,39 @@ LibretroMenu* InitLibretroMenu(void) {
 
         // Fast Forward Speed
         nk_console* ffSpeed = nk_console_slider_int(settings, "Fast Forward Speed", 2, &menu.fastForwardSpeed, 10, 1);
-        nk_console_add_event_handler(ffSpeed, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
         // Slow Motion Speed
         nk_console* smSpeed = nk_console_slider_float(settings, "Slow Motion Speed", 0.1f, &menu.slowMotionSpeed, 0.9f, 0.1f);
-        nk_console_add_event_handler(smSpeed, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
         // Rewind
         nk_console* rewind = nk_console_checkbox(settings, "Rewind", &menu.rewindEnabled);
-        nk_console_add_event_handler(rewind, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
         // Save Slot
         nk_console* slotCombo = nk_console_combobox(settings, "Save Slot",
             "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
             '|', &menu.saveSlotIndex);
-        nk_console_add_event_handler(slotCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
         // Keys
         nk_console* keysTree = nk_console_tree(settings, "Keys", nk_false);
         {
             nk_console* w;
             w = nk_console_key(keysTree, "Screenshot", &menu.keyScreenshot);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Rewind", &menu.keyRewind);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Menu", &menu.keyMenu);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Save State", &menu.keySaveState);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Load State", &menu.keyLoadState);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Prev Slot", &menu.keyPrevSlot);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Next Slot", &menu.keyNextSlot);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Fullscreen", &menu.keyFullscreen);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Previous Shader", &menu.keyPrevShader);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Next Shader", &menu.keyNextShader);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Reset", &menu.keyReset);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Quit", &menu.keyQuit);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Volume Up", &menu.keyVolumeUp);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Volume Down", &menu.keyVolumeDown);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Mute", &menu.keyMute);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Fast Forward", &menu.keyFastForward);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             w = nk_console_key(keysTree, "Slow Motion", &menu.keySlowMotion);
-            nk_console_add_event_handler(w, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
         }
 
         // Directories
@@ -774,24 +790,11 @@ LibretroMenu* InitLibretroMenu(void) {
 
     // Core Options
     menu.optionsMenu = nk_console_button(menu.console, "Core Options");
+    nk_console_add_event(menu.optionsMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
     {
         nk_console_button_set_symbol(
             nk_console_button_onclick(menu.optionsMenu, "Back", &nk_console_button_back),
             NK_SYMBOL_TRIANGLE_LEFT);
-    }
-
-    {
-        nk_console* saveStateRow = nk_console_row_begin(menu.console);
-        // Save State
-        menu.saveStateButton = nk_console_button(saveStateRow, "Save State");
-        nk_console_add_event(menu.saveStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuSaveStateClicked);
-        nk_console_button_set_symbol(menu.saveStateButton, NK_SYMBOL_RECT_SOLID);
-
-        // Load State
-        menu.loadStateButton = nk_console_button(saveStateRow, "Load State");
-        nk_console_add_event(menu.loadStateButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuLoadStateClicked);
-        nk_console_button_set_symbol(menu.loadStateButton, NK_SYMBOL_RECT_OUTLINE);
-        nk_console_row_end(saveStateRow);
     }
 
     // Quit
@@ -872,11 +875,16 @@ static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
 static bool LibretroMenuIsEnabledDisabledOption(const char* valuesList) {
     if (!valuesList || !*valuesList) return false;
     return TextIsEqual(valuesList, "enabled|disabled") ||
-           TextIsEqual(valuesList, "disabled|enabled");
+           TextIsEqual(valuesList, "disabled|enabled") ||
+           TextIsEqual(valuesList, "off|on");
 }
 
 void BuildLibretroMenuOptions(LibretroMenu* m) {
     if (!m || !m->optionsMenu) return;
+
+    // The menu now reflects the current option set; clear the dirty flag so
+    // the lazy-rebuild trigger in UpdateLibretroMenu doesn't fire redundantly.
+    LibretroCore.variablesVisibilityDirty = false;
 
     // Clear any previously built option children and restore Back button
     nk_console_free_children(m->optionsMenu);
@@ -1014,6 +1022,9 @@ bool LoadLibretroCoreOptions(void) {
 #endif
 }
 
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE // expose to JS as Module._SaveLibretroAllSettings
+#endif
 bool SaveLibretroAllSettings(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return false;
@@ -1027,6 +1038,10 @@ bool SaveLibretroAllSettings(void) {
     }
     bool ok = rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
     TraceLog(LOG_INFO, "MENU: Saved all settings to %s", RAYLIB_LIBRETRO_CFG_FILE);
+    // On emscripten the JS-side flushPersistence() in shell.html drives the
+    // MEMFS->IDBFS push (periodic + on pagehide/visibilitychange). We don't
+    // start one here to avoid two syncfs operations running in parallel for
+    // a single commit.
     return ok;
 #else
     return false;
@@ -1172,13 +1187,33 @@ void UpdateLibretroMenu(void) {
         menu.active = true;
     }
 
+    // Track menu open state so we can force a rebuild on every open. The
+    // dirty flag alone has been seen to miss late-arriving options on Firefox
+    // where wasm dynamic linking and event-loop timing differ from Chrome.
+    static bool menuWasActive = false;
     if (!menu.active) {
+        menuWasActive = false;
         return;
     }
+    bool menuJustOpened = !menuWasActive;
+    menuWasActive = true;
 
-    if (LibretroCore.variablesVisibilityDirty) {
+    // Rebuild when any of these signals say the options pane is stale:
+    //   * dirty flag set by a SET_CORE_OPTIONS_DISPLAY / late SET_VARIABLES
+    //   * variable count changed since we last built (count diff catches
+    //     additions/removals that didn't set the dirty flag for any reason)
+    //   * library name changed (core swap; same count but different options)
+    //   * the menu just transitioned from closed to open (fresh-state guard)
+    static unsigned lastBuiltVariableCount = 0;
+    static char lastBuiltCoreName[sizeof(LibretroCore.libraryName)] = {0};
+    bool countChanged = (lastBuiltVariableCount != LibretroCore.variableCount);
+    bool coreChanged  = !TextIsEqual(lastBuiltCoreName, LibretroCore.libraryName);
+
+    if (LibretroCore.variablesVisibilityDirty || countChanged || coreChanged || menuJustOpened) {
         BuildLibretroMenuOptions(&menu);
         LibretroCore.variablesVisibilityDirty = false;
+        lastBuiltVariableCount = LibretroCore.variableCount;
+        TextCopy(lastBuiltCoreName, LibretroCore.libraryName);
     }
 
     UpdateLibretroMenuVisibility();
