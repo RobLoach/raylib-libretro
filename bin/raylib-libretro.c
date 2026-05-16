@@ -104,7 +104,7 @@ static bool LoadGameFile(const char* gameFile) {
     if (IsLibretroGameReady()) {
         UnloadLibretroGame();
     }
-#ifdef RAYLIB_ZIP_H
+#ifdef RAYLIB_ZIP_H_
     if (gameFile && IsFileExtension(gameFile, ".zip")) {
         return MenuLoadGameFromZip(gameFile);
     }

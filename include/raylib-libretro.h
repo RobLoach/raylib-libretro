@@ -2183,7 +2183,7 @@ static bool InitLibretroEx(const char* core, bool peek) {
 
     // Retrieve the libretro core system information.
     LoadLibretroMethod(retro_get_system_info);
-    struct retro_system_info systemInfo;
+    struct retro_system_info systemInfo = {0};
     LibretroCore.retro_get_system_info(&systemInfo);
     TextCopy(LibretroCore.libraryName, systemInfo.library_name);
     TextCopy(LibretroCore.libraryVersion, systemInfo.library_version);

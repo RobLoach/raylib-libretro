@@ -383,12 +383,14 @@ static void ScanLibretroCoreDirectory(void) {
         if (!InitLibretroEx(files.paths[i], true)) continue;
         if (TextLength(LibretroCore.validExtensions) == 0) continue;
 
-        char keyPath[64], keyExts[64];
-        TextCopy(keyPath, TextFormat("core_%d_path", coreIndex));
-        TextCopy(keyExts, TextFormat("core_%d_extensions", coreIndex));
-        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath, files.paths[i]);
-        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyExts, LibretroCore.validExtensions);
-        TraceLog(LOG_INFO, "LIBRETRO: Cached %s (%s)", LibretroCore.libraryName, LibretroCore.validExtensions);
+        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
+            TextFormat("core_%d_path", coreIndex), files.paths[i]);
+        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
+            TextFormat("core_%d_extensions", coreIndex), LibretroCore.validExtensions);
+        rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
+            TextFormat("core_%d_need_fullpath", coreIndex), LibretroCore.needFullpath ? 1 : 0);
+        TraceLog(LOG_INFO, "LIBRETRO: Cached %s (%s) needFullpath=%d",
+            LibretroCore.libraryName, LibretroCore.validExtensions, (int)LibretroCore.needFullpath);
         coreIndex++;
     }
     UnloadDirectoryFiles(files);
@@ -399,36 +401,93 @@ static void ScanLibretroCoreDirectory(void) {
 #endif
 }
 
+// Writes the lowercased file extension (without the leading dot) into `out`.
+// Buffer must be at least 32 bytes. Empty string if no extension.
+static void LibretroFileExtensionLower(const char* path, char* out) {
+    out[0] = '\0';
+    const char* ext = GetFileExtension(path);
+    if (!ext || !ext[0]) return;
+    if (ext[0] == '.') ext++;
+    TextCopy(out, TextToLower(ext));
+}
+
+// True if `extLower` (no dot, lowercase) appears in libretro's pipe-separated extension list.
+static bool LibretroExtensionInList(const char* extLower, const char* list) {
+    if (!extLower || !extLower[0] || !list || !list[0]) return false;
+    int n = 0;
+    char** parts = TextSplit(list, '|', &n);
+    for (int i = 0; i < n; i++) {
+        if (TextIsEqual(parts[i], extLower)) return true;
+    }
+    return false;
+}
+
+#ifdef RAYLIB_ZIP_H_
+// Returns the index of the first entry whose extension matches `extensions`, or -1.
+static int LibretroFindZipEntryMatchingExtensions(FilePathList files, const char* extensions) {
+    for (unsigned int i = 0; i < files.count; i++) {
+        char ext[32];
+        LibretroFileExtensionLower(files.paths[i], ext);
+        if (LibretroExtensionInList(ext, extensions)) return (int)i;
+    }
+    return -1;
+}
+#endif
+
 static const char* FindCoreForGame(const char* gamePath) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg || !gamePath || !gamePath[0]) return NULL;
 
-    const char* gameExt = GetFileExtension(gamePath);
-    if (!gameExt || !gameExt[0]) return NULL;
-    if (gameExt[0] == '.') gameExt++;
+    char gameExt[32];
+    LibretroFileExtensionLower(gamePath, gameExt);
+    if (!gameExt[0]) return NULL;
 
-    char gameExtLower[32] = {0};
-    TextCopy(gameExtLower, TextToLower(gameExt));
-
-    int count = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
-    for (int i = 0; i < count; i++) {
-        char keyExts[64], keyPath[64];
-        TextCopy(keyExts, TextFormat("core_%d_extensions", i));
-        TextCopy(keyPath, TextFormat("core_%d_path", i));
-
-        const char* extensions = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyExts);
-        if (!extensions) continue;
-
-        int extCount = 0;
-        char** extList = TextSplit(extensions, '|', &extCount);
-        for (int j = 0; j < extCount; j++) {
-            if (TextIsEqual(extList[j], gameExtLower)) {
-                return rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath);
-            }
+#ifdef RAYLIB_ZIP_H_
+    // For zip archives, match cores against the contained file's extension instead of ".zip".
+    const bool isZip = TextIsEqual(gameExt, "zip");
+    Zip archive = {0};
+    FilePathList zipFiles = {0};
+    if (isZip) {
+        archive = LoadZip(gamePath);
+        if (IsZipValid(archive)) {
+            zipFiles = LoadDirectoryFilesFromZip(archive, NULL);
         }
     }
 #endif
+
+    const char* result = NULL;
+    int count = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
+    for (int i = 0; i < count && !result; i++) {
+        const char* extensions = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
+            TextFormat("core_%d_extensions", i));
+        if (!extensions) continue;
+
+        bool match;
+#ifdef RAYLIB_ZIP_H_
+        if (isZip) {
+            match = LibretroFindZipEntryMatchingExtensions(zipFiles, extensions) >= 0;
+        } else
+#endif
+        {
+            match = LibretroExtensionInList(gameExt, extensions);
+        }
+
+        if (match) {
+            result = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
+                TextFormat("core_%d_path", i));
+        }
+    }
+
+#ifdef RAYLIB_ZIP_H_
+    if (isZip) {
+        UnloadDirectoryFiles(zipFiles);
+        UnloadZip(archive);
+    }
+#endif
+    return result;
+#else
     return NULL;
+#endif
 }
 
 static bool MenuInitCore(const char* corePath) {
@@ -439,12 +498,30 @@ static bool MenuInitCore(const char* corePath) {
     return true;
 }
 
-#ifdef RAYLIB_ZIP_H
-static bool MenuLoadGameFromZip(const char* gamePath) {
-    if (LibretroCore.needFullpath) {
-        TraceLog(LOG_ERROR, "LIBRETRO: Core requires full path, cannot load from zip");
-        return false;
+#ifdef RAYLIB_ZIP_H_
+// Path of the most recently extracted zip entry. Tracked so it can be deleted
+// when the next game loads or the menu shuts down.
+static char menuExtractedZipPath[1024] = {0};
+
+static const char* LibretroSystemTempDir(void) {
+#if defined(_WIN32)
+    const char* t = getenv("TEMP");
+    if (!t || !t[0]) t = getenv("TMP");
+    return (t && t[0]) ? t : ".";
+#else
+    const char* t = getenv("TMPDIR");
+    return (t && t[0]) ? t : "/tmp";
+#endif
+}
+
+static void MenuDeleteExtractedZipFile(void) {
+    if (menuExtractedZipPath[0] && FileExists(menuExtractedZipPath)) {
+        remove(menuExtractedZipPath);
     }
+    menuExtractedZipPath[0] = '\0';
+}
+
+static bool MenuLoadGameFromZip(const char* gamePath) {
     Zip archive = LoadZip(gamePath);
     if (!IsZipValid(archive)) {
         UnloadZip(archive);
@@ -456,16 +533,37 @@ static bool MenuLoadGameFromZip(const char* gamePath) {
         UnloadZip(archive);
         return false;
     }
+    int index = LibretroFindZipEntryMatchingExtensions(files, LibretroCore.validExtensions);
+    if (index < 0) index = 0;
     int dataSize = 0;
-    unsigned char* gameData = LoadFileDataFromZip(archive, files.paths[0], &dataSize);
+    unsigned char* gameData = LoadFileDataFromZip(archive, files.paths[index], &dataSize);
+
+    bool result = false;
+    if (gameData && dataSize > 0) {
+        if (LibretroCore.needFullpath) {
+            // Core needs a path on disk: extract the entry to a temp file and load that.
+            MenuDeleteExtractedZipFile();
+            char tempDir[1024];
+            TextCopy(tempDir, TextFormat("%s/raylib-libretro", LibretroSystemTempDir()));
+            if (!DirectoryExists(tempDir)) MakeDirectory(tempDir);
+            TextCopy(menuExtractedZipPath,
+                TextFormat("%s/%s", tempDir, GetFileName(files.paths[index])));
+            if (SaveFileData(menuExtractedZipPath, gameData, dataSize)) {
+                result = LoadLibretroGame(menuExtractedZipPath);
+            }
+            if (!result) {
+                MenuDeleteExtractedZipFile();
+            }
+        } else {
+            result = LoadLibretroGameFromMemory(gameData, dataSize);
+        }
+    }
+    if (gameData) MemFree(gameData);
     UnloadDirectoryFiles(files);
     UnloadZip(archive);
-    if (!gameData || dataSize == 0) {
-        return false;
-    }
-    bool result = LoadLibretroGameFromMemory(gameData, dataSize);
-    MemFree(gameData);
+
     if (result) {
+        // Report the user-visible zip path as the content path, not the temp file.
         TextCopy(LibretroCore.contentPath, gamePath);
     }
     return result;
@@ -492,7 +590,7 @@ static bool MenuLoadGame(const char* gamePath) {
     }
 
     // Load the game
-#ifdef RAYLIB_ZIP_H
+#ifdef RAYLIB_ZIP_H_
     if (IsFileExtension(gamePath, ".zip")) {
         if (!MenuLoadGameFromZip(gamePath)) {
             ShowLibretroMessage("Failed to load game from zip", 2.0f);
@@ -1108,6 +1206,10 @@ void CloseLibretroMenu(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     rlconfig_free(menu.cfg);
     menu.cfg = NULL;
+#endif
+
+#ifdef RAYLIB_ZIP_H_
+    MenuDeleteExtractedZipFile();
 #endif
 }
 
