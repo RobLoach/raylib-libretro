@@ -316,14 +316,18 @@ void DrawTouchControls(void) {
     }
     Color gc = hovered ? GRAY : (Color){80, 80, 80, 160};
     DrawRectangleRounded(guide, 0.3f, 4, gc);
-    Font font = LibretroTouchFont();
-    float gfs = guide.height * 0.30f;
-    const char* gl = "MENU";
-    Vector2 gts = MeasureTextEx(font, gl, gfs, 1.0f);
-    DrawTextEx(font, gl,
-        (Vector2){ guide.x + guide.width  * 0.5f - gts.x * 0.5f,
-                   guide.y + guide.height * 0.5f - gts.y * 0.5f },
-        gfs, 1.0f, WHITE);
+
+    // Hamburger icon: three horizontal bars centered in the button.
+    float barW = guide.width  * 0.50f;
+    float barH = guide.height * 0.10f;
+    float gap  = guide.height * 0.20f;
+    float gcx  = guide.x + guide.width  * 0.5f;
+    float gcy  = guide.y + guide.height * 0.5f;
+    float bx   = gcx - barW * 0.5f;
+    for (int row = -1; row <= 1; row++) {
+        Rectangle bar = { bx, gcy + row * gap - barH * 0.5f, barW, barH };
+        DrawRectangleRounded(bar, 1.0f, 4, WHITE);
+    }
 }
 
 #if defined(__cplusplus)
