@@ -136,6 +136,14 @@ Use clang-format to apply coding standards...
 clang-format -i *.h
 ```
 
+Build for web with emscripten...
+```sh
+mkdir build
+cd build
+emcmake cmake .. -DPLATFORM=Web -DCMAKE_BUILD_TYPE=Release
+emmake make
+```
+
 ## Contributors
 
 - [Konsumer](https://github.com/konsumer)
