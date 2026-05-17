@@ -1851,12 +1851,12 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                 return (raylibKey > 0) ? (int)IsKeyDown(raylibKey) : 0;
             }
 
-            // Port 1+: map to gamepad (port 1 → gamepad 0).
-            if (!IsGamepadAvailable(port - 1)) {
+            // Port 1+: map to gamepad (port 1 → gamepad 1, port 2 → gamepad 2, ...).
+            if (!IsGamepadAvailable(port)) {
                 return 0;
             }
             int gamepadButton = LibretroMapRetroJoypadButtonToGamepadButton(id);
-            return (int)IsGamepadButtonDown(port - 1, gamepadButton);
+            return (int)IsGamepadButtonDown(port, gamepadButton);
         }
 
         case RETRO_DEVICE_MOUSE: {
