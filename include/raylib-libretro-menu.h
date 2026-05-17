@@ -128,6 +128,20 @@ bool SaveLibretroAllSettings(void);    // Save menu settings + core options in a
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+
+// Push MEMFS -> IDBFS so any writes under /userdata survive a page reload.
+// Called at every commit point (settings save, save state, etc.) because
+// Firefox aggressively kills the JS context on tab close and won't reliably
+// complete an async syncfs queued from pagehide.
+static void LibretroFlushPersistentStorage(void) {
+    EM_ASM({
+        FS.syncfs(false, function (err) {
+            if (err) console.error('IDBFS sync failed:', err);
+        });
+    });
+}
+#else
+#define LibretroFlushPersistentStorage() ((void)0)
 #endif
 
 #define RAYLIB_NUKLEAR_IMPLEMENTATION
@@ -273,6 +287,7 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
         const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
         SaveFileData(TextFormat("%s/%s_%02d.sav", savesDir, GetLibretroContentName(), menu.saveSlotIndex + 1), saveData, (int)size);
         MemFree(saveData);
+        LibretroFlushPersistentStorage();
         ShowLibretroMessage(TextFormat("Slot %d Saved", menu.saveSlotIndex + 1), 2.0f);
         menu.active = false;
     }
@@ -1043,10 +1058,7 @@ bool SaveLibretroAllSettings(void) {
     }
     bool ok = rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
     TraceLog(LOG_INFO, "MENU: Saved all settings to %s", RAYLIB_LIBRETRO_CFG_FILE);
-    // On emscripten the JS-side flushPersistence() in shell.html drives the
-    // MEMFS->IDBFS push (periodic + on pagehide/visibilitychange). We don't
-    // start one here to avoid two syncfs operations running in parallel for
-    // a single commit.
+    LibretroFlushPersistentStorage();
     return ok;
 #else
     return false;
