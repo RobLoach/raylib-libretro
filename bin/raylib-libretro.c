@@ -50,6 +50,9 @@
 #define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
 #include "../include/raylib-libretro-menu.h"
 
+#define RAYLIB_LIBRETRO_TOUCH_IMPLEMENTATION
+#include "../include/raylib-libretro-touch.h"
+
 #ifdef __EMSCRIPTEN__
 // JS-callable hot-load entry point. shell.html fetches ?game=<url> in the
 // background and calls this once main() is running. If a core is already
@@ -178,6 +181,18 @@ bool Init(void** userData, int argc, char** argv) {
 bool UpdateDrawFrame(void* userData) {
     AppData* data = (AppData*)userData;
 
+    // Update virtual joypad from touch controls.
+    if (data->menu->touchControls) {
+        if (!data->menu->active) {
+            UpdateTouchControls();
+            if (IsTouchControlsMenuPressed()) {
+                data->menu->active = true;
+            }
+        } else {
+            memset(LibretroCore.virtualJoypadState, 0, sizeof(LibretroCore.virtualJoypadState));
+        }
+    }
+
     // Run a frame of the core.
     if (!data->menu->active) {
         // Update the shaders, then show OSD if a shader key was pressed.
@@ -294,6 +309,9 @@ bool UpdateDrawFrame(void* userData) {
         }
 
         DrawLibretroMenu();
+        if (data->menu->touchControls && !data->menu->active) {
+            DrawTouchControls();
+        }
         DrawLibretroMessage();
     }
     EndDrawing();

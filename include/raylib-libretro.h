@@ -315,6 +315,9 @@ typedef struct rLibretro {
     // Persistent ROM buffer kept alive when an override sets persistent_data=true.
     unsigned char* persistentGameData;
     int persistentGameDataSize;
+
+    // Virtual joypad state injected by touch controls (port 0 only).
+    bool virtualJoypadState[16];
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -1831,6 +1834,9 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
 
             // Port 0: gamepad if available, otherwise keyboard.
             if (port == 0) {
+                if (id < 16 && LibretroCore.virtualJoypadState[id]) {
+                    return 1;
+                }
                 if (IsGamepadAvailable(0)) {
                     int gamepadButton = LibretroMapRetroJoypadButtonToGamepadButton(id);
                     if (gamepadButton != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gamepadButton)) {
