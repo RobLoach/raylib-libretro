@@ -35,14 +35,7 @@
       });
 
       // Parse ?game= and ?core= query parameters to auto-load URLs on startup.
-      var _urlParams = (function () {
-        var params = {};
-        window.location.search.slice(1).split('&').forEach(function (pair) {
-          var idx = pair.indexOf('=');
-          if (idx > 0) params[decodeURIComponent(pair.slice(0, idx))] = decodeURIComponent(pair.slice(idx + 1));
-        });
-        return params;
-      })();
+      var _urlParams = new URLSearchParams(window.location.search);
 
       var Module = {
         print: function (text) {
@@ -65,6 +58,16 @@
         // and BIOS files survive page reloads. main() is deferred via the
         // run-dependency mechanism until the initial syncfs(true) completes.
         preRun: [function () {
+          // Ask the browser not to evict our IndexedDB under storage
+          // pressure. Firefox in particular treats IDB as "best-effort"
+          // unless explicitly marked persistent. No-op on browsers without
+          // the Storage API; doesn't prompt the user.
+          if (navigator.storage && navigator.storage.persist) {
+            navigator.storage.persist().then(function (granted) {
+              if (!granted) console.warn('Persistent storage was not granted; saves may be evicted.');
+            });
+          }
+
           addRunDependency('idbfs-load');
           try { FS.mkdir('/userdata'); } catch (e) {}
           FS.mount(IDBFS, {}, '/userdata');
@@ -75,13 +78,16 @@
             removeRunDependency('idbfs-load');
           });
         }, function () {
-          // Download ?game=<url> and/or ?core=<url> before main() runs.
-          function fetchToFS(url, depName) {
-            addRunDependency(depName);
-            var filename = url.split('/').pop().split('?')[0] || depName;
+          // ?core=<url> is downloaded synchronously (blocks main() via a
+          // run-dependency and is passed in argv). ?game=<url> is fetched in
+          // the background and handed to LoadLibretroGameFromJS once main()
+          // is running — see postRun below. This lets the UI come up while a
+          // large ROM is still downloading.
+          function fetchToFS(url) {
+            var filename = url.split('/').pop().split('?')[0] || 'download';
             var destPath = '/downloads/' + filename;
             try { FS.mkdir('/downloads'); } catch (e) {}
-            fetch(url)
+            return fetch(url)
               .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status + ' fetching ' + url);
                 return r.arrayBuffer();
@@ -89,36 +95,58 @@
               .then(function (buf) {
                 FS.writeFile(destPath, new Uint8Array(buf));
                 console.log('URL loaded to ' + destPath);
-                removeRunDependency(depName);
-              })
-              .catch(function (err) {
-                console.error('Failed to load URL ' + url + ': ' + err);
-                removeRunDependency(depName);
+                return destPath;
               });
-            return destPath;
           }
 
-          var args = [];
-          if (_urlParams['core']) {
-            fetchToFS(_urlParams['core'], 'url-core');
-            var coreFile = '/downloads/' + _urlParams['core'].split('/').pop().split('?')[0];
-            args.push('-L', coreFile);
+          function logFetchError(label, err) {
+            console.error('Failed to load ' + label + ': ' + err +
+              ' (if this is a TypeError, check that the server sends Access-Control-Allow-Origin)');
           }
-          if (_urlParams['game']) {
-            fetchToFS(_urlParams['game'], 'url-game');
-            var gameFile = '/downloads/' + _urlParams['game'].split('/').pop().split('?')[0];
-            args.push(gameFile);
+
+          var coreUrl = _urlParams.get('core');
+          if (coreUrl) {
+            addRunDependency('url-core');
+            var coreFilename = coreUrl.split('/').pop().split('?')[0] || 'url-core';
+            Module.arguments = (Module.arguments || []).concat(['-L', '/downloads/' + coreFilename]);
+            fetchToFS(coreUrl)
+              .catch(function (err) { logFetchError('core', err); })
+              .finally(function () { removeRunDependency('url-core'); });
           }
-          if (args.length > 0) {
-            Module.arguments = (Module.arguments || []).concat(args);
+
+          var gameUrl = _urlParams.get('game');
+          if (gameUrl) {
+            Module._pendingGameFetch = fetchToFS(gameUrl)
+              .catch(function (err) { logFetchError('game', err); return null; });
           }
         }],
         postRun: [function () {
-          // Commit any pending in-memory cfg to MEMFS, then push MEMFS to
-          // IDBFS. Called from the periodic timer and from page-hide events.
-          // Calling _SaveLibretroAllSettings is safe between frame callbacks
-          // and is a no-op when no game/core is loaded.
+          // Hand off any background ?game= download to the running app.
+          // LoadLibretroGameFromJS picks LoadLibretroGamePhysFS (when a core
+          // was loaded via ?core=) or MenuLoadGame (autodetects from ROM
+          // extension, same as drag-and-drop).
+          if (Module._pendingGameFetch) {
+            Module._pendingGameFetch.then(function (destPath) {
+              if (!destPath) return;
+              var ok = Module.ccall('LoadLibretroGameFromJS', 'number', ['string'], [destPath]);
+              if (!ok) console.error('LoadLibretroGameFromJS failed for ' + destPath);
+            });
+            Module._pendingGameFetch = null;
+          }
+        }, function () {
+          // Safety-net flush. Commit points in C (SaveLibretroAllSettings,
+          // save-state writes) now sync IDBFS themselves, so this mostly
+          // covers writes that don't go through those paths — notably SRAM
+          // written by cores directly. Also pulls any uncommitted widget
+          // state into cfg before syncing.
+          //
+          // Guard against double-flush: pagehide and visibilitychange both
+          // fire on tab close in most browsers. Without this, a slow IDBFS
+          // commit can overlap itself.
+          var _flushInFlight = false;
           function flushPersistence() {
+            if (_flushInFlight) return;
+            _flushInFlight = true;
             try {
               if (Module && Module._SaveLibretroAllSettings) {
                 Module._SaveLibretroAllSettings();
@@ -126,6 +154,7 @@
             } catch (e) { console.error('flushPersistence: save failed:', e); }
             FS.syncfs(false, function (err) {
               if (err) console.error('IDBFS sync failed:', err);
+              _flushInFlight = false;
             });
           }
 

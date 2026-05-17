@@ -50,6 +50,21 @@
 #define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
 #include "../include/raylib-libretro-menu.h"
 
+#ifdef __EMSCRIPTEN__
+// JS-callable hot-load entry point. shell.html fetches ?game=<url> in the
+// background and calls this once main() is running. If a core is already
+// loaded (e.g. via ?core=) the game is loaded into it; otherwise the core
+// is autodetected from the ROM extension, matching drag-and-drop behavior.
+EMSCRIPTEN_KEEPALIVE
+bool LoadLibretroGameFromJS(const char* gameFile) {
+    if (gameFile == NULL || gameFile[0] == '\0') return false;
+    if (IsLibretroReady()) {
+        return LoadLibretroGamePhysFS(gameFile);
+    }
+    return MenuLoadGame(gameFile);
+}
+#endif
+
 #define REWIND_BUFFER_FRAMES 600  // ~10 seconds at 60fps
 
 typedef struct {

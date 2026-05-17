@@ -212,6 +212,7 @@ if ("${PLATFORM}" STREQUAL "Web")
         -sUSE_GLFW=3
         -sMAIN_MODULE=1
         -sALLOW_MEMORY_GROWTH=1
+        -sEXPORTED_RUNTIME_METHODS=ccall # shell.html calls _LoadLibretroGameFromJS via ccall
         -lidbfs.js # Emscripten's File System API
         --preload-file "${CORES_DIR}@/cores"
         --shell-file "${CMAKE_CURRENT_SOURCE_DIR}/shell.html"
