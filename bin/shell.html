@@ -34,6 +34,16 @@
         window.addEventListener(type, function (e) { e.preventDefault(); }, false);
       });
 
+      // Parse ?game= and ?core= query parameters to auto-load URLs on startup.
+      var _urlParams = (function () {
+        var params = {};
+        window.location.search.slice(1).split('&').forEach(function (pair) {
+          var idx = pair.indexOf('=');
+          if (idx > 0) params[decodeURIComponent(pair.slice(0, idx))] = decodeURIComponent(pair.slice(idx + 1));
+        });
+        return params;
+      })();
+
       var Module = {
         print: function (text) {
           if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
@@ -64,6 +74,44 @@
             try { FS.mkdir('/userdata/system'); } catch (e) {}
             removeRunDependency('idbfs-load');
           });
+        }, function () {
+          // Download ?game=<url> and/or ?core=<url> before main() runs.
+          function fetchToFS(url, depName) {
+            addRunDependency(depName);
+            var filename = url.split('/').pop().split('?')[0] || depName;
+            var destPath = '/downloads/' + filename;
+            try { FS.mkdir('/downloads'); } catch (e) {}
+            fetch(url)
+              .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status + ' fetching ' + url);
+                return r.arrayBuffer();
+              })
+              .then(function (buf) {
+                FS.writeFile(destPath, new Uint8Array(buf));
+                console.log('URL loaded to ' + destPath);
+                removeRunDependency(depName);
+              })
+              .catch(function (err) {
+                console.error('Failed to load URL ' + url + ': ' + err);
+                removeRunDependency(depName);
+              });
+            return destPath;
+          }
+
+          var args = [];
+          if (_urlParams['core']) {
+            fetchToFS(_urlParams['core'], 'url-core');
+            var coreFile = '/downloads/' + _urlParams['core'].split('/').pop().split('?')[0];
+            args.push('-L', coreFile);
+          }
+          if (_urlParams['game']) {
+            fetchToFS(_urlParams['game'], 'url-game');
+            var gameFile = '/downloads/' + _urlParams['game'].split('/').pop().split('?')[0];
+            args.push(gameFile);
+          }
+          if (args.length > 0) {
+            Module.arguments = (Module.arguments || []).concat(args);
+          }
         }],
         postRun: [function () {
           // Commit any pending in-memory cfg to MEMFS, then push MEMFS to
