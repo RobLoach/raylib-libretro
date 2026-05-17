@@ -11,9 +11,14 @@
 #define RLCONFIG_COMPOUND_MAX (RLCONFIG_SECTION_MAX + 1 + RLCONFIG_KEY_MAX + 1)
 #define RLCONFIG_LINE_MAX     (RLCONFIG_KEY_MAX + RLCONFIG_VALUE_MAX + 4)
 
-/* Default config filename — raylib-libretro.h defines its own copy as well */
-#ifndef RAYLIB_LIBRETRO_CFG_FILE
-#define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
+// Shared config file used by SaveLibretroCoreOptions / LoadLibretroCoreOptions.
+// Keys are prefixed with the core name: "CoreName.key=value"
+// On emscripten the file lives in the IDBFS-backed /userdata mount so it
+// persists across page reloads (see bin/shell.html).
+#ifdef __EMSCRIPTEN__
+    #define RAYLIB_LIBRETRO_CFG_FILE "/userdata/raylib-libretro.cfg"
+#else
+    #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
 #endif
 
 #define HASHMAP_REALLOC(p, s) MemRealloc(p, (unsigned int)s)

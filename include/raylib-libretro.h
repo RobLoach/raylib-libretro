@@ -146,15 +146,6 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #define LIBRETRO_CORE_VARIABLE_VALUES_LEN 512
 #define LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN 256
 
-// Shared config file used by SaveLibretroCoreOptions / LoadLibretroCoreOptions.
-// Keys are prefixed with the core name: "CoreName.key=value"
-// On emscripten the file lives in the IDBFS-backed /userdata mount so it
-// persists across page reloads (see bin/shell.html).
-#ifdef __EMSCRIPTEN__
-    #define RAYLIB_LIBRETRO_CFG_FILE "/userdata/raylib-libretro.cfg"
-#else
-    #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
-#endif
 /**
  * The amount of controller ports with rumble support.
  */
