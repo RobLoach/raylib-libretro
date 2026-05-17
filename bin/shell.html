@@ -16,6 +16,7 @@
         background-color: black;
         overflow: hidden;
         overscroll-behavior: none;
+        box-sizing: border-box; /* Ensure padding/border doesn't affect size */
       }
       canvas.emscripten {
         display: block;
@@ -28,6 +29,7 @@
         -webkit-tap-highlight-color: transparent;
         -webkit-user-select: none;
         user-select: none;
+        box-sizing: border-box; /* Ensure padding/border doesn't affect size */
       }
     </style>
   </head>
@@ -39,46 +41,6 @@
       ['dragenter', 'dragover', 'drop'].forEach(function (type) {
         window.addEventListener(type, function (e) { e.preventDefault(); }, false);
       });
-
-      // Keep the canvas drawing-buffer in sync with the viewport so mobile
-      // rotation and desktop resizes don't leave the framebuffer stretched
-      // from the initial 800x600 InitWindow size. DPR is capped at 2 to
-      // avoid burning GPU on 3x phones for what is mostly an upscaled
-      // libretro framebuffer anyway.
-      function resizeCanvas() {
-        var canvas = document.getElementById('canvas');
-        if (!canvas) return;
-        var dpr = Math.min(window.devicePixelRatio || 1, 2);
-        // Use the canvas's laid-out size so safe-area-inset padding on body
-        // is reflected; fall back to innerWidth/Height before first layout.
-        var cw = canvas.clientWidth  || window.innerWidth;
-        var ch = canvas.clientHeight || window.innerHeight;
-        var w = Math.floor(cw * dpr);
-        var h = Math.floor(ch * dpr);
-        // Once the wasm is running, delegate to ResizeCanvasFromJS so raylib
-        // sees the new size; before that, just set the attributes so the
-        // initial frame isn't drawn at 800x600.
-        if (typeof Module !== 'undefined' && Module.ccall && Module.calledRun) {
-          try { Module.ccall('ResizeCanvasFromJS', null, ['number', 'number'], [w, h]); }
-          catch (e) { canvas.width = w; canvas.height = h; }
-        } else {
-          canvas.width = w;
-          canvas.height = h;
-        }
-      }
-      window.addEventListener('resize', resizeCanvas);
-      window.addEventListener('orientationchange', resizeCanvas);
-
-      // devicePixelRatio can change without a resize event firing — most
-      // commonly when the window is dragged between monitors with different
-      // scaling. The media query is fixed to the current DPR, so re-register
-      // after each change.
-      function watchDPR() {
-        matchMedia('(resolution: ' + window.devicePixelRatio + 'dppx)')
-          .addEventListener('change', function () { resizeCanvas(); watchDPR(); }, { once: true });
-      }
-      watchDPR();
-      resizeCanvas();
 
       // Parse ?game= and ?core= query parameters to auto-load URLs on startup.
       var _urlParams = new URLSearchParams(window.location.search);
@@ -226,6 +188,41 @@
           });
         }]
       };
+
+      function resizeCanvas() {
+        return;
+        var canvas = document.getElementById('canvas');
+        if (!canvas) return;
+        var dpr = window.devicePixelRatio || 1;
+
+        // Use getBoundingClientRect with fallback to clientWidth/Height
+        var rect = canvas.getBoundingClientRect();
+        var cw = rect.width || canvas.clientWidth || window.innerWidth;
+        var ch = rect.height || canvas.clientHeight || window.innerHeight;
+
+        // Calculate the drawing buffer size
+        var w = Math.floor(cw * dpr);
+        var h = Math.floor(ch * dpr);
+
+        // Set CSS dimensions explicitly to match layout size
+        canvas.style.width = cw + 'px';
+        canvas.style.height = ch + 'px';
+
+        // Set the canvas drawing buffer size
+        canvas.width = w;
+        canvas.height = h;
+
+        // Once the wasm is running, delegate to ResizeCanvasFromJS so raylib
+        // sees the new size; before that, just set the attributes so the
+        // initial frame isn't drawn at 800x600.
+        if (typeof Module !== 'undefined' && Module.ccall && Module.calledRun) {
+          try { Module.ccall('ResizeCanvasFromJS', null, ['number', 'number'], [w, h]); }
+          catch (e) { console.error('ResizeCanvasFromJS failed:', e); }
+        }
+
+        // Debugging logs to verify dimensions
+        console.log(`Canvas resized: CSS(${cw}x${ch}), Buffer(${w}x${h}), DPR(${dpr})`);
+      }
     </script>
     {{{ SCRIPT }}}
   </body>
