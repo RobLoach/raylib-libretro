@@ -316,7 +316,7 @@ typedef struct rLibretro {
     unsigned char* persistentGameData;
     int persistentGameDataSize;
 
-    // Virtual joypad state injected by on-screen controls (port 0 only).
+    // Virtual joypad state injected by touch controls (port 0 only).
     bool virtualJoypadState[16];
 } rLibretro;
 

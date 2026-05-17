@@ -50,6 +50,9 @@
 #define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
 #include "../include/raylib-libretro-menu.h"
 
+#define RAYLIB_LIBRETRO_TOUCH_IMPLEMENTATION
+#include "../include/raylib-libretro-touch.h"
+
 #ifdef __EMSCRIPTEN__
 // JS-callable hot-load entry point. shell.html fetches ?game=<url> in the
 // background and calls this once main() is running. If a core is already
@@ -175,131 +178,19 @@ bool Init(void** userData, int argc, char** argv) {
     return true;
 }
 
-// On-screen button descriptor.
-typedef struct {
-    Rectangle rect;   // screen-space rectangle (pixels)
-    int buttonId;     // RETRO_DEVICE_ID_JOYPAD_*
-    const char* label;
-    Color color;
-} OnScreenButton;
-
-// Build layout. All values are fractions of screen dimensions.
-static int BuildOnScreenButtons(OnScreenButton* btns, int w, int h) {
-    float bw = w * 0.09f;    // button width
-    float bh = h * 0.09f;    // button height
-    float pad = w * 0.015f;
-
-    // D-pad: bottom-left
-    float dx = w * 0.06f, dy = h * 0.72f;
-    int n = 0;
-    btns[n++] = (OnScreenButton){{ dx,          dy + bh + pad, bw, bh }, RETRO_DEVICE_ID_JOYPAD_LEFT,  "<", DARKGRAY };
-    btns[n++] = (OnScreenButton){{ dx + bw+pad, dy,            bw, bh }, RETRO_DEVICE_ID_JOYPAD_UP,    "^", DARKGRAY };
-    btns[n++] = (OnScreenButton){{ dx + bw+pad, dy + bh + pad, bw, bh }, RETRO_DEVICE_ID_JOYPAD_DOWN,  "v", DARKGRAY };
-    btns[n++] = (OnScreenButton){{ dx+2*(bw+pad),dy + bh + pad,bw, bh }, RETRO_DEVICE_ID_JOYPAD_RIGHT, ">", DARKGRAY };
-
-    // Face buttons: bottom-right (SNES layout)
-    float fx = w * 0.72f;
-    btns[n++] = (OnScreenButton){{ fx + bw+pad, dy,               bw, bh }, RETRO_DEVICE_ID_JOYPAD_X,     "X", DARKBLUE  };
-    btns[n++] = (OnScreenButton){{ fx,          dy + bh + pad,    bw, bh }, RETRO_DEVICE_ID_JOYPAD_Y,     "Y", DARKPURPLE};
-    btns[n++] = (OnScreenButton){{ fx+2*(bw+pad),dy + bh + pad,   bw, bh }, RETRO_DEVICE_ID_JOYPAD_A,     "A", MAROON    };
-    btns[n++] = (OnScreenButton){{ fx + bw+pad, dy + bh*2+pad*2,  bw, bh }, RETRO_DEVICE_ID_JOYPAD_B,     "B", DARKGREEN };
-
-    // Select / Start: bottom center
-    float cx = w * 0.37f, cy = h * 0.91f;
-    btns[n++] = (OnScreenButton){{ cx,          cy,            bw, bh }, RETRO_DEVICE_ID_JOYPAD_SELECT, "SEL", GRAY    };
-    btns[n++] = (OnScreenButton){{ cx+bw+pad*3, cy,            bw, bh }, RETRO_DEVICE_ID_JOYPAD_START,  "STA", GRAY   };
-    return n;
-}
-
-#define ONSCREEN_BTN_COUNT 10
-
-static void UpdateOnScreenControls(LibretroMenu* m) {
-    OnScreenButton btns[ONSCREEN_BTN_COUNT];
-    int w = GetScreenWidth(), h = GetScreenHeight();
-    int n = BuildOnScreenButtons(btns, w, h);
-
-    // Clear virtual state each frame.
-    for (int i = 0; i < 16; i++) LibretroCore.virtualJoypadState[i] = false;
-
-    // Collect all active touch/click points.
-    Vector2 points[10];
-    int nPoints = 0;
-
-    int touchCount = GetTouchPointCount();
-    for (int t = 0; t < touchCount && nPoints < 10; t++) {
-        points[nPoints++] = GetTouchPosition(t);
-    }
-    // Also support mouse on desktop.
-    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-        points[nPoints++] = GetMousePosition();
-    }
-
-    for (int i = 0; i < n; i++) {
-        for (int p = 0; p < nPoints; p++) {
-            if (CheckCollisionPointRec(points[p], btns[i].rect)) {
-                LibretroCore.virtualJoypadState[btns[i].buttonId] = true;
-                break;
-            }
-        }
-    }
-}
-
-static void DrawOnScreenControls(LibretroMenu* m) {
-    OnScreenButton btns[ONSCREEN_BTN_COUNT];
-    int w = GetScreenWidth(), h = GetScreenHeight();
-    int n = BuildOnScreenButtons(btns, w, h);
-
-    // Guide button: top-right corner.
-    float bw = w * 0.09f, bh = h * 0.09f;
-    Rectangle guide = { w - bw - w*0.02f, h * 0.02f, bw, bh };
-
-    for (int i = 0; i < n; i++) {
-        Color c = btns[i].color;
-        c.a = LibretroCore.virtualJoypadState[btns[i].buttonId] ? 220 : 140;
-        DrawRectangleRounded(btns[i].rect, 0.3f, 4, c);
-        int fs = (int)(bh * 0.4f);
-        DrawText(btns[i].label,
-            (int)(btns[i].rect.x + btns[i].rect.width/2  - MeasureText(btns[i].label, fs)/2),
-            (int)(btns[i].rect.y + btns[i].rect.height/2 - fs/2),
-            fs, WHITE);
-    }
-
-    // Guide button
-    bool guideHovered = false;
-    int touchCount = GetTouchPointCount();
-    for (int t = 0; t < touchCount; t++) {
-        if (CheckCollisionPointRec(GetTouchPosition(t), guide)) { guideHovered = true; break; }
-    }
-    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), guide)) {
-        guideHovered = true;
-    }
-    Color gc = guideHovered ? GRAY : (Color){80,80,80,160};
-    DrawRectangleRounded(guide, 0.3f, 4, gc);
-    int gfs = (int)(bh * 0.35f);
-    const char* gl = "MENU";
-    DrawText(gl, (int)(guide.x + guide.width/2 - MeasureText(gl, gfs)/2),
-             (int)(guide.y + guide.height/2 - gfs/2), gfs, WHITE);
-
-    // Open menu on guide press.
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), guide)) {
-        m->active = true;
-    }
-    for (int t = 0; t < touchCount; t++) {
-        if (CheckCollisionPointRec(GetTouchPosition(t), guide)) {
-            if (IsGestureDetected(GESTURE_TAP)) m->active = true;
-            break;
-        }
-    }
-}
-
 bool UpdateDrawFrame(void* userData) {
     AppData* data = (AppData*)userData;
 
-    // Update virtual joypad from on-screen controls.
-    if (data->menu->onScreenControls && !data->menu->active) {
-        UpdateOnScreenControls(data->menu);
-    } else {
-        for (int i = 0; i < 16; i++) LibretroCore.virtualJoypadState[i] = false;
+    // Update virtual joypad from touch controls.
+    if (data->menu->touchControls) {
+        if (!data->menu->active) {
+            UpdateTouchControls();
+            if (IsTouchControlsMenuPressed()) {
+                data->menu->active = true;
+            }
+        } else {
+            memset(LibretroCore.virtualJoypadState, 0, sizeof(LibretroCore.virtualJoypadState));
+        }
     }
 
     // Run a frame of the core.
@@ -418,10 +309,10 @@ bool UpdateDrawFrame(void* userData) {
         }
 
         DrawLibretroMenu();
-        DrawLibretroMessage();
-        if (data->menu->onScreenControls && !data->menu->active) {
-            DrawOnScreenControls(data->menu);
+        if (data->menu->touchControls && !data->menu->active) {
+            DrawTouchControls();
         }
+        DrawLibretroMessage();
     }
     EndDrawing();
 
