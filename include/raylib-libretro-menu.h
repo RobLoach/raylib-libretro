@@ -115,6 +115,7 @@ void DrawLibretroMenu(void);
 void BuildLibretroMenuOptions(LibretroMenu* menu); // Populate "Core Options" with comboboxes from the loaded core.
 bool LoadLibretroCoreOptions(void);    // Apply saved core options from config to the loaded core.
 bool SaveLibretroAllSettings(void);    // Save menu settings + core options in a single file write.
+static Font GetLibretroMenuFont(void);
 
 #if defined(__cplusplus)
 }
@@ -179,6 +180,9 @@ static bool SaveLibretroMenuSettings(void);
 static bool SaveLibretroCoreOptions(void);
 static bool LoadLibretroMenuSettings(void);
 static void UpdateLibretroMenuVisibility(void);
+static Font GetLibretroMenuFont(void) {
+    return menu.font;
+}
 
 static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     (void)widget;

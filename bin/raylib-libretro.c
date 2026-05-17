@@ -54,6 +54,8 @@
 #include "../include/raylib-libretro-touch.h"
 
 #ifdef __EMSCRIPTEN__
+#include <emscripten/html5.h>
+
 // JS-callable hot-load entry point. shell.html fetches ?game=<url> in the
 // background and calls this once main() is running. If a core is already
 // loaded (e.g. via ?core=) the game is loaded into it; otherwise the core
@@ -65,6 +67,20 @@ bool LoadLibretroGameFromJS(const char* gameFile) {
         return LoadLibretroGamePhysFS(gameFile);
     }
     return MenuLoadGame(gameFile);
+}
+
+// JS-callable canvas resize. shell.html calls this on window resize /
+// orientationchange so the drawing buffer tracks the viewport. Uses the
+// HTML5 API directly to avoid the deprecated Browser.setCanvasSize path
+// (which is what blows up with "setCanvasSize was not exported").
+EMSCRIPTEN_KEEPALIVE
+void ResizeCanvasFromJS(int width, int height) {
+    if (width <= 0 || height <= 0) return;
+    // HTML5 API directly: avoids the Browser.setCanvasSize / SetWindowSize
+    // paths that abort with "setCanvasSize was not exported". raylib's
+    // GLFW resize callback fires from emscripten and updates the window
+    // dimensions internally.
+    emscripten_set_canvas_element_size("#canvas", width, height);
 }
 #endif
 

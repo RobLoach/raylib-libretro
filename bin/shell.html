@@ -34,6 +34,32 @@
         window.addEventListener(type, function (e) { e.preventDefault(); }, false);
       });
 
+      // Keep the canvas drawing-buffer in sync with the viewport so mobile
+      // rotation and desktop resizes don't leave the framebuffer stretched
+      // from the initial 800x600 InitWindow size. DPR is capped at 2 to
+      // avoid burning GPU on 3x phones for what is mostly an upscaled
+      // libretro framebuffer anyway.
+      function resizeCanvas() {
+        var canvas = document.getElementById('canvas');
+        if (!canvas) return;
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        var w = Math.floor(window.innerWidth * dpr);
+        var h = Math.floor(window.innerHeight * dpr);
+        // Once the wasm is running, delegate to ResizeCanvasFromJS so raylib
+        // sees the new size; before that, just set the attributes so the
+        // initial frame isn't drawn at 800x600.
+        if (typeof Module !== 'undefined' && Module.ccall && Module.calledRun) {
+          try { Module.ccall('ResizeCanvasFromJS', null, ['number', 'number'], [w, h]); }
+          catch (e) { canvas.width = w; canvas.height = h; }
+        } else {
+          canvas.width = w;
+          canvas.height = h;
+        }
+      }
+      window.addEventListener('resize', resizeCanvas);
+      window.addEventListener('orientationchange', resizeCanvas);
+      resizeCanvas();
+
       // Parse ?game= and ?core= query parameters to auto-load URLs on startup.
       var _urlParams = new URLSearchParams(window.location.search);
 
@@ -121,6 +147,11 @@
           }
         }],
         postRun: [function () {
+          // raylib's InitWindow set the canvas buffer to 800x600; override it
+          // with the actual viewport size now that GLFW's resize callback is
+          // wired up and will propagate the change into raylib.
+          resizeCanvas();
+        }, function () {
           // Hand off any background ?game= download to the running app.
           // LoadLibretroGameFromJS picks LoadLibretroGamePhysFS (when a core
           // was loaded via ?core=) or MenuLoadGame (autodetects from ROM

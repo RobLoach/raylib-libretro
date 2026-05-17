@@ -97,11 +97,61 @@ static int LibretroTouchBuildButtons(TouchControlsButton* btns, int w, int h) {
     return n;
 }
 
+// Use the menu's loaded font when the menu header was included earlier in the
+// same translation unit. Falls back to raylib's built-in font otherwise so
+// touch.h remains usable standalone.
+static Font LibretroTouchFont(void) {
+#ifdef RAYLIB_LIBRETRO_MENU_H
+    Font f = GetLibretroMenuFont();
+    if (f.texture.id != 0) return f;
+#endif
+    return GetFontDefault();
+}
+
 static bool LibretroTouchIsCircleButton(int id) {
     return id == RETRO_DEVICE_ID_JOYPAD_UP    || id == RETRO_DEVICE_ID_JOYPAD_DOWN ||
            id == RETRO_DEVICE_ID_JOYPAD_LEFT  || id == RETRO_DEVICE_ID_JOYPAD_RIGHT ||
            id == RETRO_DEVICE_ID_JOYPAD_A     || id == RETRO_DEVICE_ID_JOYPAD_B ||
            id == RETRO_DEVICE_ID_JOYPAD_X     || id == RETRO_DEVICE_ID_JOYPAD_Y;
+}
+
+static bool LibretroTouchIsDpadButton(int id) {
+    return id == RETRO_DEVICE_ID_JOYPAD_UP   || id == RETRO_DEVICE_ID_JOYPAD_DOWN ||
+           id == RETRO_DEVICE_ID_JOYPAD_LEFT || id == RETRO_DEVICE_ID_JOYPAD_RIGHT;
+}
+
+// Draws a filled triangle arrow inside the button rect. Vertices are supplied
+// to DrawTriangle in counter-clockwise order (screen space) so the triangle is
+// not back-face culled.
+static void LibretroTouchDrawDpadArrow(Rectangle r, int id, Color color) {
+    float cx = r.x + r.width  * 0.5f;
+    float cy = r.y + r.height * 0.5f;
+    float s  = r.width * 0.22f;   // triangle half-extent
+    Vector2 v1 = {0}, v2 = {0}, v3 = {0};
+    switch (id) {
+        case RETRO_DEVICE_ID_JOYPAD_UP:
+            v1 = (Vector2){ cx,     cy - s };  // tip
+            v2 = (Vector2){ cx - s, cy + s };  // bottom-left
+            v3 = (Vector2){ cx + s, cy + s };  // bottom-right
+            break;
+        case RETRO_DEVICE_ID_JOYPAD_DOWN:
+            v1 = (Vector2){ cx,     cy + s };  // tip
+            v2 = (Vector2){ cx + s, cy - s };  // top-right
+            v3 = (Vector2){ cx - s, cy - s };  // top-left
+            break;
+        case RETRO_DEVICE_ID_JOYPAD_LEFT:
+            v1 = (Vector2){ cx - s, cy     };  // tip
+            v2 = (Vector2){ cx + s, cy + s };  // bottom-right
+            v3 = (Vector2){ cx + s, cy - s };  // top-right
+            break;
+        case RETRO_DEVICE_ID_JOYPAD_RIGHT:
+            v1 = (Vector2){ cx + s, cy     };  // tip
+            v2 = (Vector2){ cx - s, cy - s };  // top-left
+            v3 = (Vector2){ cx - s, cy + s };  // bottom-left
+            break;
+        default: return;
+    }
+    DrawTriangle(v1, v2, v3, color);
 }
 
 static Rectangle LibretroTouchMenuRect(int w, int h) {
@@ -240,13 +290,18 @@ void DrawTouchControls(void) {
         } else {
             DrawRectangleRounded(btns[i].rect, 0.5f, 6, c);
         }
-        int fs = (int)(btns[i].rect.height * 0.4f);
         Color textColor = WHITE;
         if (isMenuLike) textColor.a = 180;
-        DrawText(btns[i].label,
-            (int)(fcx - MeasureText(btns[i].label, fs) * 0.5f),
-            (int)(fcy - fs * 0.5f),
-            fs, textColor);
+        if (LibretroTouchIsDpadButton(id)) {
+            LibretroTouchDrawDpadArrow(btns[i].rect, id, textColor);
+        } else {
+            Font font = LibretroTouchFont();
+            float fs = btns[i].rect.height * 0.4f;
+            Vector2 ts = MeasureTextEx(font, btns[i].label, fs, 1.0f);
+            DrawTextEx(font, btns[i].label,
+                (Vector2){ fcx - ts.x * 0.5f, fcy - ts.y * 0.5f },
+                fs, 1.0f, textColor);
+        }
     }
 
     // Menu button
@@ -261,12 +316,14 @@ void DrawTouchControls(void) {
     }
     Color gc = hovered ? GRAY : (Color){80, 80, 80, 160};
     DrawRectangleRounded(guide, 0.3f, 4, gc);
-    int gfs = (int)(guide.height * 0.30f);
+    Font font = LibretroTouchFont();
+    float gfs = guide.height * 0.30f;
     const char* gl = "MENU";
-    DrawText(gl,
-        (int)(guide.x + guide.width/2  - MeasureText(gl, gfs)/2),
-        (int)(guide.y + guide.height/2 - gfs/2),
-        gfs, WHITE);
+    Vector2 gts = MeasureTextEx(font, gl, gfs, 1.0f);
+    DrawTextEx(font, gl,
+        (Vector2){ guide.x + guide.width  * 0.5f - gts.x * 0.5f,
+                   guide.y + guide.height * 0.5f - gts.y * 0.5f },
+        gfs, 1.0f, WHITE);
 }
 
 #if defined(__cplusplus)
