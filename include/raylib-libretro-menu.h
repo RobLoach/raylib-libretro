@@ -607,7 +607,9 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
 }
 
 LibretroMenu* InitLibretroMenu(void) {
-    int fontSize = 13 * 2;
+    int screenWidth = GetScreenWidth();
+    int menuScale = (screenWidth >= 2560) ? 3 : (screenWidth >= 1280) ? 2 : 1;
+    int fontSize = 13 * menuScale;
     menu = (LibretroMenu){0};
     menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
     menu.volumeSelected = 1.0f;
@@ -642,6 +644,7 @@ LibretroMenu* InitLibretroMenu(void) {
         UnloadFont(menu.font);
         return NULL;
     }
+    SetNuklearScaling(menu.ctx, (float)menuScale);
 
     menu.console = nk_console_init(menu.ctx);
     if (!menu.console) {
