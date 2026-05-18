@@ -281,23 +281,64 @@ static void LibretroMenuQuitClicked(nk_console* widget, void* user_data) {
     menu.shouldQuit = true;
 }
 
+// Save-state file magic and format version.
+#define LIBRETRO_SAVE_MAGIC   "RLLR"
+#define LIBRETRO_SAVE_VERSION ((unsigned char)1)
+
 static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
     if (!IsLibretroGameReady()) return;
-    unsigned int size;
-    void* saveData = GetLibretroSerializedData(&size);
-    if (saveData != NULL) {
-        const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
-        SaveFileData(TextFormat("%s/%s_%02d.sav", savesDir, GetLibretroContentName(), menu.saveSlotIndex + 1), saveData, (int)size);
-        MemFree(saveData);
-        LibretroFlushPersistentStorage();
-        ShowLibretroMessage(TextFormat("Slot %d Saved", menu.saveSlotIndex + 1), 2.0f);
-        menu.active = false;
+
+    unsigned int stateSize = 0;
+    void* stateData = GetLibretroSerializedData(&stateSize);
+    if (stateData == NULL) {
+        ShowLibretroMessage("Save State Failed", 2.0f);
+        return;
     }
-    else {
-        ShowLibretroMessage("State Saved Failed", 2.0f);
+
+    // Header layout:
+    //   [4]  magic "RLLR"
+    //   [1]  format version
+    //   [1]  core-name length  +  [n] core-name bytes
+    //   [1]  core-ver  length  +  [m] core-ver  bytes
+    //   [4]  state size (uint32 LE)
+    //   [N]  raw state bytes
+    const char* coreName = GetLibretroName();
+    const char* coreVer  = GetLibretroVersion();
+    unsigned char nameLen = (unsigned char)(TextLength(coreName) < 255 ? TextLength(coreName) : 255);
+    unsigned char verLen  = (unsigned char)(TextLength(coreVer)  < 255 ? TextLength(coreVer)  : 255);
+    unsigned int headerSize = 4 + 1 + 1 + (unsigned int)nameLen + 1 + (unsigned int)verLen + 4;
+    unsigned int totalSize  = headerSize + stateSize;
+
+    unsigned char* fileData = (unsigned char*)MemAlloc(totalSize);
+    if (fileData == NULL) {
+        MemFree(stateData);
+        ShowLibretroMessage("Save State Failed", 2.0f);
+        return;
     }
+
+    unsigned char* p = fileData;
+    p[0]='R'; p[1]='L'; p[2]='L'; p[3]='R'; p += 4;
+    *p++ = LIBRETRO_SAVE_VERSION;
+    *p++ = nameLen;
+    memcpy(p, coreName, nameLen); p += nameLen;
+    *p++ = verLen;
+    memcpy(p, coreVer, verLen);  p += verLen;
+    p[0] = (unsigned char)( stateSize        & 0xFF);
+    p[1] = (unsigned char)((stateSize >>  8) & 0xFF);
+    p[2] = (unsigned char)((stateSize >> 16) & 0xFF);
+    p[3] = (unsigned char)((stateSize >> 24) & 0xFF);
+    p += 4;
+    memcpy(p, stateData, stateSize);
+
+    const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
+    SaveFileData(TextFormat("%s/%s_%02d.sav", savesDir, GetLibretroContentName(), menu.saveSlotIndex + 1), fileData, (int)totalSize);
+    MemFree(fileData);
+    MemFree(stateData);
+    LibretroFlushPersistentStorage();
+    ShowLibretroMessage(TextFormat("Slot %d Saved", menu.saveSlotIndex + 1), 2.0f);
+    menu.active = false;
 }
 
 static void MenuResumeClicked(nk_console* widget, void* user_data) {
@@ -592,18 +633,76 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
     if (!IsLibretroGameReady()) return;
-    int dataSize;
+
+    int dataSize = 0;
     const char* savesDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
-    void* saveData = LoadFileData(TextFormat("%s/%s_%02d.sav", savesDir, GetLibretroContentName(), menu.saveSlotIndex + 1), &dataSize);
-    if (saveData != NULL) {
-        SetLibretroSerializedData(saveData, (unsigned int)dataSize);
-        MemFree(saveData);
-        ShowLibretroMessage(TextFormat("Slot %d Loaded", menu.saveSlotIndex + 1), 2.0f);
-        menu.active = false;
+    unsigned char* fileData = (unsigned char*)LoadFileData(
+        TextFormat("%s/%s_%02d.sav", savesDir, GetLibretroContentName(), menu.saveSlotIndex + 1), &dataSize);
+    if (fileData == NULL || dataSize <= 0) {
+        ShowLibretroMessage("Load State Failed", 2.0f);
+        return;
     }
-    else {
-        ShowLibretroMessage("Load State failed", 2.0f);
+
+    unsigned char* stateBytes = fileData;
+    unsigned int stateSize = (unsigned int)dataSize;
+    int coreStateSize = (LibretroCore.retro_serialize_size != NULL) ? (int)LibretroCore.retro_serialize_size() : 0;
+
+    if (dataSize >= 10 && fileData[0]=='R' && fileData[1]=='L' && fileData[2]=='L' && fileData[3]=='R') {
+        // Versioned format — parse header.
+        if (fileData[4] != LIBRETRO_SAVE_VERSION) {
+            ShowLibretroMessage("Incompatible save format", 3.0f);
+            MemFree(fileData);
+            return;
+        }
+        unsigned char* p = fileData + 5;
+        int left = dataSize - 5;
+
+        if (left < 1) goto header_bad;
+        unsigned char nameLen = *p++; left--;
+        if (left < (int)nameLen) goto header_bad;
+        char savedName[256];
+        memcpy(savedName, p, nameLen); savedName[nameLen] = '\0';
+        p += nameLen; left -= nameLen;
+
+        if (left < 1) goto header_bad;
+        unsigned char verLen = *p++; left--;
+        if (left < (int)verLen) goto header_bad;
+        p += verLen; left -= verLen;
+
+        if (left < 4) goto header_bad;
+        unsigned int savedSize = (unsigned int)p[0] | ((unsigned int)p[1]<<8) | ((unsigned int)p[2]<<16) | ((unsigned int)p[3]<<24);
+        p += 4; left -= 4;
+
+        if (coreStateSize > 0 && (unsigned int)coreStateSize != savedSize) {
+            ShowLibretroMessage(TextFormat("Save size mismatch (%u vs %u)", savedSize, coreStateSize), 4.0f);
+            MemFree(fileData);
+            return;
+        }
+        if (!TextIsEqual(savedName, GetLibretroName())) {
+            TraceLog(LOG_WARNING, "SAVESTATE: Core name mismatch (saved '%s', current '%s')", savedName, GetLibretroName());
+        }
+        if (left < (int)savedSize) goto header_bad;
+        stateBytes = p;
+        stateSize  = savedSize;
+    } else {
+        // Legacy raw file — validate size then attempt load.
+        TraceLog(LOG_WARNING, "SAVESTATE: Loading legacy save file without header");
+        if (coreStateSize > 0 && dataSize != coreStateSize) {
+            ShowLibretroMessage(TextFormat("Save size mismatch (%d vs %d)", dataSize, coreStateSize), 4.0f);
+            MemFree(fileData);
+            return;
+        }
     }
+
+    SetLibretroSerializedData(stateBytes, stateSize);
+    MemFree(fileData);
+    ShowLibretroMessage(TextFormat("Slot %d Loaded", menu.saveSlotIndex + 1), 2.0f);
+    menu.active = false;
+    return;
+
+header_bad:
+    ShowLibretroMessage("Incompatible save format", 3.0f);
+    MemFree(fileData);
 }
 
 LibretroMenu* InitLibretroMenu(void) {
