@@ -108,6 +108,8 @@ const char* GetLibretroVersion();
 unsigned GetLibretroWidth();
 unsigned GetLibretroHeight();
 unsigned GetLibretroRotation();
+double GetLibretroFPS();
+float GetLibretroAspectRatio();
 Texture2D GetLibretroTexture();
 bool IsLibretroGameRequired();
 void ResetLibretro();

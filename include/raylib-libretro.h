@@ -69,6 +69,8 @@ static const char* GetLibretroVersion(void);                 // Get the version 
 static unsigned GetLibretroWidth(void);                      // Get the desired width of the libretro core.
 static unsigned GetLibretroHeight(void);                     // Get the desired height of the libretro core.
 static unsigned GetLibretroRotation(void);                   // Get the current screen rotation (0=0°, 1=90°, 2=180°, 3=270°).
+static double GetLibretroFPS(void);                          // Get the target refresh rate reported by the core (default 60.0 if unavailable).
+static float GetLibretroAspectRatio(void);                   // Get the intended display aspect ratio reported by the core (0.0 if unavailable).
 static Texture2D GetLibretroTexture(void);                   // Retrieve the texture used to render the libretro state.
 static bool IsLibretroGameRequired(void);               // Determine whether or not the loaded core require content.
 static void ResetLibretro(void);                             // Reset the currently loaded libretro core.
@@ -2660,6 +2662,14 @@ static unsigned GetLibretroWidth(void) {
 }
 static unsigned GetLibretroHeight(void) {
     return LibretroCore.height;
+}
+
+static double GetLibretroFPS(void) {
+    return LibretroCore.fps > 0 ? (double)LibretroCore.fps : 60.0;
+}
+
+static float GetLibretroAspectRatio(void) {
+    return LibretroCore.aspectRatio;
 }
 
 static Texture2D GetLibretroTexture(void) {
