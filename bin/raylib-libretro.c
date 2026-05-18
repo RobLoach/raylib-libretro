@@ -175,7 +175,17 @@ bool Init(void** userData, int argc, char** argv) {
     const char* corePath = NULL;
     const char* gameFile = NULL;
     for (int i = 1; i < argc; i++) {
-        if ((TextIsEqual(argv[i], "-L") || TextIsEqual(argv[i], "--libretro")) && i + 1 < argc) {
+        if (TextIsEqual(argv[i], "-h") || TextIsEqual(argv[i], "--help")) {
+            printf("Usage: %s [-L <core>] [game]\n\n", argv[0]);
+            printf("Options:\n");
+            printf("  -L, --libretro <core>   Path to the libretro core (.so/.dll/.dylib)\n");
+            printf("  -h, --help              Show this help message\n\n");
+            printf("Examples:\n");
+            printf("  %s -L fceumm_libretro.so smb.nes\n", argv[0]);
+            printf("  %s -L fceumm_libretro.so smb.zip\n", argv[0]);
+            printf("  %s smb.nes\n", argv[0]);
+            return false;
+        } else if ((TextIsEqual(argv[i], "-L") || TextIsEqual(argv[i], "--libretro")) && i + 1 < argc) {
             corePath = argv[++i];
         } else if (!gameFile) {
             gameFile = argv[i];
