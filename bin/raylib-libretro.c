@@ -194,7 +194,7 @@ bool Init(void** userData, int argc, char** argv) {
     return true;
 }
 
-bool UpdateDrawFrame(void* userData) {
+bool Update(void* userData) {
     AppData* data = (AppData*)userData;
 
     // Update virtual joypad from touch controls.
@@ -308,30 +308,6 @@ bool UpdateDrawFrame(void* userData) {
         return false;
     }
 
-    // Render the libretro core.
-    BeginDrawing();
-    {
-        ClearBackground(BLACK);
-
-        if (data->menu->active) {
-            BeginLibretroShaderGreyscale();
-            DrawLibretro();
-            EndShaderMode();
-        }
-        else {
-            BeginLibretroShader();
-            DrawLibretro();
-            EndLibretroShader();
-        }
-
-        DrawLibretroMenu();
-        if (data->menu->touchControls && !data->menu->active) {
-            DrawTouchControls();
-        }
-        DrawLibretroMessage();
-    }
-    EndDrawing();
-
     // Fullscreen
     if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyFullscreen))) {
         LibretroMenuFullscreenChanged(menu.console, NULL);
@@ -434,6 +410,29 @@ bool UpdateDrawFrame(void* userData) {
     return true;
 }
 
+void Draw(void* userData) {
+    AppData* data = (AppData*)userData;
+
+    ClearBackground(BLACK);
+
+    if (data->menu->active) {
+        BeginLibretroShaderGreyscale();
+        DrawLibretro();
+        EndShaderMode();
+    }
+    else {
+        BeginLibretroShader();
+        DrawLibretro();
+        EndLibretroShader();
+    }
+
+    DrawLibretroMenu();
+    if (data->menu->touchControls && !data->menu->active) {
+        DrawTouchControls();
+    }
+    DrawLibretroMessage();
+}
+
 void Close(void* userData) {
     AppData* data = (AppData*)userData;
 
@@ -461,7 +460,8 @@ App Main() {
         .width = 800,
         .height = 600,
         .init = Init,
-        .update = UpdateDrawFrame,
+        .update = Update,
+        .draw = Draw,
         .close = Close,
         .configFlags = FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT,
     };
