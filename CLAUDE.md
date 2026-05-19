@@ -185,13 +185,13 @@ CMake first calls `find_package(raylib QUIET)`. If not found on the system, it f
 
 ```sh
 # General usage
-raylib-libretro <core.so> [game_file]
+raylib-libretro [-L <core>] [game]
 
 # Linux example
-bin/raylib-libretro ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
+bin/raylib-libretro -L ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
 
 # macOS example
-bin/raylib-libretro ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib smb.nes
+bin/raylib-libretro -L ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib smb.nes
 ```
 
 ## Dependencies

@@ -7,11 +7,11 @@
 ## Usage
 
 ``` sh
-raylib-libretro [game] -L [core]
+raylib-libretro [-L <core>] [game]
 ```
 
 - `[game]` can be a loose ROM file or a `.zip` archive
-- `[core]` is optional, and is a path to which libretro core to use
+- `-L <core>` is optional — path to the libretro core (`.so`/`.dll`/`.dylib`)
 
 ### Example
 ```
