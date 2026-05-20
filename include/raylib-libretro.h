@@ -318,6 +318,10 @@ typedef struct rLibretro {
 
     // Virtual joypad state injected by touch controls (port 0 only).
     bool virtualJoypadState[16];
+
+    // Memory map from RETRO_ENVIRONMENT_SET_MEMORY_MAPS (owned copy).
+    struct retro_memory_descriptor *memoryMapDescriptors;
+    unsigned memoryMapDescriptorCount;
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -1018,8 +1022,48 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_MEMORY_MAPS: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MEMORY_MAPS not implemented");
-            return false;
+            if (!data) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MEMORY_MAPS no data");
+                return false;
+            }
+            const struct retro_memory_map *map = (const struct retro_memory_map *)data;
+
+            // Free any previously stored map.
+            if (LibretroCore.memoryMapDescriptors) {
+                for (unsigned i = 0; i < LibretroCore.memoryMapDescriptorCount; i++) {
+                    if (LibretroCore.memoryMapDescriptors[i].addrspace) {
+                        MemFree((void*)LibretroCore.memoryMapDescriptors[i].addrspace);
+                    }
+                }
+                MemFree(LibretroCore.memoryMapDescriptors);
+                LibretroCore.memoryMapDescriptors = NULL;
+                LibretroCore.memoryMapDescriptorCount = 0;
+            }
+
+            if (!map->descriptors || map->num_descriptors == 0) {
+                return true;
+            }
+
+            size_t sz = sizeof(struct retro_memory_descriptor) * map->num_descriptors;
+            LibretroCore.memoryMapDescriptors = (struct retro_memory_descriptor*)MemAlloc((unsigned int)sz);
+            if (!LibretroCore.memoryMapDescriptors) {
+                return false;
+            }
+            memcpy(LibretroCore.memoryMapDescriptors, map->descriptors, sz);
+            LibretroCore.memoryMapDescriptorCount = map->num_descriptors;
+
+            // Deep-copy addrspace strings.
+            for (unsigned i = 0; i < map->num_descriptors; i++) {
+                if (map->descriptors[i].addrspace) {
+                    size_t len = strlen(map->descriptors[i].addrspace) + 1;
+                    char *copy = (char*)MemAlloc((unsigned int)len);
+                    if (copy) memcpy(copy, map->descriptors[i].addrspace, len);
+                    LibretroCore.memoryMapDescriptors[i].addrspace = copy;
+                }
+            }
+
+            TraceLog(LOG_INFO, "LIBRETRO: Memory map stored (%u descriptor(s))", map->num_descriptors);
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_GEOMETRY: {
@@ -2793,6 +2837,17 @@ static void LibretroResetCoreState(void) {
 
     memset(LibretroCore.osdMessage, 0, sizeof(LibretroCore.osdMessage));
     LibretroCore.osdEndTime = 0.0;
+
+    if (LibretroCore.memoryMapDescriptors) {
+        for (unsigned i = 0; i < LibretroCore.memoryMapDescriptorCount; i++) {
+            if (LibretroCore.memoryMapDescriptors[i].addrspace) {
+                MemFree((void*)LibretroCore.memoryMapDescriptors[i].addrspace);
+            }
+        }
+        MemFree(LibretroCore.memoryMapDescriptors);
+        LibretroCore.memoryMapDescriptors = NULL;
+        LibretroCore.memoryMapDescriptorCount = 0;
+    }
 }
 
 /**
