@@ -73,7 +73,7 @@ extern "C" {
 static int GetLibretroTouchButtons(TouchControlsButton* btns, int w, int h) {
     float ref  = (float)((w < h) ? w : h);
     float sc   = LibretroTouchScale;
-    float bs   = ref * 0.12f * sc;   // D-pad / select / start button size
+    float bs   = ref * 0.13f * sc;   // D-pad / select / start button size
     float fbs  = ref * 0.15f * sc;   // face button size
     float edge = ref * 0.02f;        // margin from screen edges
 
