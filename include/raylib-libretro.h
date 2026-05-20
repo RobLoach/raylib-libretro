@@ -1647,11 +1647,12 @@ static void UpdateLibretro(void) {
         }
 
         // Build a per-key char map by draining both queues in tandem.
-        int keyCharMap[512] = {0};
+        // KEY_KB_MENU (348) is the highest raylib key code.
+        int keyCharMap[350] = {0};
         int pressedKey;
         while ((pressedKey = GetKeyPressed()) != 0) {
             int pressedChar = GetCharPressed();
-            if (pressedKey < 512) {
+            if (pressedKey < 350) {
                 keyCharMap[pressedKey] = pressedChar;
             }
         }
@@ -1730,13 +1731,11 @@ static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *
     {
        for (w = 0; w < width; w++)
        {
-            uint8_t r   = (input[w] >> 16) & 0xff;
-            uint8_t g   = (input[w] >> 8) & 0xff;
-            uint8_t b   = (input[w]) & 0xff;
-            uint8_t a   = 0xff;
-
-            // Force the alpha channel
-            output[w]    = (a << 24) | (b << 16) | (g << 8) | r;
+            uint32_t xrgb = input[w];
+            output[w] = ((xrgb >> 16) & 0xFF)   // R = byte 0
+                      | (xrgb & 0xFF00)         // G = byte 1
+                      | ((xrgb & 0xFF) << 16)   // B = byte 2
+                      | 0xFF000000;             // A = 0xFF
        }
     }
 }
@@ -1788,7 +1787,7 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         break;
         case RETRO_PIXEL_FORMAT_0RGB1555: {
             LibretroMapPixelFormatARGB1555ToRGB565(LibretroCore.frameBuffer, data, width, height,
-                GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R5G6B5),
+                (int)(width * 2),
                 pitch);
             UpdateTexture(LibretroCore.texture, LibretroCore.frameBuffer);
         }
@@ -1798,7 +1797,7 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
             // Core: BSNES
             LibretroMapPixelFormatARGB8888ToRGBA8888(LibretroCore.frameBuffer, data,
                 width, height,
-                GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8), pitch);
+                (int)(width * 4), pitch);
             UpdateTexture(LibretroCore.texture, LibretroCore.frameBuffer);
         }
         break;
@@ -1824,10 +1823,27 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
             // Return a bitmask of all buttons when requested.
             if (id == RETRO_DEVICE_ID_JOYPAD_MASK) {
                 int16_t mask = 0;
+                bool gpAvail = IsGamepadAvailable((int)port);
                 for (int btn = 0; btn < 16; btn++) {
-                    if (LibretroInputState(port, RETRO_DEVICE_JOYPAD, index, btn)) {
-                        mask |= (1 << btn);
+                    bool pressed = false;
+                    if (port == 0) {
+                        if (btn < 16 && LibretroCore.virtualJoypadState[btn]) {
+                            pressed = true;
+                        } else if (gpAvail) {
+                            int gamepadButton = LibretroMapRetroJoypadButtonToGamepadButton(btn);
+                            pressed = (gamepadButton != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gamepadButton));
+                        }
+                        if (!pressed) {
+                            int retroKey = LibretroMapRetroJoypadButtonToRetroKey(btn);
+                            if (retroKey != RETROK_UNKNOWN) {
+                                int raylibKey = LibretroMapRetroKeyToKeyboardKey(retroKey);
+                                pressed = (raylibKey > 0 && IsKeyDown(raylibKey));
+                            }
+                        }
+                    } else if (gpAvail) {
+                        pressed = IsGamepadButtonDown((int)port, LibretroMapRetroJoypadButtonToGamepadButton(btn));
                     }
+                    if (pressed) mask |= (1 << btn);
                 }
                 return mask;
             }
@@ -2017,20 +2033,19 @@ static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames) {
     }
 
     static const float scale = 1.0f / 32768.0f;
-    size_t write_pos = LibretroCore.audioRingWritePos;
-    size_t wfirst = LibretroCore.audioRingBufferSize - write_pos;
+    size_t wfirst = LibretroCore.audioRingBufferSize - LibretroCore.audioRingWritePos;
     if (wfirst > frames_to_write) wfirst = frames_to_write;
     size_t wsecond = frames_to_write - wfirst;
     for (size_t i = 0; i < wfirst; i++) {
-        LibretroCore.audioRingBuffer[(write_pos + i) * 2]     = (float)data[i * 2]     * scale;
-        LibretroCore.audioRingBuffer[(write_pos + i) * 2 + 1] = (float)data[i * 2 + 1] * scale;
+        LibretroCore.audioRingBuffer[(LibretroCore.audioRingWritePos + i) * 2]     = (float)data[i * 2]     * scale;
+        LibretroCore.audioRingBuffer[(LibretroCore.audioRingWritePos + i) * 2 + 1] = (float)data[i * 2 + 1] * scale;
     }
     for (size_t i = 0; i < wsecond; i++) {
         LibretroCore.audioRingBuffer[i * 2]     = (float)data[(wfirst + i) * 2]     * scale;
         LibretroCore.audioRingBuffer[i * 2 + 1] = (float)data[(wfirst + i) * 2 + 1] * scale;
     }
 
-    LibretroCore.audioRingWritePos = (write_pos + frames_to_write) % LibretroCore.audioRingBufferSize;
+    LibretroCore.audioRingWritePos = (LibretroCore.audioRingWritePos + frames_to_write) % LibretroCore.audioRingBufferSize;
     LibretroCore.audioRingAvailable += frames_to_write;
 
     return frames_to_write;

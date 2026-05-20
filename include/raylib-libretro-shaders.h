@@ -118,6 +118,7 @@ typedef struct ShaderNTSCParams {
 typedef struct LibretroShaderState {
     Shader shader;
     LibretroShaderType type;
+    bool paramsDirty;
     union {
         ShaderCRTParams            crt;
         ShaderScanlinesParams      scanlines;
@@ -426,6 +427,7 @@ LibretroShaderState LoadLibretroShaderEx(LibretroShaderType type, const void *pa
 
         default: break;
     }
+    state.paramsDirty = false;
     return state;
 }
 
@@ -447,59 +449,72 @@ void UpdateLibretroShader(LibretroShaderState *state, float dt) {
         case LIBRETRO_SHADER_CRT: {
             ShaderCRTParams *p = &state->params.crt;
             if (resized) rlsh_set_resolution(state->shader, p->loc_resolution);
-            SetShaderValue(state->shader, p->loc_brightness,        &p->brightness,        SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_scanlineIntensity, &p->scanlineIntensity, SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_curvatureRadius,   &p->curvatureRadius,   SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_cornerSize,        &p->cornerSize,        SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_cornerSmooth,      &p->cornerSmooth,      SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_curvature,         &p->curvature,         SHADER_UNIFORM_INT);
-            SetShaderValue(state->shader, p->loc_border,            &p->border,            SHADER_UNIFORM_INT);
+            if (state->paramsDirty) {
+                SetShaderValue(state->shader, p->loc_brightness,        &p->brightness,        SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_scanlineIntensity, &p->scanlineIntensity, SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_curvatureRadius,   &p->curvatureRadius,   SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_cornerSize,        &p->cornerSize,        SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_cornerSmooth,      &p->cornerSmooth,      SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_curvature,         &p->curvature,         SHADER_UNIFORM_INT);
+                SetShaderValue(state->shader, p->loc_border,            &p->border,            SHADER_UNIFORM_INT);
+            }
         } break;
 
         case LIBRETRO_SHADER_SCANLINES: {
             ShaderScanlinesParams *p = &state->params.scanlines;
             p->time += dt;
-            SetShaderValue(state->shader, p->loc_frequency, &p->frequency, SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_opacity,   &p->opacity,   SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_offset,    &p->offset,    SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_time,      &p->time,      SHADER_UNIFORM_FLOAT);
+            if (state->paramsDirty) {
+                SetShaderValue(state->shader, p->loc_frequency, &p->frequency, SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_opacity,   &p->opacity,   SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_offset,    &p->offset,    SHADER_UNIFORM_FLOAT);
+            }
+            SetShaderValue(state->shader, p->loc_time, &p->time, SHADER_UNIFORM_FLOAT);
         } break;
 
         case LIBRETRO_SHADER_VIGNETTE: {
             ShaderVignetteParams *p = &state->params.vignette;
-            SetShaderValue(state->shader, p->loc_radius,    &p->radius,    SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_softness,  &p->softness,  SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_opacity,   &p->opacity,   SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_tintColor, &p->tintColor, SHADER_UNIFORM_VEC3);
+            if (state->paramsDirty) {
+                SetShaderValue(state->shader, p->loc_radius,    &p->radius,    SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_softness,  &p->softness,  SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_opacity,   &p->opacity,   SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_tintColor, &p->tintColor, SHADER_UNIFORM_VEC3);
+            }
         } break;
 
         case LIBRETRO_SHADER_GRAYSCALE: {
             ShaderGrayscaleParams *p = &state->params.grayscale;
-            SetShaderValue(state->shader, p->loc_saturation,  &p->saturation,  SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_tintColor,   &p->tintColor,   SHADER_UNIFORM_VEC3);
-            SetShaderValue(state->shader, p->loc_lumaWeights, &p->lumaWeights, SHADER_UNIFORM_VEC3);
+            if (state->paramsDirty) {
+                SetShaderValue(state->shader, p->loc_saturation,  &p->saturation,  SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_tintColor,   &p->tintColor,   SHADER_UNIFORM_VEC3);
+                SetShaderValue(state->shader, p->loc_lumaWeights, &p->lumaWeights, SHADER_UNIFORM_VEC3);
+            }
         } break;
 
         case LIBRETRO_SHADER_NTSC: {
             ShaderNTSCParams *p = &state->params.ntsc;
             p->time += dt;
             if (resized) rlsh_set_resolution(state->shader, p->loc_resolution);
-            SetShaderValue(state->shader, p->loc_chromaBleed,   &p->chromaBleed,   SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_noiseAmount,   &p->noiseAmount,   SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_dotCrawlSpeed, &p->dotCrawlSpeed, SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_sharpness,     &p->sharpness,     SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state->shader, p->loc_time,          &p->time,          SHADER_UNIFORM_FLOAT);
+            if (state->paramsDirty) {
+                SetShaderValue(state->shader, p->loc_chromaBleed,   &p->chromaBleed,   SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_noiseAmount,   &p->noiseAmount,   SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_dotCrawlSpeed, &p->dotCrawlSpeed, SHADER_UNIFORM_FLOAT);
+                SetShaderValue(state->shader, p->loc_sharpness,     &p->sharpness,     SHADER_UNIFORM_FLOAT);
+            }
+            SetShaderValue(state->shader, p->loc_time, &p->time, SHADER_UNIFORM_FLOAT);
         } break;
 
         case LIBRETRO_SHADER_XBRZ: {
             ShaderXBRZParams *p = &state->params.xbrz;
-            // xBRZ needs the proper texture width/height.
-            Vector2 res = { (float)GetLibretroWidth(), (float)GetLibretroHeight() };
-            SetShaderValue(state->shader, p->loc_resolution, &res, SHADER_UNIFORM_VEC2);
+            if (state->paramsDirty || resized) {
+                Vector2 res = { (float)GetLibretroWidth(), (float)GetLibretroHeight() };
+                SetShaderValue(state->shader, p->loc_resolution, &res, SHADER_UNIFORM_VEC2);
+            }
         } break;
 
         default: break;
     }
+
+    state->paramsDirty = false;
 }
 
 /* ----------------------------------------------------------------
