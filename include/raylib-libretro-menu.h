@@ -608,8 +608,8 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
 
 LibretroMenu* InitLibretroMenu(void) {
     int screenWidth = GetScreenWidth();
-    int menuScale = (screenWidth >= 2560) ? 3 : (screenWidth >= 1280) ? 2 : 1;
-    int fontSize = 13 * menuScale;
+    //int menuScale = (screenWidth >= 2560) ? 3 : (screenWidth >= 1280) ? 2 : 1;
+    int fontSize = 13;// * menuScale;
     menu = (LibretroMenu){0};
     menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
     menu.volumeSelected = 1.0f;
@@ -644,7 +644,6 @@ LibretroMenu* InitLibretroMenu(void) {
         UnloadFont(menu.font);
         return NULL;
     }
-    SetNuklearScaling(menu.ctx, (float)menuScale);
 
     menu.console = nk_console_init(menu.ctx);
     if (!menu.console) {
@@ -1249,10 +1248,16 @@ void UpdateLibretroMenu(void) {
 
     menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
 
+    // Scaling
+    float scaling = (GetScreenWidth() >= 2560) ? 4.0f : (GetScreenWidth() >= 1280) ? 3.0f : 2.0f;
+    SetNuklearScaling(menu.ctx, scaling);
+
+    // Input & Update
     nk_gamepad_update(nk_console_get_gamepads(menu.console));
     UpdateNuklear(menu.ctx);
 
-    struct nk_rect windowPos = nk_rect(0, 0, (float)GetScreenWidth(), (float)GetScreenHeight());
+    // Render
+    struct nk_rect windowPos = nk_rect(0, 0, (float)GetScreenWidth()/scaling, (float)GetScreenHeight()/scaling);
     nk_console_render_window(menu.console, "raylib-libretro", windowPos, NK_WINDOW_SCROLL_AUTO_HIDE);
 }
 
