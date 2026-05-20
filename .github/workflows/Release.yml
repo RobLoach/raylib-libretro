@@ -94,18 +94,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Setup Android NDK
-        id: setup-ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r26d
       - name: Generate Gradle wrapper
         working-directory: android
         run: gradle wrapper --gradle-version 8.6 --distribution-type bin
       - name: Build APK
         working-directory: android
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: ./gradlew assembleRelease
       - name: Upload
         uses: actions/upload-release-asset@v1
