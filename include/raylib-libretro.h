@@ -2771,6 +2771,19 @@ static void UnloadLibretroGame(void) {
         LibretroCore.persistentGameData = NULL;
         LibretroCore.persistentGameDataSize = 0;
     }
+
+    // Free memory map descriptors — these are game-specific and must not
+    // outlive the game that provided them.
+    if (LibretroCore.memoryMapDescriptors) {
+        for (unsigned i = 0; i < LibretroCore.memoryMapDescriptorCount; i++) {
+            if (LibretroCore.memoryMapDescriptors[i].addrspace) {
+                MemFree((void*)LibretroCore.memoryMapDescriptors[i].addrspace);
+            }
+        }
+        MemFree(LibretroCore.memoryMapDescriptors);
+        LibretroCore.memoryMapDescriptors = NULL;
+        LibretroCore.memoryMapDescriptorCount = 0;
+    }
 }
 
 /**
