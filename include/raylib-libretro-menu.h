@@ -100,10 +100,7 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
-    nk_rune keyP1B, keyP1Y, keyP1Select, keyP1Start;
-    nk_rune keyP1Up, keyP1Down, keyP1Left, keyP1Right;
-    nk_rune keyP1A, keyP1X, keyP1L, keyP1R;
-    nk_rune keyP1L2, keyP1R2, keyP1L3, keyP1R3;
+    nk_rune keyboardP1[16]; // Indexed by RETRO_DEVICE_ID_JOYPAD_*
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
 #endif
@@ -640,22 +637,22 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.fastForwardSpeed = 3;
     menu.keySlowMotion = (nk_rune)'G';
     menu.slowMotionSpeed = 0.5f;
-    menu.keyP1B      = (nk_rune)'Z';
-    menu.keyP1Y      = (nk_rune)'A';
-    menu.keyP1Select = (nk_rune)NK_KEY_SHIFT;
-    menu.keyP1Start  = (nk_rune)NK_KEY_ENTER;
-    menu.keyP1Up     = (nk_rune)NK_KEY_UP;
-    menu.keyP1Down   = (nk_rune)NK_KEY_DOWN;
-    menu.keyP1Left   = (nk_rune)NK_KEY_LEFT;
-    menu.keyP1Right  = (nk_rune)NK_KEY_RIGHT;
-    menu.keyP1A      = (nk_rune)'X';
-    menu.keyP1X      = (nk_rune)'S';
-    menu.keyP1L      = (nk_rune)'Q';
-    menu.keyP1R      = (nk_rune)'W';
-    menu.keyP1L2     = (nk_rune)'E';
-    menu.keyP1R2     = (nk_rune)'R';
-    menu.keyP1L3     = (nk_rune)'D';
-    menu.keyP1R3     = (nk_rune)'F';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]      = (nk_rune)'Z';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]      = (nk_rune)'A';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT] = (nk_rune)NK_KEY_SHIFT;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]  = (nk_rune)NK_KEY_ENTER;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]     = (nk_rune)NK_KEY_UP;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]   = (nk_rune)NK_KEY_DOWN;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]   = (nk_rune)NK_KEY_LEFT;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]  = (nk_rune)NK_KEY_RIGHT;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]      = (nk_rune)'X';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]      = (nk_rune)'S';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]      = (nk_rune)'Q';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]      = (nk_rune)'W';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]     = (nk_rune)'E';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]     = (nk_rune)'R';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]     = (nk_rune)'D';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]     = (nk_rune)'F';
     menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
         return NULL;
@@ -818,22 +815,22 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console* kbTree = nk_console_tree(settings, "Keyboard Controls", nk_false);
         {
             nk_console* w;
-            w = nk_console_key(kbTree, "B",      &menu.keyP1B);
-            w = nk_console_key(kbTree, "Y",      &menu.keyP1Y);
-            w = nk_console_key(kbTree, "Select", &menu.keyP1Select);
-            w = nk_console_key(kbTree, "Start",  &menu.keyP1Start);
-            w = nk_console_key(kbTree, "Up",     &menu.keyP1Up);
-            w = nk_console_key(kbTree, "Down",   &menu.keyP1Down);
-            w = nk_console_key(kbTree, "Left",   &menu.keyP1Left);
-            w = nk_console_key(kbTree, "Right",  &menu.keyP1Right);
-            w = nk_console_key(kbTree, "A",      &menu.keyP1A);
-            w = nk_console_key(kbTree, "X",      &menu.keyP1X);
-            w = nk_console_key(kbTree, "L",      &menu.keyP1L);
-            w = nk_console_key(kbTree, "R",      &menu.keyP1R);
-            w = nk_console_key(kbTree, "L2",     &menu.keyP1L2);
-            w = nk_console_key(kbTree, "R2",     &menu.keyP1R2);
-            w = nk_console_key(kbTree, "L3",     &menu.keyP1L3);
-            w = nk_console_key(kbTree, "R3",     &menu.keyP1R3);
+            w = nk_console_key(kbTree, "B",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]);
+            w = nk_console_key(kbTree, "Y",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]);
+            w = nk_console_key(kbTree, "Select", &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT]);
+            w = nk_console_key(kbTree, "Start",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]);
+            w = nk_console_key(kbTree, "Up",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]);
+            w = nk_console_key(kbTree, "Down",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]);
+            w = nk_console_key(kbTree, "Left",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]);
+            w = nk_console_key(kbTree, "Right",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]);
+            w = nk_console_key(kbTree, "A",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]);
+            w = nk_console_key(kbTree, "X",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]);
+            w = nk_console_key(kbTree, "L",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]);
+            w = nk_console_key(kbTree, "R",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]);
+            w = nk_console_key(kbTree, "L2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]);
+            w = nk_console_key(kbTree, "R2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]);
+            w = nk_console_key(kbTree, "L3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]);
+            w = nk_console_key(kbTree, "R3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]);
         }
 
         // Directories
@@ -1060,42 +1057,16 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroResolveAbsoluteDirectory(menu.systemDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroResolveAbsoluteDirectory(menu.playlistsDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory", LibretroResolveAbsoluteDirectory(menu.fileBrowserStartDirectory));
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1B",      (int)menu.keyP1B);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1Y",      (int)menu.keyP1Y);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1Select", (int)menu.keyP1Select);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1Start",  (int)menu.keyP1Start);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1Up",     (int)menu.keyP1Up);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1Down",   (int)menu.keyP1Down);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1Left",   (int)menu.keyP1Left);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1Right",  (int)menu.keyP1Right);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1A",      (int)menu.keyP1A);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1X",      (int)menu.keyP1X);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1L",      (int)menu.keyP1L);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1R",      (int)menu.keyP1R);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1L2",     (int)menu.keyP1L2);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1R2",     (int)menu.keyP1R2);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1L3",     (int)menu.keyP1L3);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyP1R3",     (int)menu.keyP1R3);
+    for (int i = 0; i < 16; i++) {
+        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("keyP1[%d]", i), (int)menu.keyboardP1[i]);
+    }
 #endif
 }
 
 static void LibretroMenuApplyKeyboardPlayer1(void) {
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B]      = (int)NuklearKeyToKeyboardKey(menu.keyP1B);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_Y]      = (int)NuklearKeyToKeyboardKey(menu.keyP1Y);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_SELECT] = (int)NuklearKeyToKeyboardKey(menu.keyP1Select);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_START]  = (int)NuklearKeyToKeyboardKey(menu.keyP1Start);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_UP]     = (int)NuklearKeyToKeyboardKey(menu.keyP1Up);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_DOWN]   = (int)NuklearKeyToKeyboardKey(menu.keyP1Down);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_LEFT]   = (int)NuklearKeyToKeyboardKey(menu.keyP1Left);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_RIGHT]  = (int)NuklearKeyToKeyboardKey(menu.keyP1Right);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_A]      = (int)NuklearKeyToKeyboardKey(menu.keyP1A);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_X]      = (int)NuklearKeyToKeyboardKey(menu.keyP1X);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_L]      = (int)NuklearKeyToKeyboardKey(menu.keyP1L);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R]      = (int)NuklearKeyToKeyboardKey(menu.keyP1R);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_L2]     = (int)NuklearKeyToKeyboardKey(menu.keyP1L2);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R2]     = (int)NuklearKeyToKeyboardKey(menu.keyP1R2);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_L3]     = (int)NuklearKeyToKeyboardKey(menu.keyP1L3);
-    LibretroCore.keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3]     = (int)NuklearKeyToKeyboardKey(menu.keyP1R3);
+    for (int i = 0; i < 16; i++) {
+        LibretroCore.keyboardPlayer1[i] = (int)NuklearKeyToKeyboardKey(menu.keyboardP1[i]);
+    }
 }
 
 static bool SaveLibretroMenuSettings(void) {
@@ -1246,22 +1217,22 @@ static bool LoadLibretroMenuSettings(void) {
     const char* fileBrowserStartDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory");
     if (fileBrowserStartDirectory) TextCopy(menu.fileBrowserStartDirectory, fileBrowserStartDirectory);
 
-    menu.keyP1B      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1B",      (int)menu.keyP1B);
-    menu.keyP1Y      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Y",      (int)menu.keyP1Y);
-    menu.keyP1Select = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Select", (int)menu.keyP1Select);
-    menu.keyP1Start  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Start",  (int)menu.keyP1Start);
-    menu.keyP1Up     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Up",     (int)menu.keyP1Up);
-    menu.keyP1Down   = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Down",   (int)menu.keyP1Down);
-    menu.keyP1Left   = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Left",   (int)menu.keyP1Left);
-    menu.keyP1Right  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Right",  (int)menu.keyP1Right);
-    menu.keyP1A      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1A",      (int)menu.keyP1A);
-    menu.keyP1X      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1X",      (int)menu.keyP1X);
-    menu.keyP1L      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1L",      (int)menu.keyP1L);
-    menu.keyP1R      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1R",      (int)menu.keyP1R);
-    menu.keyP1L2     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1L2",     (int)menu.keyP1L2);
-    menu.keyP1R2     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1R2",     (int)menu.keyP1R2);
-    menu.keyP1L3     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1L3",     (int)menu.keyP1L3);
-    menu.keyP1R3     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1R3",     (int)menu.keyP1R3);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1B",      (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Y",      (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT] = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Select", (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Start",  (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Up",     (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]   = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Down",   (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]   = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Left",   (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1Right",  (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1A",      (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1X",      (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1L",      (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]      = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1R",      (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1L2",     (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1R2",     (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1L3",     (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]);
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyP1R3",     (int)menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]);
     LibretroMenuApplyKeyboardPlayer1();
 
     TraceLog(LOG_INFO, "MENU: Loaded menu settings from %s", RAYLIB_LIBRETRO_CFG_FILE);
