@@ -136,6 +136,7 @@ typedef struct {
     float savedVolume;
     bool muted;
     float savedVolumeBeforeMute;
+    bool pendingMenuOpen;
 } AppData;
 
 bool Init(void** userData, int argc, char** argv) {
@@ -207,13 +208,20 @@ bool Init(void** userData, int argc, char** argv) {
 bool Update(void* userData) {
     AppData* data = (AppData*)userData;
 
+    // Deferred menu open: apply after input has refreshed so the release event
+    // that triggered the MENU touch button is gone before Nuklear processes input.
+    if (data->pendingMenuOpen) {
+        data->menu->active = true;
+        data->pendingMenuOpen = false;
+    }
+
     // Update virtual joypad from touch controls.
     if (data->menu->touchControls) {
         SetTouchHapticsEnabled(data->menu->touchHapticsEnabled);
         if (!data->menu->active) {
             UpdateTouchControls();
             if (IsTouchControlsMenuPressed()) {
-                data->menu->active = true;
+                data->pendingMenuOpen = true;
             }
         } else {
             memset(LibretroCore.virtualJoypadState, 0, sizeof(LibretroCore.virtualJoypadState));
