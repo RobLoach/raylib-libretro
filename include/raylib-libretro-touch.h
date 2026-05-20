@@ -67,8 +67,8 @@ extern "C" {
 // clusters are each 3x3 grids: D-pad uses a cross, face buttons use a diamond.
 static int LibretroTouchBuildButtons(TouchControlsButton* btns, int w, int h) {
     float ref  = (float)((w < h) ? w : h);
-    float bs   = ref * 0.13f;   // D-pad / select / start button size
-    float fbs  = ref * 0.13f;   // face button size
+    float bs   = ref * 0.12f;   // D-pad / select / start button size
+    float fbs  = ref * 0.12f;   // face button size
     float edge = ref * 0.02f;   // margin from screen edges
 
     // D-pad: bottom-left, cross layout, buttons touching (no gap)
@@ -466,7 +466,7 @@ void DrawTouchControls(void) {
             if (dist > dr * 0.15f) {
                 Vector2 dir = { ddx / dist, ddy / dist };
                 Vector2 indicatorPos = { dc.x + dir.x * dr * 0.82f, dc.y + dir.y * dr * 0.82f };
-                DrawCircleV(indicatorPos, dr * 0.13f,
+                DrawCircleV(indicatorPos, dr * 0.12f,
                     LibretroTouchFadeColor((Color){ 255, 255, 255, 220 }, alpha));
             }
         }
