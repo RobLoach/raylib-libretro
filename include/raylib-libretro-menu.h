@@ -1301,7 +1301,7 @@ void UpdateLibretroMenu(void) {
 
     // Render
     struct nk_rect windowPos = nk_rect(0, 0, (float)GetScreenWidth()/scaling, (float)GetScreenHeight()/scaling);
-    nk_console_render_window(menu.console, "raylib-libretro", windowPos, NK_WINDOW_SCROLL_AUTO_HIDE);
+    nk_console_render_window(menu.console, "raylib-libretro", windowPos, NK_WINDOW_SCROLL_AUTO_HIDE | NK_WINDOW_TITLE);
 }
 
 void DrawLibretroMenu(void) {
