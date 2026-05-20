@@ -100,6 +100,10 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
+    nk_console* infoCoreLabel;
+    nk_console* infoGamepadLabels[4];
+    char infoCoreText[128];
+    char infoGamepadText[4][64];
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
 #endif
@@ -824,6 +828,46 @@ LibretroMenu* InitLibretroMenu(void) {
             NK_SYMBOL_TRIANGLE_LEFT);
     }
 
+    // Information
+    {
+        nk_console* infoMenu = nk_console_button(menu.console, "Information");
+        nk_console_button_set_symbol(
+            nk_console_button_onclick(infoMenu, "Back", &nk_console_button_back),
+            NK_SYMBOL_TRIANGLE_LEFT);
+
+        // Core
+        nk_console_label(infoMenu, "Core:");
+        menu.infoCoreLabel = nk_console_label(infoMenu, "");
+
+        // Gamepads
+        nk_console_label(infoMenu, "Gamepads:");
+        for (int gi = 0; gi < 4; gi++) {
+            menu.infoGamepadLabels[gi] = nk_console_label(infoMenu, "");
+        }
+
+        // PhysFS
+        nk_console_label(infoMenu, "PhysFS: "
+#ifdef RAYLIB_PHYSFS_H
+            "Yes"
+#else
+            "No"
+#endif
+        );
+
+        // raylib version
+        nk_console_label(infoMenu, "raylib: " RAYLIB_VERSION);
+
+        // Cores directory
+        nk_console_label(infoMenu, "Cores:");
+        if (menu.coreDirectory[0] != '\0') {
+            FilePathList cores = LoadDirectoryFilesEx(menu.coreDirectory, "_libretro", false);
+            for (unsigned int ci = 0; ci < cores.count; ci++) {
+                nk_console_label(infoMenu, GetFileName(cores.paths[ci]));
+            }
+            UnloadDirectoryFiles(cores);
+        }
+    }
+
     // Quit
     nk_console* quitButton = nk_console_button(menu.console, "Quit");
     nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuQuitClicked);
@@ -1288,6 +1332,30 @@ void UpdateLibretroMenu(void) {
     }
 
     UpdateLibretroMenuVisibility();
+
+    // Update Information labels
+    if (menu.infoCoreLabel != NULL) {
+        if (IsLibretroReady()) {
+            snprintf(menu.infoCoreText, sizeof(menu.infoCoreText), "%s %s",
+                GetLibretroName(), GetLibretroVersion());
+        } else {
+            TextCopy(menu.infoCoreText, "None");
+        }
+        nk_console_set_label(menu.infoCoreLabel, menu.infoCoreText, (int)strlen(menu.infoCoreText));
+    }
+    for (int gi = 0; gi < 4; gi++) {
+        if (menu.infoGamepadLabels[gi] != NULL) {
+            if (IsGamepadAvailable(gi)) {
+                snprintf(menu.infoGamepadText[gi], sizeof(menu.infoGamepadText[gi]),
+                    "[%d] %s", gi, GetGamepadName(gi));
+            } else {
+                snprintf(menu.infoGamepadText[gi], sizeof(menu.infoGamepadText[gi]),
+                    "[%d] Not connected", gi);
+            }
+            nk_console_set_label(menu.infoGamepadLabels[gi], menu.infoGamepadText[gi],
+                (int)strlen(menu.infoGamepadText[gi]));
+        }
+    }
 
     menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
 
