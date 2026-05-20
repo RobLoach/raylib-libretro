@@ -101,11 +101,12 @@ static int LibretroTouchBuildButtons(TouchControlsButton* btns, int w, int h) {
     btns[n++] = (TouchControlsButton){{ cx,               cy, bs, bs }, RETRO_DEVICE_ID_JOYPAD_SELECT, "SEL", GRAY };
     btns[n++] = (TouchControlsButton){{ cx + bs + selGap, cy, bs, bs }, RETRO_DEVICE_ID_JOYPAD_START,  "STA", GRAY };
 
-    // Shoulder buttons: L above the D-pad, R above the face buttons
-    float lbw = 3*bs, rbw = 3*fbs;
-    float shy  = ref * 0.02f;  // gap above each cluster
-    btns[n++] = (TouchControlsButton){{ dx,      dy - bs  - shy, lbw, bs  }, RETRO_DEVICE_ID_JOYPAD_L, "L", DARKGRAY };
-    btns[n++] = (TouchControlsButton){{ fx,      fy - fbs - shy, rbw, fbs }, RETRO_DEVICE_ID_JOYPAD_R, "R", DARKGRAY };
+    // Shoulder buttons: both on the right, side by side above the face buttons
+    float shGap = ref * 0.01f;
+    float shW   = (3*bs - shGap) * 0.5f;
+    float shY   = fy - bs - ref * 0.02f;
+    btns[n++] = (TouchControlsButton){{ fx,              shY, shW, bs }, RETRO_DEVICE_ID_JOYPAD_L, "L", DARKGRAY };
+    btns[n++] = (TouchControlsButton){{ fx + shW + shGap, shY, shW, bs }, RETRO_DEVICE_ID_JOYPAD_R, "R", DARKGRAY };
     return n;
 }
 
