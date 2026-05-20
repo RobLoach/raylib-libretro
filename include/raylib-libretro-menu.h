@@ -919,6 +919,20 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
         return;
     }
 
+    // Count how many options will actually be shown. If none are visible
+    // (e.g. all hidden by options_update_display_callback), hide the button
+    // rather than showing an empty submenu.
+    int shownCount = 0;
+    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
+        if (TextLength(LibretroCore.variableValuesList[i]) > 0 && LibretroCore.variableVisible[i]) {
+            shownCount++;
+        }
+    }
+    if (shownCount == 0) {
+        m->optionsMenu->visible = nk_false;
+        return;
+    }
+
     m->optionsMenu->visible = nk_true;
 
     nk_console_button_set_symbol(
@@ -1193,7 +1207,23 @@ static void UpdateLibretroMenuVisibility(void) {
 
     // Disable game-dependent items when no game is loaded.
     nk_bool gameReady = (nk_bool)IsLibretroGameReady();
-    if (menu.optionsMenu) menu.optionsMenu->visible = LibretroCore.variableCount > 0 && IsLibretroReady();
+
+    // Show "Core Options" only when at least one visible option exists. This
+    // prevents an empty submenu when all options are hidden by the core's
+    // options_update_display_callback (e.g. PicoDrive hiding platform-specific
+    // options until visibility is resolved after the first retro_run frame).
+    if (menu.optionsMenu && IsLibretroReady()) {
+        int visibleOptions = 0;
+        for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
+            if (TextLength(LibretroCore.variableValuesList[i]) > 0 && LibretroCore.variableVisible[i]) {
+                visibleOptions++;
+                break;
+            }
+        }
+        menu.optionsMenu->visible = (nk_bool)(visibleOptions > 0);
+    } else if (menu.optionsMenu) {
+        menu.optionsMenu->visible = nk_false;
+    }
     if (menu.saveStateButton) {
         //menu.saveStateButton->visible = gameReady;
         menu.saveStateButton->parent->visible = gameReady;
@@ -1240,6 +1270,15 @@ void UpdateLibretroMenu(void) {
     bool coreChanged  = !TextIsEqual(lastBuiltCoreName, LibretroCore.libraryName);
 
     if (LibretroCore.variablesVisibilityDirty || countChanged || coreChanged || menuJustOpened) {
+        // When the menu first opens and the game is running, invoke the display
+        // callback to get the latest visibility state. Cores like PicoDrive call
+        // SET_CORE_OPTIONS_DISPLAY during retro_load_game to set initial
+        // visibility, but the callback may resolve it differently after the
+        // first retro_run frame. Invoking it here ensures the menu always opens
+        // with up-to-date option visibility even if no frames have run yet.
+        if (menuJustOpened && LibretroCore.options_update_display_callback && IsLibretroGameReady()) {
+            LibretroCore.options_update_display_callback();
+        }
         BuildLibretroMenuOptions(&menu);
         LibretroCore.variablesVisibilityDirty = false;
         lastBuiltVariableCount = LibretroCore.variableCount;
