@@ -1989,10 +1989,12 @@ static void LibretroAudioStreamCallback(void *audioData, unsigned int frameCount
     }
 
     size_t read_pos = (LibretroCore.audioRingWritePos + LibretroCore.audioRingBufferSize - LibretroCore.audioRingAvailable) % LibretroCore.audioRingBufferSize;
-    for (size_t i = 0; i < frames_to_read; i++) {
-        size_t idx = (read_pos + i) % LibretroCore.audioRingBufferSize;
-        output[i * 2]     = LibretroCore.audioRingBuffer[idx * 2];
-        output[i * 2 + 1] = LibretroCore.audioRingBuffer[idx * 2 + 1];
+    size_t first_chunk = LibretroCore.audioRingBufferSize - read_pos;
+    if (first_chunk > frames_to_read) first_chunk = frames_to_read;
+    size_t second_chunk = frames_to_read - first_chunk;
+    memcpy(output, LibretroCore.audioRingBuffer + read_pos * 2, first_chunk * 2 * sizeof(float));
+    if (second_chunk > 0) {
+        memcpy(output + first_chunk * 2, LibretroCore.audioRingBuffer, second_chunk * 2 * sizeof(float));
     }
 
     LibretroCore.audioRingAvailable -= frames_to_read;
@@ -2014,13 +2016,21 @@ static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames) {
         return 0;
     }
 
-    for (size_t i = 0; i < frames_to_write; i++) {
-        size_t idx = (LibretroCore.audioRingWritePos + i) % LibretroCore.audioRingBufferSize;
-        LibretroCore.audioRingBuffer[idx * 2]     = (float)data[i * 2]     / 32768.0f;
-        LibretroCore.audioRingBuffer[idx * 2 + 1] = (float)data[i * 2 + 1] / 32768.0f;
+    static const float scale = 1.0f / 32768.0f;
+    size_t write_pos = LibretroCore.audioRingWritePos;
+    size_t wfirst = LibretroCore.audioRingBufferSize - write_pos;
+    if (wfirst > frames_to_write) wfirst = frames_to_write;
+    size_t wsecond = frames_to_write - wfirst;
+    for (size_t i = 0; i < wfirst; i++) {
+        LibretroCore.audioRingBuffer[(write_pos + i) * 2]     = (float)data[i * 2]     * scale;
+        LibretroCore.audioRingBuffer[(write_pos + i) * 2 + 1] = (float)data[i * 2 + 1] * scale;
+    }
+    for (size_t i = 0; i < wsecond; i++) {
+        LibretroCore.audioRingBuffer[i * 2]     = (float)data[(wfirst + i) * 2]     * scale;
+        LibretroCore.audioRingBuffer[i * 2 + 1] = (float)data[(wfirst + i) * 2 + 1] * scale;
     }
 
-    LibretroCore.audioRingWritePos = (LibretroCore.audioRingWritePos + frames_to_write) % LibretroCore.audioRingBufferSize;
+    LibretroCore.audioRingWritePos = (write_pos + frames_to_write) % LibretroCore.audioRingBufferSize;
     LibretroCore.audioRingAvailable += frames_to_write;
 
     return frames_to_write;
