@@ -1058,7 +1058,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroResolveAbsoluteDirectory(menu.playlistsDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory", LibretroResolveAbsoluteDirectory(menu.fileBrowserStartDirectory));
     for (int i = 0; i < 16; i++) {
-        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("keyboardP1_%d", i), (int)menu.keyboardP1[i]);
+        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("keyP1[%d]", i), (int)menu.keyboardP1[i]);
     }
 #endif
 }
