@@ -545,6 +545,17 @@ static bool MenuInitCore(const char* corePath) {
 }
 
 static bool MenuLoadGame(const char* gamePath) {
+    BeginDrawing();
+        ClearBackground(BLACK);
+        const char* loadingText = TextFormat("Loading %s", GetFileName(gamePath));
+        Font font = IsFontValid(menu.font) ? menu.font : GetFontDefault();
+        float fontSize = (float)font.baseSize;
+        Vector2 textSize = MeasureTextEx(font, loadingText, fontSize, 1);
+        DrawTextEx(font, loadingText,
+            (Vector2){ (GetScreenWidth() - textSize.x) / 2, (GetScreenHeight() - textSize.y) / 2 },
+            fontSize, 1, GRAY);
+    EndDrawing();
+
     // Unload the current game if it's a thing.
     if (IsLibretroGameReady()) {
         UnloadLibretroGame();
