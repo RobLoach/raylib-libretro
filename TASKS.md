@@ -5,7 +5,7 @@
 - [ ] Rebindable Inputs
 - [ ] History
 - [ ] Game library / ROM browser with box art thumbnails (RetroArch thumbnail packs)
-- [ ] On-screen display (OSD) for notifications (state saved, shader changed, etc.) using nk_console_show_message()
+- [x] On-screen display (OSD) for notifications (state saved, shader changed, etc.) using nk_console_show_message()
 
 ## Tasks
 
@@ -19,8 +19,8 @@
 
 ## Gameplay
 
-- [ ] Save state slots (multiple named saves per game)
-- [ ] SRAM / battery save auto-save on exit
+- [x] Save state slots (multiple named saves per game)
+- [x] SRAM / battery save auto-save on exit
 - [ ] Turbo button support
 - [ ] Cheats support (libretro cheat interface)
 - [ ] RetroAchievements integration (rcheevos)
@@ -30,7 +30,6 @@
 
 - [x] Audio volume control and mute toggle
 - [x] RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK and SET_MINIMUM_AUDIO_LATENCY
-- [ ] Aspect ratio options (pixel-perfect, stretch, 4:3 locked)
 - [ ] Integer scaling mode
 - [ ] Scanline / CRT shader presets
 - [ ] Frame limiter / VSync toggle

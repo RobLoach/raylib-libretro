@@ -82,6 +82,8 @@ static bool SetLibretroCoreOption(const char* key, const char* value);  // Set a
 static const char* GetLibretroCoreOption(const char* key);              // Get a core option value by key. Returns NULL if not found.
 static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
 static bool SetLibretroSerializedData(void* data, unsigned int size);
+static void* GetLibretroSRAMData(size_t* size);                  // Return a pointer to the core's SRAM region and its size. Returns NULL if no SRAM.
+static bool SetLibretroSRAMData(const void* data, size_t size);  // Copy data into the core's SRAM region. Clips to the region size if data is larger. Returns false if no SRAM.
 static void ShowLibretroMessage(const char* msg, float duration); // Show an OSD message for the given duration in seconds.
 static bool DrawLibretroMessage(void); // Displays the OSD message on the screen. Returns true if there was one.
 static const char* GetLibretroDirectory(int directory);
@@ -2770,6 +2772,32 @@ static void ResetLibretro(void) {
     if (IsLibretroReady() && LibretroCore.retro_reset) {
         LibretroCore.retro_reset();
     }
+}
+
+static void* GetLibretroSRAMData(size_t* size) {
+    if (!IsLibretroGameReady()) return NULL;
+    if (LibretroCore.retro_get_memory_data == NULL || LibretroCore.retro_get_memory_size == NULL) return NULL;
+
+    size_t sramSize = LibretroCore.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+    if (sramSize == 0) return NULL;
+
+    void* data = LibretroCore.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+    if (data == NULL) return NULL;
+
+    if (size != NULL) *size = sramSize;
+    return data;
+}
+
+static bool SetLibretroSRAMData(const void* data, size_t size) {
+    if (data == NULL || size == 0) return false;
+
+    size_t sramSize = 0;
+    void* sramDest = GetLibretroSRAMData(&sramSize);
+    if (sramDest == NULL) return false;
+
+    size_t copySize = size < sramSize ? size : sramSize;
+    memcpy(sramDest, data, copySize);
+    return true;
 }
 
 /**

@@ -345,6 +345,9 @@ static void LibretroApplyDirectories(void) {
     TextCopy(LibretroCore.systemDirectory,          menu.systemDirectory);
     TextCopy(LibretroCore.playlistsDirectory,       menu.playlistsDirectory);
     TextCopy(LibretroCore.fileBrowserStartDirectory, menu.fileBrowserStartDirectory);
+    if (menu.saveDirectory[0] != '\0' && !DirectoryExists(menu.saveDirectory)) {
+        MakeDirectory(menu.saveDirectory);
+    }
 }
 
 static void MenuDirChanged(nk_console* widget, void* user_data) {
@@ -544,6 +547,60 @@ static bool MenuInitCore(const char* corePath) {
     return true;
 }
 
+/**
+ * Load the battery save (SRAM) for the currently loaded game from disk.
+ *
+ * Constructs the save path as `<saveDir>/<contentName>.srm` and, if the file
+ * exists, reads it into the core's SRAM region via @ref SetLibretroSRAMData.
+ * Does nothing when no game is ready or the core has no SRAM region.
+ *
+ * @return true  if SRAM was found on disk and successfully applied.
+ * @return false if no game is ready, no SRAM region exists, or the file is absent.
+ */
+static bool MenuLoadGameSRAM(void) {
+    if (!IsLibretroGameReady()) return false;
+    const char* sramPath = TextFormat("%s/%s.srm",
+        GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY),
+        GetLibretroContentName());
+    if (!FileExists(sramPath)) return false;
+    int fileSize = 0;
+    unsigned char* fileData = LoadFileData(sramPath, &fileSize);
+    if (fileData == NULL || fileSize == 0) {
+        UnloadFileData(fileData);
+        return false;
+    }
+    bool ok = SetLibretroSRAMData(fileData, (size_t)fileSize);
+    UnloadFileData(fileData);
+    if (ok) TraceLog(LOG_INFO, "MENU: SRAM loaded from %s", sramPath);
+    return ok;
+}
+
+/**
+ * Save the battery save (SRAM) for the currently loaded game to disk.
+ *
+ * Constructs the save path as `<saveDir>/<contentName>.srm` and writes the
+ * core's SRAM region (obtained via @ref GetLibretroSRAMData) to that file.
+ * Does nothing when no game is ready or the core has no SRAM region.
+ *
+ * @return true  if SRAM data exists and was written to disk successfully.
+ * @return false if no game is ready, no SRAM region exists, or the write failed.
+ */
+static bool MenuSaveGameSRAM(void) {
+    if (!IsLibretroGameReady()) return false;
+    size_t sramSize = 0;
+    void* sramData = GetLibretroSRAMData(&sramSize);
+    if (sramData == NULL || sramSize == 0) return false;
+    const char* sramPath = TextFormat("%s/%s.srm",
+        GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY),
+        GetLibretroContentName());
+    bool ok = SaveFileData(sramPath, sramData, (unsigned int)sramSize);
+    if (ok) {
+        TraceLog(LOG_INFO, "MENU: SRAM saved to %s", sramPath);
+        LibretroFlushPersistentStorage();
+    }
+    return ok;
+}
+
 static bool MenuLoadGame(const char* gamePath) {
     BeginDrawing();
         ClearBackground(BLACK);
@@ -589,6 +646,7 @@ static bool MenuLoadGame(const char* gamePath) {
 
     BuildLibretroMenuOptions(&menu);
     menu.active = false;
+    MenuLoadGameSRAM();
     return true;
 }
 
@@ -694,11 +752,12 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.cfg = rlconfig_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
 #endif
     TextCopy(menu.coreDirectory, "cores");
+    TextCopy(menu.saveDirectory, "saves");
 #ifdef __EMSCRIPTEN__
     // Default save/system directories point at the IDBFS mount so they
     // persist across page reloads. The user can still override via the
     // Settings menu; saved values take precedence on subsequent runs.
-    if (menu.saveDirectory[0]   == '\0') TextCopy(menu.saveDirectory,   "/userdata/saves");
+    TextCopy(menu.saveDirectory,   "/userdata/saves");
     if (menu.systemDirectory[0] == '\0') TextCopy(menu.systemDirectory, "/userdata/system");
 #endif
     LoadLibretroMenuSettings();
@@ -1142,6 +1201,7 @@ bool SaveLibretroAllSettings(void) {
     }
     bool ok = rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
     TraceLog(LOG_INFO, "MENU: Saved all settings to %s", RAYLIB_LIBRETRO_CFG_FILE);
+    MenuSaveGameSRAM();
     LibretroFlushPersistentStorage();
     return ok;
 #else
