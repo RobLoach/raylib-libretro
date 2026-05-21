@@ -29,6 +29,7 @@
 ## Audio / Video
 
 - [x] Audio volume control and mute toggle
+- [x] RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK and SET_MINIMUM_AUDIO_LATENCY
 - [ ] Aspect ratio options (pixel-perfect, stretch, 4:3 locked)
 - [ ] Integer scaling mode
 - [ ] Scanline / CRT shader presets
