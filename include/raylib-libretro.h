@@ -87,6 +87,9 @@ static bool DrawLibretroMessage(void); // Displays the OSD message on the screen
 static const char* GetLibretroDirectory(int directory);
 static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count); // Get input descriptors; count set to number of entries.
 static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count);    // Get controller info; count set to number of ports.
+static bool SetLibretroMemoryMaps(const struct retro_memory_map *map); // Store an owned deep-copy of the core's memory map descriptors.
+static void UnloadLibretroMemoryMaps(void);                            // Free the stored memory map descriptors.
+static const struct retro_memory_descriptor* GetLibretroMemoryMaps(unsigned *count); // Get stored memory map descriptors; count set to number of entries.
 static const char* GetLibretroValidExtensions(void);                                       // Valid extensions reported by the core (pipe-separated).
 static bool IsLibretroBlockExtract(void);                                                  // Whether the core forbids the frontend from extracting archives.
 static bool GetLibretroNeedFullpath(const char* path, bool* persistent);               // Effective need_fullpath for a given path, honoring CONTENT_INFO_OVERRIDE.
@@ -436,6 +439,48 @@ static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned
 static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count) {
     if (count != NULL) *count = LibretroCore.controllerPortCount;
     return LibretroCore.controllerInfo;
+}
+
+static void UnloadLibretroMemoryMaps(void) {
+    if (LibretroCore.memoryMapDescriptors) {
+        for (unsigned i = 0; i < LibretroCore.memoryMapDescriptorCount; i++) {
+            if (LibretroCore.memoryMapDescriptors[i].addrspace) {
+                MemFree((void*)LibretroCore.memoryMapDescriptors[i].addrspace);
+            }
+        }
+        MemFree(LibretroCore.memoryMapDescriptors);
+        LibretroCore.memoryMapDescriptors = NULL;
+        LibretroCore.memoryMapDescriptorCount = 0;
+    }
+}
+
+static bool SetLibretroMemoryMaps(const struct retro_memory_map *map) {
+    UnloadLibretroMemoryMaps();
+    if (!map || !map->descriptors || map->num_descriptors == 0) {
+        return map != NULL;
+    }
+    size_t sz = sizeof(struct retro_memory_descriptor) * map->num_descriptors;
+    LibretroCore.memoryMapDescriptors = (struct retro_memory_descriptor*)MemAlloc((unsigned int)sz);
+    if (!LibretroCore.memoryMapDescriptors) {
+        return false;
+    }
+    memcpy(LibretroCore.memoryMapDescriptors, map->descriptors, sz);
+    LibretroCore.memoryMapDescriptorCount = map->num_descriptors;
+    for (unsigned i = 0; i < map->num_descriptors; i++) {
+        if (map->descriptors[i].addrspace) {
+            size_t len = strlen(map->descriptors[i].addrspace) + 1;
+            char *copy = (char*)MemAlloc((unsigned int)len);
+            if (copy) memcpy(copy, map->descriptors[i].addrspace, len);
+            LibretroCore.memoryMapDescriptors[i].addrspace = copy;
+        }
+    }
+    TraceLog(LOG_INFO, "LIBRETRO: Memory map stored (%u descriptor(s))", map->num_descriptors);
+    return true;
+}
+
+static const struct retro_memory_descriptor* GetLibretroMemoryMaps(unsigned *count) {
+    if (count != NULL) *count = LibretroCore.memoryMapDescriptorCount;
+    return LibretroCore.memoryMapDescriptors;
 }
 
 // Returns an absolute path for `path`. The result is either the input pointer
@@ -1026,44 +1071,7 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MEMORY_MAPS no data");
                 return false;
             }
-            const struct retro_memory_map *map = (const struct retro_memory_map *)data;
-
-            // Free any previously stored map.
-            if (LibretroCore.memoryMapDescriptors) {
-                for (unsigned i = 0; i < LibretroCore.memoryMapDescriptorCount; i++) {
-                    if (LibretroCore.memoryMapDescriptors[i].addrspace) {
-                        MemFree((void*)LibretroCore.memoryMapDescriptors[i].addrspace);
-                    }
-                }
-                MemFree(LibretroCore.memoryMapDescriptors);
-                LibretroCore.memoryMapDescriptors = NULL;
-                LibretroCore.memoryMapDescriptorCount = 0;
-            }
-
-            if (!map->descriptors || map->num_descriptors == 0) {
-                return true;
-            }
-
-            size_t sz = sizeof(struct retro_memory_descriptor) * map->num_descriptors;
-            LibretroCore.memoryMapDescriptors = (struct retro_memory_descriptor*)MemAlloc((unsigned int)sz);
-            if (!LibretroCore.memoryMapDescriptors) {
-                return false;
-            }
-            memcpy(LibretroCore.memoryMapDescriptors, map->descriptors, sz);
-            LibretroCore.memoryMapDescriptorCount = map->num_descriptors;
-
-            // Deep-copy addrspace strings.
-            for (unsigned i = 0; i < map->num_descriptors; i++) {
-                if (map->descriptors[i].addrspace) {
-                    size_t len = strlen(map->descriptors[i].addrspace) + 1;
-                    char *copy = (char*)MemAlloc((unsigned int)len);
-                    if (copy) memcpy(copy, map->descriptors[i].addrspace, len);
-                    LibretroCore.memoryMapDescriptors[i].addrspace = copy;
-                }
-            }
-
-            TraceLog(LOG_INFO, "LIBRETRO: Memory map stored (%u descriptor(s))", map->num_descriptors);
-            return true;
+            return SetLibretroMemoryMaps((const struct retro_memory_map *)data);
         }
 
         case RETRO_ENVIRONMENT_SET_GEOMETRY: {
@@ -2774,16 +2782,7 @@ static void UnloadLibretroGame(void) {
 
     // Free memory map descriptors — these are game-specific and must not
     // outlive the game that provided them.
-    if (LibretroCore.memoryMapDescriptors) {
-        for (unsigned i = 0; i < LibretroCore.memoryMapDescriptorCount; i++) {
-            if (LibretroCore.memoryMapDescriptors[i].addrspace) {
-                MemFree((void*)LibretroCore.memoryMapDescriptors[i].addrspace);
-            }
-        }
-        MemFree(LibretroCore.memoryMapDescriptors);
-        LibretroCore.memoryMapDescriptors = NULL;
-        LibretroCore.memoryMapDescriptorCount = 0;
-    }
+    UnloadLibretroMemoryMaps();
 }
 
 /**
@@ -2851,16 +2850,7 @@ static void LibretroResetCoreState(void) {
     memset(LibretroCore.osdMessage, 0, sizeof(LibretroCore.osdMessage));
     LibretroCore.osdEndTime = 0.0;
 
-    if (LibretroCore.memoryMapDescriptors) {
-        for (unsigned i = 0; i < LibretroCore.memoryMapDescriptorCount; i++) {
-            if (LibretroCore.memoryMapDescriptors[i].addrspace) {
-                MemFree((void*)LibretroCore.memoryMapDescriptors[i].addrspace);
-            }
-        }
-        MemFree(LibretroCore.memoryMapDescriptors);
-        LibretroCore.memoryMapDescriptors = NULL;
-        LibretroCore.memoryMapDescriptorCount = 0;
-    }
+    UnloadLibretroMemoryMaps();
 }
 
 /**
