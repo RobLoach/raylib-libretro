@@ -325,6 +325,10 @@ typedef struct rLibretro {
     // Memory map from RETRO_ENVIRONMENT_SET_MEMORY_MAPS (owned copy).
     struct retro_memory_descriptor *memoryMapDescriptors;
     unsigned memoryMapDescriptorCount;
+  
+    // Keyboard bindings for player 1 (port 0). Stored as raylib KeyboardKey values.
+    // Index matches RETRO_DEVICE_ID_JOYPAD_* constants. KEY_NULL means no binding.
+    int keyboardPlayer1[16];
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -1886,10 +1890,15 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                             pressed = (gamepadButton != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gamepadButton));
                         }
                         if (!pressed) {
-                            int retroKey = LibretroMapRetroJoypadButtonToRetroKey(btn);
-                            if (retroKey != RETROK_UNKNOWN) {
-                                int raylibKey = LibretroMapRetroKeyToKeyboardKey(retroKey);
-                                pressed = (raylibKey > 0 && IsKeyDown(raylibKey));
+                            int kbKey = (btn < 16) ? LibretroCore.keyboardPlayer1[btn] : KEY_NULL;
+                            if (kbKey != KEY_NULL) {
+                                pressed = IsKeyDown(kbKey);
+                            } else {
+                                int retroKey = LibretroMapRetroJoypadButtonToRetroKey(btn);
+                                if (retroKey != RETROK_UNKNOWN) {
+                                    int raylibKey = LibretroMapRetroKeyToKeyboardKey(retroKey);
+                                    pressed = (raylibKey > 0 && IsKeyDown(raylibKey));
+                                }
                             }
                         }
                     } else if (gpAvail) {
@@ -1910,6 +1919,10 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                     if (gamepadButton != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gamepadButton)) {
                         return 1;
                     }
+                }
+                int kbKey = (id < 16) ? LibretroCore.keyboardPlayer1[id] : KEY_NULL;
+                if (kbKey != KEY_NULL) {
+                    return (int)IsKeyDown(kbKey);
                 }
                 int retroKey = LibretroMapRetroJoypadButtonToRetroKey(id);
                 if (retroKey == RETROK_UNKNOWN) {
