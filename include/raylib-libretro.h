@@ -50,54 +50,226 @@ extern "C" {
 // Libretro Raylib Integration (Module: raylib-libretro)
 //------------------------------------------------------------------------------------
 
-static bool InitLibretro(const char* core);   // Initialize the given libretro core
-static bool InitLibretroEx(const char* core, bool peek);   // Initialize the given libretro core
-static bool LoadLibretroGame(const char* gameFile);      // Load the provided content. Provide NULL to load the core without content.
-static bool IsLibretroReady(void);                           // Whether or not the core was successfully loaded.
-static bool IsLibretroGameReady(void);                       // Whether or not the game has been loaded.
-static void UpdateLibretro(void);                            // Run an iteration of the core.
-static bool LibretroShouldClose(void);                       // Check whether or not the core has requested to shutdown.
-static void DrawLibretro(void);                              // Draw the libretro state on the screen.
-static void DrawLibretroTint(Color tint);                // Draw the libretro state on the screen with a tint.
+/** @brief Load a libretro core shared library and initialize it.
+ *  @param core Path to the core .so/.dll/.dylib file.
+ *  @return true on success, false if the library could not be loaded or initialized.
+ *  @note Call InitAudioDevice() and InitWindow() before this function. */
+static bool InitLibretro(const char* core);
+
+/** @brief Load a libretro core, optionally in peek mode (metadata only, no full init).
+ *  @param core Path to the core shared library.
+ *  @param peek When true, only system info is queried; the core is not fully initialized.
+ *  @return true on success. */
+static bool InitLibretroEx(const char* core, bool peek);
+
+/** @brief Load content (ROM/game) into the initialized core.
+ *  @param gameFile Path to the content file, or NULL for content-less cores.
+ *  @return true on success, false if loading failed.
+ *  @note Call InitLibretro() before this function. Pass NULL for cores that do not require content. */
+static bool LoadLibretroGame(const char* gameFile);
+
+/** @brief Check whether a core has been successfully initialized.
+ *  @return true if a core is loaded and ready. */
+static bool IsLibretroReady(void);
+
+/** @brief Check whether content has been successfully loaded.
+ *  @return true if a game/content is currently loaded. */
+static bool IsLibretroGameReady(void);
+
+/** @brief Run one emulation frame of the loaded core. */
+static void UpdateLibretro(void);
+
+/** @brief Check whether the core has requested the frontend to shut down.
+ *  @return true if the core wants to close. */
+static bool LibretroShouldClose(void);
+
+/** @brief Draw the core framebuffer centered on the screen. */
+static void DrawLibretro(void);
+
+/** @brief Draw the core framebuffer centered on the screen with a color tint.
+ *  @param tint Color tint applied to the framebuffer texture. */
+static void DrawLibretroTint(Color tint);
+
+/** @brief Draw the core framebuffer with extended transform parameters.
+ *  @param position Top-left origin in screen space.
+ *  @param rotation Clockwise rotation in degrees.
+ *  @param scale Uniform scale factor.
+ *  @param tint Color tint applied to the framebuffer texture. */
 static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint);
+
+/** @brief Draw the core framebuffer at the given position with a color tint.
+ *  @param position Top-left position in screen space.
+ *  @param tint Color tint applied to the framebuffer texture. */
 static void DrawLibretroV(Vector2 position, Color tint);
+
+/** @brief Draw the core framebuffer at pixel coordinates with a color tint.
+ *  @param posX Horizontal screen position.
+ *  @param posY Vertical screen position.
+ *  @param tint Color tint applied to the framebuffer texture. */
 static void DrawLibretroTexture(int posX, int posY, Color tint);
+
+/** @brief Draw the core framebuffer scaled and fitted into a destination rectangle.
+ *  @param destRec Destination rectangle in screen space.
+ *  @param tint Color tint applied to the framebuffer texture. */
 static void DrawLibretroPro(Rectangle destRec, Color tint);
-static const char* GetLibretroName(void);                    // Get the name of the loaded libretro core.
-static const char* GetLibretroContentName(void);             // Get the filename (no extension) of the loaded content, or core name if none.
-static const char* GetLibretroVersion(void);                 // Get the version of the loaded libretro core.
-static unsigned GetLibretroWidth(void);                      // Get the desired width of the libretro core.
-static unsigned GetLibretroHeight(void);                     // Get the desired height of the libretro core.
-static unsigned GetLibretroRotation(void);                   // Get the current screen rotation (0=0°, 1=90°, 2=180°, 3=270°).
-static Texture2D GetLibretroTexture(void);                   // Retrieve the texture used to render the libretro state.
-static bool IsLibretroGameRequired(void);               // Determine whether or not the loaded core require content.
-static void ResetLibretro(void);                             // Reset the currently loaded libretro core.
-static void UnloadLibretroGame(void);                        // Unload the game that's currently loaded.
-static void CloseLibretro(void);                             // Close the initialized libretro core.
-static void SetLibretroVolume(float volume);             // Set the audio volume (0.0 - 1.0).
-static float GetLibretroVolume(void);                        // Get the current audio volume.
-static void SetLibretroSpeed(float speed);               // Set playback speed (1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion).
-static float GetLibretroSpeed(void);                         // Get the current playback speed.
-static bool SetLibretroCoreOption(const char* key, const char* value);  // Set a core option by key.
-static const char* GetLibretroCoreOption(const char* key);              // Get a core option value by key. Returns NULL if not found.
-static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
+
+/** @brief Get the display name of the loaded core.
+ *  @return Library name string, or an empty string if no core is loaded. */
+static const char* GetLibretroName(void);
+
+/** @brief Get the base filename (no extension) of the loaded content, or the core name if no content is loaded.
+ *  @return Content or core name string. */
+static const char* GetLibretroContentName(void);
+
+/** @brief Get the version string of the loaded core.
+ *  @return Version string reported by the core. */
+static const char* GetLibretroVersion(void);
+
+/** @brief Get the native framebuffer width reported by the core.
+ *  @return Width in pixels. */
+static unsigned GetLibretroWidth(void);
+
+/** @brief Get the native framebuffer height reported by the core.
+ *  @return Height in pixels. */
+static unsigned GetLibretroHeight(void);
+
+/** @brief Get the current display rotation index (0=0°, 1=90°, 2=180°, 3=270°).
+ *  @return Rotation index. */
+static unsigned GetLibretroRotation(void);
+
+/** @brief Get the internal texture used to render the core framebuffer.
+ *  @return Texture2D containing the last rendered frame. */
+static Texture2D GetLibretroTexture(void);
+
+/** @brief Check whether the loaded core requires content to run.
+ *  @return true if content must be provided; false if the core can run standalone. */
+static bool IsLibretroGameRequired(void);
+
+/** @brief Reset the currently loaded core (equivalent to a hardware reset).
+ *  @note A game must be loaded before calling this. */
+static void ResetLibretro(void);
+
+/** @brief Unload the currently loaded content without closing the core. */
+static void UnloadLibretroGame(void);
+
+/** @brief Deinitialize and unload the libretro core. */
+static void CloseLibretro(void);
+
+/** @brief Set the audio output volume.
+ *  @param volume Volume level in the range [0.0, 1.0]. */
+static void SetLibretroVolume(float volume);
+
+/** @brief Get the current audio output volume.
+ *  @return Volume level in the range [0.0, 1.0]. */
+static float GetLibretroVolume(void);
+
+/** @brief Set the emulation playback speed.
+ *  @param speed Multiplier relative to normal speed (1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion). */
+static void SetLibretroSpeed(float speed);
+
+/** @brief Get the current emulation playback speed multiplier.
+ *  @return Current speed multiplier. */
+static float GetLibretroSpeed(void);
+
+/** @brief Set a core option by key.
+ *  @param key   Option key as reported by the core via RETRO_ENVIRONMENT_SET_VARIABLES.
+ *  @param value New value for the option.
+ *  @return true if the key was found and the value applied; false if the key is unknown. */
+static bool SetLibretroCoreOption(const char* key, const char* value);
+
+/** @brief Get a core option value by key.
+ *  @param key Option key to look up.
+ *  @return Current value string, or NULL if the key is not found. */
+static const char* GetLibretroCoreOption(const char* key);
+
+/** @brief Serialize the current emulator state into a new buffer.
+ *  @param size Output parameter filled with the size of the returned buffer in bytes.
+ *  @return Newly allocated buffer containing the serialized state, or NULL on failure.
+ *  @note The caller is responsible for freeing the returned buffer with MemFree(). */
+static void* GetLibretroSerializedData(unsigned int* size);
+
+/** @brief Restore a previously serialized emulator state.
+ *  @param data Pointer to the serialized state buffer.
+ *  @param size Size of the buffer in bytes.
+ *  @return true on success, false if the core rejected the data. */
 static bool SetLibretroSerializedData(void* data, unsigned int size);
-static void* GetLibretroSRAMData(size_t* size);                  // Return a pointer to the core's SRAM region and its size. Returns NULL if no SRAM.
-static bool SetLibretroSRAMData(const void* data, size_t size);  // Copy data into the core's SRAM region. Clips to the region size if data is larger. Returns false if no SRAM.
-static void ShowLibretroMessage(const char* msg, float duration); // Show an OSD message for the given duration in seconds.
-static bool DrawLibretroMessage(void); // Displays the OSD message on the screen. Returns true if there was one.
+
+/** @brief Get a direct pointer to the core's battery-backed SRAM region.
+ *  @param size Output parameter filled with the SRAM region size in bytes.
+ *  @return Pointer into the core's SRAM memory, or NULL if the core has no SRAM. */
+static void* GetLibretroSRAMData(size_t* size);
+
+/** @brief Copy data into the core's SRAM region.
+ *  @param data Source buffer to copy from.
+ *  @param size Number of bytes to copy; clipped to the region size if larger.
+ *  @return true on success, false if the core has no SRAM region. */
+static bool SetLibretroSRAMData(const void* data, size_t size);
+
+/** @brief Show an on-screen display (OSD) message.
+ *  @param msg      Message text to display.
+ *  @param duration How long to show the message, in seconds. */
+static void ShowLibretroMessage(const char* msg, float duration);
+
+/** @brief Draw the current OSD message if one is active.
+ *  @return true if a message was drawn; false if there was nothing to display. */
+static bool DrawLibretroMessage(void);
+
+/** @brief Get a directory path for the given libretro directory type.
+ *  @param directory One of the RETRO_ENVIRONMENT_GET_*_DIRECTORY constants.
+ *  @return Directory path string, or an empty string if not configured. */
 static const char* GetLibretroDirectory(int directory);
-static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count); // Get input descriptors; count set to number of entries.
-static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count);    // Get controller info; count set to number of ports.
-static bool SetLibretroMemoryMaps(const struct retro_memory_map *map); // Store an owned deep-copy of the core's memory map descriptors.
-static void UnloadLibretroMemoryMaps(void);                            // Free the stored memory map descriptors.
-static const struct retro_memory_descriptor* GetLibretroMemoryMaps(unsigned *count); // Get stored memory map descriptors; count set to number of entries.
-static const char* GetLibretroValidExtensions(void);                                       // Valid extensions reported by the core (pipe-separated).
-static bool IsLibretroBlockExtract(void);                                                  // Whether the core forbids the frontend from extracting archives.
-static bool GetLibretroNeedFullpath(const char* path, bool* persistent);               // Effective need_fullpath for a given path, honoring CONTENT_INFO_OVERRIDE.
-static void LibretroBuildExtPattern(const char* exts, char* pattern, size_t patternSize); // Translate "ext1|ext2" to ".ext1;.ext2" for IsFileExtension.
+
+/** @brief Get the input descriptors reported by the loaded core.
+ *  @param count Output parameter filled with the number of descriptors.
+ *  @return Pointer to the descriptor array, or NULL if none were set. */
+static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count);
+
+/** @brief Get the controller port info reported by the loaded core.
+ *  @param count Output parameter filled with the number of ports.
+ *  @return Pointer to the controller info array, or NULL if none were set. */
+static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count);
+
+/** @brief Store an owned deep-copy of the core's memory map descriptors.
+ *  @param map Pointer to the retro_memory_map provided by the core.
+ *  @return true on success. */
+static bool SetLibretroMemoryMaps(const struct retro_memory_map *map);
+
+/** @brief Free the stored memory map descriptors. */
+static void UnloadLibretroMemoryMaps(void);
+
+/** @brief Get the stored memory map descriptors.
+ *  @param count Output parameter filled with the number of descriptors.
+ *  @return Pointer to the descriptor array, or NULL if none are stored. */
+static const struct retro_memory_descriptor* GetLibretroMemoryMaps(unsigned *count);
+
+/** @brief Get the pipe-separated list of file extensions the core accepts.
+ *  @return Extension list string (e.g. "nes|fds"), or empty string if not reported. */
+static const char* GetLibretroValidExtensions(void);
+
+/** @brief Check whether the core forbids the frontend from extracting archives.
+ *  @return true if the core wants archives passed as-is. */
+static bool IsLibretroBlockExtract(void);
+
+/** @brief Determine the effective need_fullpath flag for a given content path.
+ *  @param path       Content path to check.
+ *  @param persistent Output parameter set to true if the path must stay valid after loading.
+ *  @return true if the core requires a full filesystem path for this content. */
+static bool GetLibretroNeedFullpath(const char* path, bool* persistent);
+
+/** @brief Convert a pipe-separated extension list to a semicolon-separated pattern for IsFileExtension.
+ *  @param exts        Source string in "ext1|ext2" format.
+ *  @param pattern     Output buffer for the ".ext1;.ext2" result.
+ *  @param patternSize Size of the output buffer in bytes. */
+static void LibretroBuildExtPattern(const char* exts, char* pattern, size_t patternSize);
+
+/** @brief Load content from a memory buffer.
+ *  @param fileData    Pointer to the content data in memory.
+ *  @param dataSize    Size of the buffer in bytes.
+ *  @param contentPath Virtual path reported to the core (used for extension detection).
+ *  @param persistent  When true, the core may keep the pointer alive after loading.
+ *  @return true on success. */
 static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize,
-    const char* contentPath, bool persistent);                                             // Load from memory with contentPath + persistent_data ownership.
+    const char* contentPath, bool persistent);
 
 static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,

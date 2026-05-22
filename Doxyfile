@@ -1,0 +1,16 @@
+PROJECT_NAME           = "raylib-libretro"
+PROJECT_BRIEF          = "raylib extension to interact with libretro cores"
+INPUT                  = include/ README.md
+FILE_PATTERNS          = *.h *.md
+RECURSIVE              = NO
+EXTRACT_ALL            = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HTML_OUTPUT            = docs/html
+USE_MDFILE_AS_MAINPAGE = README.md
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+PREDEFINED             = RAYLIB_LIBRETRO_IMPLEMENTATION \
+                         RAYLIB_LIBRETRO_MENU_IMPLEMENTATION \
+                         RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
+EXCLUDE_PATTERNS       = */vendor/*
