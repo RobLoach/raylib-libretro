@@ -30,6 +30,8 @@
         -webkit-user-select: none;
         user-select: none;
         box-sizing: border-box; /* Ensure padding/border doesn't affect size */
+        image-rendering: pixelated; /* nearest-neighbor scaling — no bilinear blur on retro content */
+        image-rendering: crisp-edges; /* Firefox fallback */
       }
     </style>
   </head>
@@ -129,11 +131,6 @@
           }
         }],
         postRun: [function () {
-          // raylib's InitWindow set the canvas buffer to 1280x720; override it
-          // with the actual viewport size now that GLFW's resize callback is
-          // wired up and will propagate the change into raylib.
-          resizeCanvas();
-        }, function () {
           // Hand off any background ?game= download to the running app.
           // LoadLibretroGameFromJS picks LoadLibretroGamePhysFS (when a core
           // was loaded via ?core=) or MenuLoadGame (autodetects from ROM
@@ -189,40 +186,7 @@
         }]
       };
 
-      function resizeCanvas() {
-        return;
-        var canvas = document.getElementById('canvas');
-        if (!canvas) return;
-        var dpr = window.devicePixelRatio || 1;
 
-        // Use getBoundingClientRect with fallback to clientWidth/Height
-        var rect = canvas.getBoundingClientRect();
-        var cw = rect.width || canvas.clientWidth || window.innerWidth;
-        var ch = rect.height || canvas.clientHeight || window.innerHeight;
-
-        // Calculate the drawing buffer size
-        var w = Math.floor(cw * dpr);
-        var h = Math.floor(ch * dpr);
-
-        // Set CSS dimensions explicitly to match layout size
-        canvas.style.width = cw + 'px';
-        canvas.style.height = ch + 'px';
-
-        // Set the canvas drawing buffer size
-        canvas.width = w;
-        canvas.height = h;
-
-        // Once the wasm is running, delegate to ResizeCanvasFromJS so raylib
-        // sees the new size; before that, just set the attributes so the
-        // initial frame isn't drawn at 1280x720.
-        if (typeof Module !== 'undefined' && Module.ccall && Module.calledRun) {
-          try { Module.ccall('ResizeCanvasFromJS', null, ['number', 'number'], [w, h]); }
-          catch (e) { console.error('ResizeCanvasFromJS failed:', e); }
-        }
-
-        // Debugging logs to verify dimensions
-        console.log(`Canvas resized: CSS(${cw}x${ch}), Buffer(${w}x${h}), DPR(${dpr})`);
-      }
     </script>
     {{{ SCRIPT }}}
   </body>
