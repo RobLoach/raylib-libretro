@@ -1374,6 +1374,12 @@ void UpdateLibretroMenu(void) {
         menu.active = true;
     }
 
+    // Open the menu automatically when the window loses focus or is minimized,
+    // but only while a game is running (no point pausing an empty menu).
+    if (!menu.active && IsLibretroGameReady() && (IsWindowMinimized() || !IsWindowFocused())) {
+        menu.active = true;
+    }
+
     // Track menu open state so we can force a rebuild on every open. The
     // dirty flag alone has been seen to miss late-arriving options on Firefox
     // where wasm dynamic linking and event-loop timing differ from Chrome.
