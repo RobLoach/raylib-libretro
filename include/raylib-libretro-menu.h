@@ -768,19 +768,6 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.resumeButton = nk_console_button_onclick(menu.console, "Resume", &MenuResumeClicked);
     nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_TRIANGLE_RIGHT);
 
-
-
-    // Load Game
-    menu.loadGameWidget = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-    nk_console_add_event_handler(menu.loadGameWidget, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
-    if (menu.fileBrowserStartDirectory[0] != '\0') {
-        nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
-    }
-
-    // Close Game
-    //menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
-    //nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_X);
-
     // Save States
     {
         nk_console* saveStateRow = nk_console_row_begin(menu.console);
@@ -795,6 +782,17 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_button_set_symbol(menu.loadStateButton, NK_SYMBOL_RECT_OUTLINE);
         nk_console_row_end(saveStateRow);
     }
+
+    // Load Game
+    menu.loadGameWidget = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+    nk_console_add_event_handler(menu.loadGameWidget, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
+    if (menu.fileBrowserStartDirectory[0] != '\0') {
+        nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
+    }
+
+    // Close Game
+    //menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
+    //nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_X);
 
     // Settings
     nk_console* settings = nk_console_button(menu.console, "Settings");
