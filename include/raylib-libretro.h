@@ -2855,6 +2855,13 @@ static float GetLibretroSpeed(void) {
     return LibretroCore.speed;
 }
 
+/**
+ * Enable or disable Dynamic Rate Control (DRC). When enabled, the audio
+ * stream pitch is nudged up or down (within ±0.5 %) to drain the ring
+ * buffer at exactly the rate it is filled, keeping audio and video in sync.
+ *
+ * @param enabled true to enable DRC, false to disable and restore unity pitch.
+ */
 static void SetLibretroDynamicRateControl(bool enabled) {
     LibretroCore.drcEnabled = enabled;
     if (!enabled && IsAudioStreamValid(LibretroCore.audioStream)) {
@@ -2863,6 +2870,11 @@ static void SetLibretroDynamicRateControl(bool enabled) {
     }
 }
 
+/**
+ * Query whether Dynamic Rate Control is currently active.
+ *
+ * @return true if DRC is enabled, false otherwise.
+ */
 static bool IsLibretroDynamicRateControlEnabled(void) {
     return LibretroCore.drcEnabled;
 }
@@ -3047,6 +3059,8 @@ static void LibretroResetCoreState(void) {
 
     memset(LibretroCore.osdMessage, 0, sizeof(LibretroCore.osdMessage));
     LibretroCore.osdEndTime = 0.0;
+
+    LibretroCore.drcAdjustment = 1.0f;
 
     UnloadLibretroMemoryMaps();
 }

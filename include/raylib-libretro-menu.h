@@ -101,6 +101,7 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
+    bool drcEnabled;
     nk_rune keyboardP1[16]; // Indexed by RETRO_DEVICE_ID_JOYPAD_*
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
@@ -194,6 +195,7 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     SetActiveLibretroShader((LibretroShaderType)menu.shaderSelectedIndex);
     SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
     SetLibretroVolume(menu.volumeSelected);
+    SetLibretroDynamicRateControl(menu.drcEnabled);
     if (LibretroCore.textureFilter != menu.textureFilterIndex) {
         LibretroCore.textureFilter = menu.textureFilterIndex;
         InitLibretroVideo();
@@ -861,6 +863,13 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_checkbox(settings, "Touch Controls", &menu.touchControls);
         nk_console_checkbox(settings, "Touch Haptics", &menu.touchHapticsEnabled);
 
+        // Dynamic Rate Control
+        {
+            nk_console* drc = nk_console_checkbox(settings, "Dynamic Rate Control", &menu.drcEnabled);
+            nk_console_set_tooltip(drc, "Adjust audio pitch to keep audio/video in sync");
+            nk_console_add_event_handler(drc, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+        }
+
         // Rewind
         nk_console* rewind = nk_console_checkbox(settings, "Rewind", &menu.rewindEnabled);
 
@@ -1112,6 +1121,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchHaptics", menu.touchHapticsEnabled ? 1 : 0);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "drc", menu.drcEnabled ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyScreenshot", (int)menu.keyScreenshot);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyRewind", (int)menu.keyRewind);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyMenu", (int)menu.keyMenu);
@@ -1251,6 +1261,8 @@ static bool LoadLibretroMenuSettings(void) {
     SetLibretroVolume(menu.volumeSelected);
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
+    menu.drcEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "drc", 1) > 0;
+    SetLibretroDynamicRateControl(menu.drcEnabled);
 #if defined(PLATFORM_WEB)
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 1) > 0;
 #else
