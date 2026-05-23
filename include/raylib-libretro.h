@@ -561,6 +561,7 @@ static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
 }
 
 static void InitLibretroAudio(void);  // Forward declaration.
+static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames);  // Forward declaration.
 
 static void CloseLibretroVideo(void) {
     // Unload the existing texture if it exists already.
@@ -1414,7 +1415,6 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: {
-            // NULL data is the core asking to disable buffer-status reporting.
             if (data == NULL) {
                 LibretroCore.audio_buffer_status_callback.callback = NULL;
                 TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK disabled");
@@ -1772,11 +1772,20 @@ static void UpdateLibretro(void) {
 
         LibretroCore.retro_run();
 
+        // Flush any single-sample accumulator left over from retro_run so
+        // samples arrive in the ring buffer within the same frame.
+        if (LibretroCore.singleSampleCount > 0) {
+            LibretroAudioSampleBatch(LibretroCore.singleSampleBuffer, LibretroCore.singleSampleCount);
+            LibretroCore.singleSampleCount = 0;
+        }
+
         // Dynamic Rate Control: nudge audio pitch to steer ring-buffer occupancy
-        // toward 50 % so the host soundcard and emulated clock stay in sync.
+        // toward 50% so the audio stays in sync.
         if (LibretroCore.drcEnabled && LibretroCore.audioRingBufferSize > 0 && IsAudioStreamValid(LibretroCore.audioStream)) {
-            float drift = 0.5f - ((float)LibretroCore.audioRingAvailable / (float)LibretroCore.audioRingBufferSize);
-            LibretroCore.drcAdjustment += drift * 0.0001f;
+            // Positive drift when buffer is full (consume faster).
+            // Negative drift when buffer is empty (consume slower).
+            float drift = ((float)LibretroCore.audioRingAvailable / (float)LibretroCore.audioRingBufferSize) - 0.5f;
+            LibretroCore.drcAdjustment += drift * 0.001f;
             if (LibretroCore.drcAdjustment < 0.995f) LibretroCore.drcAdjustment = 0.995f;
             if (LibretroCore.drcAdjustment > 1.005f) LibretroCore.drcAdjustment = 1.005f;
             SetAudioStreamPitch(LibretroCore.audioStream, LibretroCore.drcAdjustment);
@@ -2221,6 +2230,8 @@ static void InitLibretroAudio(void) {
     SetAudioStreamCallback(LibretroCore.audioStream, LibretroAudioStreamCallback);
     SetAudioStreamVolume(LibretroCore.audioStream, LibretroCore.volume);
     LibretroCore.drcAdjustment = 1.0f;
+    LibretroCore.drcEnabled = true;
+    LibretroCore.audioDropWarnCount = 0;
     PlayAudioStream(LibretroCore.audioStream);
 
     // Let the core know that the audio device has been initialized.
@@ -2857,8 +2868,14 @@ static float GetLibretroSpeed(void) {
 
 /**
  * Enable or disable Dynamic Rate Control (DRC). When enabled, the audio
- * stream pitch is nudged up or down (within ±0.5 %) to drain the ring
- * buffer at exactly the rate it is filled, keeping audio and video in sync.
+ * stream pitch is nudged up or down (within ±0.5 %) each frame to steer
+ * ring-buffer occupancy toward 50 %, keeping audio and video in sync.
+ *
+ * DRC is always enabled by default on audio initialisation. It works
+ * alongside RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: that callback
+ * lets the frontend inform the core of buffer occupancy so the core can
+ * frameskip; DRC simultaneously adjusts pitch for long-term clock alignment.
+ * The two mechanisms are complementary and do not conflict.
  *
  * @param enabled true to enable DRC, false to disable and restore unity pitch.
  */
@@ -3061,6 +3078,7 @@ static void LibretroResetCoreState(void) {
     LibretroCore.osdEndTime = 0.0;
 
     LibretroCore.drcAdjustment = 1.0f;
+    LibretroCore.drcEnabled = true;
 
     UnloadLibretroMemoryMaps();
 }
