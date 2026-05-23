@@ -1426,8 +1426,9 @@ void UpdateLibretroMenu(void) {
 
     // Render
     struct nk_rect windowPos = nk_rect(0, 0, (float)GetScreenWidth()/scaling, (float)GetScreenHeight()/scaling);
-    nk_bool atTopLevel = (nk_console_active_parent(menu.console) == menu.console);
-    nk_uint windowFlags = NK_WINDOW_SCROLL_AUTO_HIDE | (atTopLevel ? NK_WINDOW_TITLE : 0);
+    nk_uint windowFlags = NK_WINDOW_SCROLL_AUTO_HIDE |
+        // Show the window title only on the top level.
+        ((nk_console_active_parent(menu.console) == menu.console) ? NK_WINDOW_TITLE : 0);
     nk_console_render_window(menu.console, "raylib-libretro", windowPos, windowFlags);
 }
 
