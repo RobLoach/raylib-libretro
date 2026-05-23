@@ -1,5 +1,5 @@
 PROJECT_NAME           = "raylib-libretro"
-PROJECT_BRIEF          = "raylib extension to interact with libretro cores"
+PROJECT_BRIEF          = "raylib extension to run emulators and games with libretro"
 INPUT                  = include/ README.md
 FILE_PATTERNS          = *.h *.md
 RECURSIVE              = NO
@@ -14,3 +14,4 @@ PREDEFINED             = RAYLIB_LIBRETRO_IMPLEMENTATION \
                          RAYLIB_LIBRETRO_MENU_IMPLEMENTATION \
                          RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
 EXCLUDE_PATTERNS       = */vendor/*
+JAVADOC_AUTOBRIEF      = YES
