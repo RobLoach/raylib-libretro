@@ -1424,7 +1424,7 @@ void UpdateLibretroMenu(void) {
     nk_gamepad_update(nk_console_get_gamepads(menu.console));
     UpdateNuklear(menu.ctx);
 
-    // Render — only show the window title bar when at the top-level menu.
+    // Render
     struct nk_rect windowPos = nk_rect(0, 0, (float)GetScreenWidth()/scaling, (float)GetScreenHeight()/scaling);
     nk_bool atTopLevel = (nk_console_active_parent(menu.console) == menu.console);
     nk_uint windowFlags = NK_WINDOW_SCROLL_AUTO_HIDE | (atTopLevel ? NK_WINDOW_TITLE : 0);
