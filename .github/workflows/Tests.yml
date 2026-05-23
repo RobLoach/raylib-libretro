@@ -12,16 +12,9 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Cache submodules
-      id: cache-submodules
-      uses: actions/cache@v4
+    - uses: actions/checkout@v2
       with:
-        path: vendor
-        key: submodules-${{ hashFiles('.gitmodules') }}-${{ hashFiles('.git/modules/**/HEAD') }}
-    - name: Checkout submodules
-      if: steps.cache-submodules.outputs.cache-hit != 'true'
-      run: git submodule update --init --recursive
+        submodules: recursive
     - name: Update Packages
       run: sudo apt-get update
     - name: Install Dependencies
