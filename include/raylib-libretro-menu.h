@@ -814,137 +814,169 @@ LibretroMenu* InitLibretroMenu(void) {
     {
         // Back
         nk_console_button_set_symbol(
-            nk_console_button_onclick(settings, "Back", &nk_console_button_back),
-            NK_SYMBOL_TRIANGLE_LEFT);
+            nk_console_button_onclick(settings, "Settings", &nk_console_button_back),
+            NK_SYMBOL_X);
 
-        // Fullscreen
-        nk_console* fullscreenCheckbox = nk_console_checkbox(settings, "Fullscreen", &menu.fullscreen);
-        nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
+        // Graphics
+        {
+            nk_console* graphicsMenu = nk_console_button(settings, "Graphics");
+            nk_console_add_event(graphicsMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(graphicsMenu, "Graphics", &nk_console_button_back),
+                NK_SYMBOL_X);
 
-        // Shader
-        static char shaderNames[256] = {0};
-        if (shaderNames[0] == '\0') {
-            int offset = 0;
-            for (int i = 0; i < LIBRETRO_SHADER_TYPE_COUNT; ++i) {
-                const char* name = GetLibretroShaderName((LibretroShaderType)i);
-                int len = (int)strlen(name);
-                if (offset + len + 1 < (int)sizeof(shaderNames)) {
-                    if (i > 0) shaderNames[offset++] = '|';
-                    TextCopy(shaderNames + offset, name);
-                    offset += len;
+            nk_console* fullscreenCheckbox = nk_console_checkbox(graphicsMenu, "Fullscreen", &menu.fullscreen);
+            nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
+
+            static char shaderNames[256] = {0};
+            if (shaderNames[0] == '\0') {
+                int offset = 0;
+                for (int i = 0; i < LIBRETRO_SHADER_TYPE_COUNT; ++i) {
+                    const char* name = GetLibretroShaderName((LibretroShaderType)i);
+                    int len = (int)strlen(name);
+                    if (offset + len + 1 < (int)sizeof(shaderNames)) {
+                        if (i > 0) shaderNames[offset++] = '|';
+                        TextCopy(shaderNames + offset, name);
+                        offset += len;
+                    }
                 }
             }
+            menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
+            nk_console* shaderCombo = nk_console_combobox(graphicsMenu, "Shader", shaderNames, '|', &menu.shaderSelectedIndex);
+            nk_console_add_event_handler(shaderCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
+            nk_console* textureFilter = nk_console_combobox(graphicsMenu, "Texture Filter", "None|Bilinear|Trilinear|Anisotropic 4x|Anisotropic 8x|Anisotropic 16x", '|', &menu.textureFilterIndex);
+            nk_console_add_event_handler(textureFilter, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
+            nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", "Dracula|Dark", '|', &menu.themeSelectedIndex);
+            nk_console_add_event_handler(themeCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
         }
-        menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
-        nk_console* shaderCombo = nk_console_combobox(settings, "Shader", shaderNames, '|', &menu.shaderSelectedIndex);
-        nk_console_add_event_handler(shaderCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
-        // Texture Filter
-        nk_console* textureFilter = nk_console_combobox(settings, "Texture Filter", "None|Bilinear|Trilinear|Anisotropic 4x|Anisotropic 8x|Anisotropic 16x", '|', &menu.textureFilterIndex);
-        nk_console_add_event_handler(textureFilter, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+        // Audio
+        {
+            nk_console* audioMenu = nk_console_button(settings, "Audio");
+            nk_console_add_event(audioMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(audioMenu, "Audio", &nk_console_button_back),
+                NK_SYMBOL_X);
 
-        // Theme
-        nk_console* themeCombo = nk_console_combobox(settings, "Theme", "Dracula|Dark", '|', &menu.themeSelectedIndex);
-        nk_console_add_event_handler(themeCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
-        SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
+            nk_console* volume = nk_console_slider_float(audioMenu, "Volume", 0.0f, &menu.volumeSelected, 1.0f, 0.1f);
+            nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+        }
 
-        // Volume
-        nk_console* volume = nk_console_slider_float(settings, "Volume", 0.0f, &menu.volumeSelected, 1.0f, 0.1f);
-        nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+        // Gameplay
+        {
+            nk_console* gameplayMenu = nk_console_button(settings, "Gameplay");
+            nk_console_add_event(gameplayMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(gameplayMenu, "Gameplay", &nk_console_button_back),
+                NK_SYMBOL_X);
 
-        // Fast Forward Speed
-        nk_console* ffSpeed = nk_console_slider_int(settings, "Fast Forward Speed", 2, &menu.fastForwardSpeed, 10, 1);
-
-        // Slow Motion Speed
-        nk_console* smSpeed = nk_console_slider_float(settings, "Slow Motion Speed", 0.1f, &menu.slowMotionSpeed, 0.9f, 0.1f);
-
-        // Touch Controls
-        nk_console_checkbox(settings, "Touch Controls", &menu.touchControls);
-        nk_console_checkbox(settings, "Touch Haptics", &menu.touchHapticsEnabled);
-
-        // Rewind
-        nk_console* rewind = nk_console_checkbox(settings, "Rewind", &menu.rewindEnabled);
-
-        // Save Slot
-        nk_console* slotCombo = nk_console_combobox(settings, "Save Slot",
-            "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
-            '|', &menu.saveSlotIndex);
+            nk_console* ffSpeed = nk_console_slider_int(gameplayMenu, "Fast Forward Speed", 2, &menu.fastForwardSpeed, 10, 1);
+            (void)ffSpeed;
+            nk_console* smSpeed = nk_console_slider_float(gameplayMenu, "Slow Motion Speed", 0.1f, &menu.slowMotionSpeed, 0.9f, 0.1f);
+            (void)smSpeed;
+            nk_console_checkbox(gameplayMenu, "Touch Controls", &menu.touchControls);
+            nk_console_checkbox(gameplayMenu, "Touch Haptics", &menu.touchHapticsEnabled);
+            nk_console* rewind = nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
+            (void)rewind;
+            nk_console* slotCombo = nk_console_combobox(gameplayMenu, "Save Slot",
+                "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
+                '|', &menu.saveSlotIndex);
+            (void)slotCombo;
+        }
 
         // Keys
-        nk_console* keysTree = nk_console_tree(settings, "Keys", nk_false);
         {
+            nk_console* keysMenu = nk_console_button(settings, "Keys");
+            nk_console_add_event(keysMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(keysMenu, "Keys", &nk_console_button_back),
+                NK_SYMBOL_X);
             nk_console* w;
-            w = nk_console_key(keysTree, "Screenshot", &menu.keyScreenshot);
-            w = nk_console_key(keysTree, "Rewind", &menu.keyRewind);
-            w = nk_console_key(keysTree, "Menu", &menu.keyMenu);
-            w = nk_console_key(keysTree, "Save State", &menu.keySaveState);
-            w = nk_console_key(keysTree, "Load State", &menu.keyLoadState);
-            w = nk_console_key(keysTree, "Prev Slot", &menu.keyPrevSlot);
-            w = nk_console_key(keysTree, "Next Slot", &menu.keyNextSlot);
-            w = nk_console_key(keysTree, "Fullscreen", &menu.keyFullscreen);
-            w = nk_console_key(keysTree, "Previous Shader", &menu.keyPrevShader);
-            w = nk_console_key(keysTree, "Next Shader", &menu.keyNextShader);
-            w = nk_console_key(keysTree, "Reset", &menu.keyReset);
-            w = nk_console_key(keysTree, "Quit", &menu.keyQuit);
-            w = nk_console_key(keysTree, "Volume Up", &menu.keyVolumeUp);
-            w = nk_console_key(keysTree, "Volume Down", &menu.keyVolumeDown);
-            w = nk_console_key(keysTree, "Mute", &menu.keyMute);
-            w = nk_console_key(keysTree, "Fast Forward", &menu.keyFastForward);
-            w = nk_console_key(keysTree, "Slow Motion", &menu.keySlowMotion);
+            w = nk_console_key(keysMenu, "Screenshot", &menu.keyScreenshot);
+            w = nk_console_key(keysMenu, "Rewind", &menu.keyRewind);
+            w = nk_console_key(keysMenu, "Menu", &menu.keyMenu);
+            w = nk_console_key(keysMenu, "Save State", &menu.keySaveState);
+            w = nk_console_key(keysMenu, "Load State", &menu.keyLoadState);
+            w = nk_console_key(keysMenu, "Prev Slot", &menu.keyPrevSlot);
+            w = nk_console_key(keysMenu, "Next Slot", &menu.keyNextSlot);
+            w = nk_console_key(keysMenu, "Fullscreen", &menu.keyFullscreen);
+            w = nk_console_key(keysMenu, "Previous Shader", &menu.keyPrevShader);
+            w = nk_console_key(keysMenu, "Next Shader", &menu.keyNextShader);
+            w = nk_console_key(keysMenu, "Reset", &menu.keyReset);
+            w = nk_console_key(keysMenu, "Quit", &menu.keyQuit);
+            w = nk_console_key(keysMenu, "Volume Up", &menu.keyVolumeUp);
+            w = nk_console_key(keysMenu, "Volume Down", &menu.keyVolumeDown);
+            w = nk_console_key(keysMenu, "Mute", &menu.keyMute);
+            w = nk_console_key(keysMenu, "Fast Forward", &menu.keyFastForward);
+            w = nk_console_key(keysMenu, "Slow Motion", &menu.keySlowMotion);
+            (void)w;
         }
 
         // Keyboard Controls (Player 1)
-        nk_console* kbTree = nk_console_tree(settings, "Keyboard Controls", nk_false);
         {
+            nk_console* kbMenu = nk_console_button(settings, "Keyboard Controls");
+            nk_console_add_event(kbMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(kbMenu, "Keyboard Controls", &nk_console_button_back),
+                NK_SYMBOL_X);
             nk_console* w;
-            w = nk_console_key(kbTree, "B",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]);
-            w = nk_console_key(kbTree, "Y",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]);
-            w = nk_console_key(kbTree, "Select", &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT]);
-            w = nk_console_key(kbTree, "Start",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]);
-            w = nk_console_key(kbTree, "Up",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]);
-            w = nk_console_key(kbTree, "Down",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]);
-            w = nk_console_key(kbTree, "Left",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]);
-            w = nk_console_key(kbTree, "Right",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]);
-            w = nk_console_key(kbTree, "A",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]);
-            w = nk_console_key(kbTree, "X",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]);
-            w = nk_console_key(kbTree, "L",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]);
-            w = nk_console_key(kbTree, "R",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]);
-            w = nk_console_key(kbTree, "L2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]);
-            w = nk_console_key(kbTree, "R2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]);
-            w = nk_console_key(kbTree, "L3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]);
-            w = nk_console_key(kbTree, "R3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]);
+            w = nk_console_key(kbMenu, "B",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]);
+            w = nk_console_key(kbMenu, "Y",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]);
+            w = nk_console_key(kbMenu, "Select", &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT]);
+            w = nk_console_key(kbMenu, "Start",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]);
+            w = nk_console_key(kbMenu, "Up",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]);
+            w = nk_console_key(kbMenu, "Down",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]);
+            w = nk_console_key(kbMenu, "Left",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]);
+            w = nk_console_key(kbMenu, "Right",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]);
+            w = nk_console_key(kbMenu, "A",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]);
+            w = nk_console_key(kbMenu, "X",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]);
+            w = nk_console_key(kbMenu, "L",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]);
+            w = nk_console_key(kbMenu, "R",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]);
+            w = nk_console_key(kbMenu, "L2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]);
+            w = nk_console_key(kbMenu, "R2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]);
+            w = nk_console_key(kbMenu, "L3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]);
+            w = nk_console_key(kbMenu, "R3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]);
+            (void)w;
         }
 
         // Directories
-        nk_console* directoryTree = nk_console_tree(settings, "Directories", nk_false);
         {
-            nk_console* coreDirectory = nk_console_dir(directoryTree, "Cores", menu.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* dirMenu = nk_console_button(settings, "Directories");
+            nk_console_add_event(dirMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(dirMenu, "Directories", &nk_console_button_back),
+                NK_SYMBOL_X);
+
+            nk_console* coreDirectory = nk_console_dir(dirMenu, "Cores", menu.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuCoreDirChanged, NULL, NULL);
 
-            nk_console* saveDirectory = nk_console_dir(directoryTree, "Saves", menu.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* saveDirectory = nk_console_dir(dirMenu, "Saves", menu.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(saveDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* coreAssetsDirectory = nk_console_dir(directoryTree, "Assets", menu.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* coreAssetsDirectory = nk_console_dir(dirMenu, "Assets", menu.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreAssetsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* systemDirectory = nk_console_dir(directoryTree, "System", menu.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* systemDirectory = nk_console_dir(dirMenu, "System", menu.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(systemDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* playlistsDirectory = nk_console_dir(directoryTree, "Playlists", menu.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* playlistsDirectory = nk_console_dir(dirMenu, "Playlists", menu.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(playlistsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* fileBrowserStartDirectory = nk_console_dir(directoryTree, "Content", menu.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* fileBrowserStartDirectory = nk_console_dir(dirMenu, "Content", menu.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuContentDirChanged, NULL, NULL);
         }
-    }
 
-    // Core Options
-    menu.optionsMenu = nk_console_button(menu.console, "Core Options");
-    nk_console_add_event(menu.optionsMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
-    {
-        nk_console_button_set_symbol(
-            nk_console_button_onclick(menu.optionsMenu, "Back", &nk_console_button_back),
-            NK_SYMBOL_TRIANGLE_LEFT);
+        // Core Options (nested inside Settings)
+        menu.optionsMenu = nk_console_button(settings, "Core Options");
+        nk_console_add_event(menu.optionsMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+        {
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(menu.optionsMenu, "Core Options", &nk_console_button_back),
+                NK_SYMBOL_X);
+        }
     }
 
     // Quit
@@ -1061,8 +1093,8 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
     m->optionsMenu->visible = nk_true;
 
     nk_console_button_set_symbol(
-        nk_console_button_onclick(m->optionsMenu, "Back", &nk_console_button_back),
-        NK_SYMBOL_TRIANGLE_LEFT);
+        nk_console_button_onclick(m->optionsMenu, "Core Options", &nk_console_button_back),
+        NK_SYMBOL_X);
 
     for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
         if (TextLength(LibretroCore.variableValuesList[i]) == 0) continue;
