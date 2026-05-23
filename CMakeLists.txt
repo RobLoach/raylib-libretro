@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.11)
 project(raylib-libretro
     DESCRIPTION "raylib-libretro: libretro frontend using raylib."
     HOMEPAGE_URL "https://github.com/robloach/raylib-libretro"
-    VERSION 0.0.8
+    VERSION 0.0.18
     LANGUAGES C
 )
 
@@ -28,5 +28,15 @@ endif()
 option(BUILD_RAYLIB_LIBRETRO "raylib-libretro" ON)
 if(BUILD_RAYLIB_LIBRETRO)
     add_subdirectory(bin)
+endif()
+
+# Documentation
+find_package(Doxygen QUIET)
+if(DOXYGEN_FOUND)
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Doxyfile
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Generating API documentation"
+        VERBATIM)
 endif()
 

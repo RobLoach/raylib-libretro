@@ -69,19 +69,6 @@ bool LoadLibretroGameFromJS(const char* gameFile) {
     return MenuLoadGame(gameFile);
 }
 
-// JS-callable canvas resize. shell.html calls this on window resize /
-// orientationchange so the drawing buffer tracks the viewport. Uses the
-// HTML5 API directly to avoid the deprecated Browser.setCanvasSize path
-// (which is what blows up with "setCanvasSize was not exported").
-EMSCRIPTEN_KEEPALIVE
-void ResizeCanvasFromJS(int width, int height) {
-    if (width <= 0 || height <= 0) return;
-    // HTML5 API directly: avoids the Browser.setCanvasSize / SetWindowSize
-    // paths that abort with "setCanvasSize was not exported". raylib's
-    // GLFW resize callback fires from emscripten and updates the window
-    // dimensions internally.
-    emscripten_set_canvas_element_size("#canvas", width, height);
-}
 #endif
 
 #define REWIND_BUFFER_FRAMES 600  // ~10 seconds at 60fps
@@ -136,6 +123,7 @@ typedef struct {
     float savedVolume;
     bool muted;
     float savedVolumeBeforeMute;
+    bool pendingMenuOpen;
 } AppData;
 
 bool Init(void** userData, int argc, char** argv) {
@@ -175,7 +163,17 @@ bool Init(void** userData, int argc, char** argv) {
     const char* corePath = NULL;
     const char* gameFile = NULL;
     for (int i = 1; i < argc; i++) {
-        if ((TextIsEqual(argv[i], "-L") || TextIsEqual(argv[i], "--libretro")) && i + 1 < argc) {
+        if (TextIsEqual(argv[i], "-h") || TextIsEqual(argv[i], "--help")) {
+            printf("Usage: %s [-L <core>] [game]\n\n", argv[0]);
+            printf("Options:\n");
+            printf("  -L, --libretro <core>   Path to the libretro core (.so/.dll/.dylib)\n");
+            printf("  -h, --help              Show this help message\n\n");
+            printf("Examples:\n");
+            printf("  %s -L fceumm_libretro.so smb.nes\n", argv[0]);
+            printf("  %s -L fceumm_libretro.so smb.zip\n", argv[0]);
+            printf("  %s smb.nes\n", argv[0]);
+            return false;
+        } else if ((TextIsEqual(argv[i], "-L") || TextIsEqual(argv[i], "--libretro")) && i + 1 < argc) {
             corePath = argv[++i];
         } else if (!gameFile) {
             gameFile = argv[i];
@@ -194,15 +192,23 @@ bool Init(void** userData, int argc, char** argv) {
     return true;
 }
 
-bool UpdateDrawFrame(void* userData) {
+bool Update(void* userData) {
     AppData* data = (AppData*)userData;
+
+    // Deferred menu open: apply after input has refreshed so the release event
+    // that triggered the MENU touch button is gone before Nuklear processes input.
+    if (data->pendingMenuOpen) {
+        data->menu->active = true;
+        data->pendingMenuOpen = false;
+    }
 
     // Update virtual joypad from touch controls.
     if (data->menu->touchControls) {
+        SetTouchHapticsEnabled(data->menu->touchHapticsEnabled);
         if (!data->menu->active) {
             UpdateTouchControls();
             if (IsTouchControlsMenuPressed()) {
-                data->menu->active = true;
+                data->pendingMenuOpen = true;
             }
         } else {
             memset(LibretroCore.virtualJoypadState, 0, sizeof(LibretroCore.virtualJoypadState));
@@ -308,34 +314,13 @@ bool UpdateDrawFrame(void* userData) {
         return false;
     }
 
-    // Render the libretro core.
-    BeginDrawing();
-    {
-        ClearBackground(BLACK);
-
-        if (data->menu->active) {
-            BeginLibretroShaderGreyscale();
-            DrawLibretro();
-            EndShaderMode();
-        }
-        else {
-            BeginLibretroShader();
-            DrawLibretro();
-            EndLibretroShader();
-        }
-
-        DrawLibretroMenu();
-        if (data->menu->touchControls && !data->menu->active) {
-            DrawTouchControls();
-        }
-        DrawLibretroMessage();
-    }
-    EndDrawing();
-
-    // Fullscreen
+    // Fullscreen — handled in JS on Emscripten (requestFullscreen requires a
+    // direct user-gesture event handler, not the rAF-driven main loop).
+#ifndef __EMSCRIPTEN__
     if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyFullscreen))) {
         LibretroMenuFullscreenChanged(menu.console, NULL);
     }
+#endif
 
     // Screenshot
     else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyScreenshot))) {
@@ -434,6 +419,29 @@ bool UpdateDrawFrame(void* userData) {
     return true;
 }
 
+void Draw(void* userData) {
+    AppData* data = (AppData*)userData;
+
+    ClearBackground(BLACK);
+
+    if (data->menu->active) {
+        BeginLibretroShaderGreyscale();
+        DrawLibretro();
+        EndShaderMode();
+    }
+    else {
+        BeginLibretroShader();
+        DrawLibretro();
+        EndLibretroShader();
+    }
+
+    DrawLibretroMenu();
+    if (data->menu->touchControls && !data->menu->active) {
+        DrawTouchControls();
+    }
+    DrawLibretroMessage();
+}
+
 void Close(void* userData) {
     AppData* data = (AppData*)userData;
 
@@ -458,10 +466,11 @@ void Close(void* userData) {
 App Main() {
     return (App){
         .title = "raylib-libretro",
-        .width = 800,
-        .height = 600,
+        .width = 1280,
+        .height = 720,
         .init = Init,
-        .update = UpdateDrawFrame,
+        .update = Update,
+        .draw = Draw,
         .close = Close,
         .configFlags = FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT,
     };

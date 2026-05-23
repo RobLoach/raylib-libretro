@@ -1,17 +1,17 @@
 # raylib-libretro :space_invader: [![Tests](https://github.com/RobLoach/raylib-libretro/workflows/Tests/badge.svg)](https://github.com/RobLoach/raylib-libretro/actions)
 
-[libretro](https://www.libretro.com/) frontend to play emulators, game engines and media players, using [raylib](https://www.raylib.com). The [raylib-libretro.h](include/raylib-libretro.h) raylib extension allows integrating any raylib application with the libretro API. *Still in early development.*
+[libretro](https://www.libretro.com/) frontend to play emulators, game engines and media players, for Windows, Mac, Linux, and Web with [raylib](https://www.raylib.com). The [raylib-libretro.h](include/raylib-libretro.h) allows integrating any raylib application with the libretro API. *Still in early development.*
 
 ![Screenshot of raylib-libretro](docs/screenshot.png)
 
 ## Usage
 
 ``` sh
-raylib-libretro [game] -L [core]
+raylib-libretro [-L <core>] [game]
 ```
 
 - `[game]` can be a loose ROM file or a `.zip` archive
-- `[core]` is optional, and is a path to which libretro core to use
+- `-L <core>` is optional — path to the libretro core (`.so`/`.dll`/`.dylib`)
 
 ### Example
 ```
@@ -144,6 +144,11 @@ mkdir build
 cd build
 emcmake cmake .. -DPLATFORM=Web -DCMAKE_BUILD_TYPE=Release
 emmake make
+```
+
+To build the Doxygen documentation...
+```sh
+doxygen .Doxyfile
 ```
 
 ## Contributors
