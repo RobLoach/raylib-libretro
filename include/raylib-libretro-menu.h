@@ -939,6 +939,67 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* fileBrowserStartDirectory = nk_console_dir(directoryTree, "Content", menu.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuContentDirChanged, NULL, NULL);
         }
+
+        // About
+        {
+            nk_console* aboutMenu = nk_console_button(settings, "About");
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(aboutMenu, "Back", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_LEFT);
+
+            {
+                nk_console* w = nk_console_label(aboutMenu, "raylib-libretro: " RAYLIB_LIBRETRO_VERSION);
+                w->selectable = nk_true;
+            }
+            {
+                nk_console* w = nk_console_label(aboutMenu, "raylib: " RAYLIB_VERSION);
+                w->selectable = nk_true;
+            }
+            {
+                nk_console* w = nk_console_label(aboutMenu, "PhysFS: "
+#ifdef RAYLIB_PHYSFS_H
+                    "Yes"
+#else
+                    "No"
+#endif
+                );
+                w->selectable = nk_true;
+            }
+            {
+                nk_console* w = nk_console_label(aboutMenu, "Core:");
+                w->selectable = nk_true;
+            }
+            menu.infoCoreLabel = nk_console_label(aboutMenu, "");
+            menu.infoCoreLabel->selectable = nk_true;
+
+            {
+                nk_console* w = nk_console_label(aboutMenu, "Gamepads:");
+                w->selectable = nk_true;
+            }
+            for (int gi = 0; gi < 4; gi++) {
+                menu.infoGamepadLabels[gi] = nk_console_label(aboutMenu, "");
+                menu.infoGamepadLabels[gi]->selectable = nk_true;
+            }
+
+#ifdef RAYLIB_LIBRETRO_CONFIG_H
+            if (menu.cfg) {
+                int coreCount = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
+                if (coreCount > 0) {
+                    nk_console* w = nk_console_label(aboutMenu, "Installed Cores:");
+                    w->selectable = nk_true;
+                    for (int ci = 0; ci < coreCount; ci++) {
+                        char keyPath[64];
+                        TextCopy(keyPath, TextFormat("core_%d_path", ci));
+                        const char* corePath = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath);
+                        if (corePath) {
+                            w = nk_console_label(aboutMenu, GetFileName(corePath));
+                            w->selectable = nk_true;
+                        }
+                    }
+                }
+            }
+#endif
+        }
     }
 
     // Core Options
@@ -948,46 +1009,6 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_button_set_symbol(
             nk_console_button_onclick(menu.optionsMenu, "Back", &nk_console_button_back),
             NK_SYMBOL_TRIANGLE_LEFT);
-    }
-
-    // Information
-    {
-        nk_console* infoMenu = nk_console_button(menu.console, "Information");
-        nk_console_button_set_symbol(
-            nk_console_button_onclick(infoMenu, "Back", &nk_console_button_back),
-            NK_SYMBOL_TRIANGLE_LEFT);
-
-        // Core
-        nk_console_label(infoMenu, "Core:");
-        menu.infoCoreLabel = nk_console_label(infoMenu, "");
-
-        // Gamepads
-        nk_console_label(infoMenu, "Gamepads:");
-        for (int gi = 0; gi < 4; gi++) {
-            menu.infoGamepadLabels[gi] = nk_console_label(infoMenu, "");
-        }
-
-        // PhysFS
-        nk_console_label(infoMenu, "PhysFS: "
-#ifdef RAYLIB_PHYSFS_H
-            "Yes"
-#else
-            "No"
-#endif
-        );
-
-        // raylib version
-        nk_console_label(infoMenu, "raylib: " RAYLIB_VERSION);
-
-        // Cores directory
-        nk_console_label(infoMenu, "Cores:");
-        if (menu.coreDirectory[0] != '\0') {
-            FilePathList cores = LoadDirectoryFilesEx(menu.coreDirectory, "_libretro", false);
-            for (unsigned int ci = 0; ci < cores.count; ci++) {
-                nk_console_label(infoMenu, GetFileName(cores.paths[ci]));
-            }
-            UnloadDirectoryFiles(cores);
-        }
     }
 
     // Quit

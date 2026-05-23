@@ -37,6 +37,8 @@
 #ifndef RAYLIB_LIBRETRO_RLIBRETRO_H
 #define RAYLIB_LIBRETRO_RLIBRETRO_H
 
+#define RAYLIB_LIBRETRO_VERSION "0.0.17"
+
 #include <string.h>
 #include "raylib.h"
 
