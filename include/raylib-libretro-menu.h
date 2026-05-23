@@ -871,69 +871,84 @@ LibretroMenu* InitLibretroMenu(void) {
             '|', &menu.saveSlotIndex);
 
         // Keys
-        nk_console* keysTree = nk_console_tree(settings, "Keys", nk_false);
         {
+            nk_console* keysMenu = nk_console_button(settings, "Keys");
+            nk_console_add_event(keysMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(keysMenu, "Back", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_LEFT);
             nk_console* w;
-            w = nk_console_key(keysTree, "Screenshot", &menu.keyScreenshot);
-            w = nk_console_key(keysTree, "Rewind", &menu.keyRewind);
-            w = nk_console_key(keysTree, "Menu", &menu.keyMenu);
-            w = nk_console_key(keysTree, "Save State", &menu.keySaveState);
-            w = nk_console_key(keysTree, "Load State", &menu.keyLoadState);
-            w = nk_console_key(keysTree, "Prev Slot", &menu.keyPrevSlot);
-            w = nk_console_key(keysTree, "Next Slot", &menu.keyNextSlot);
-            w = nk_console_key(keysTree, "Fullscreen", &menu.keyFullscreen);
-            w = nk_console_key(keysTree, "Previous Shader", &menu.keyPrevShader);
-            w = nk_console_key(keysTree, "Next Shader", &menu.keyNextShader);
-            w = nk_console_key(keysTree, "Reset", &menu.keyReset);
-            w = nk_console_key(keysTree, "Quit", &menu.keyQuit);
-            w = nk_console_key(keysTree, "Volume Up", &menu.keyVolumeUp);
-            w = nk_console_key(keysTree, "Volume Down", &menu.keyVolumeDown);
-            w = nk_console_key(keysTree, "Mute", &menu.keyMute);
-            w = nk_console_key(keysTree, "Fast Forward", &menu.keyFastForward);
-            w = nk_console_key(keysTree, "Slow Motion", &menu.keySlowMotion);
+            w = nk_console_key(keysMenu, "Screenshot", &menu.keyScreenshot);
+            w = nk_console_key(keysMenu, "Rewind", &menu.keyRewind);
+            w = nk_console_key(keysMenu, "Menu", &menu.keyMenu);
+            w = nk_console_key(keysMenu, "Save State", &menu.keySaveState);
+            w = nk_console_key(keysMenu, "Load State", &menu.keyLoadState);
+            w = nk_console_key(keysMenu, "Prev Slot", &menu.keyPrevSlot);
+            w = nk_console_key(keysMenu, "Next Slot", &menu.keyNextSlot);
+            w = nk_console_key(keysMenu, "Fullscreen", &menu.keyFullscreen);
+            w = nk_console_key(keysMenu, "Previous Shader", &menu.keyPrevShader);
+            w = nk_console_key(keysMenu, "Next Shader", &menu.keyNextShader);
+            w = nk_console_key(keysMenu, "Reset", &menu.keyReset);
+            w = nk_console_key(keysMenu, "Quit", &menu.keyQuit);
+            w = nk_console_key(keysMenu, "Volume Up", &menu.keyVolumeUp);
+            w = nk_console_key(keysMenu, "Volume Down", &menu.keyVolumeDown);
+            w = nk_console_key(keysMenu, "Mute", &menu.keyMute);
+            w = nk_console_key(keysMenu, "Fast Forward", &menu.keyFastForward);
+            w = nk_console_key(keysMenu, "Slow Motion", &menu.keySlowMotion);
+            (void)w;
         }
 
         // Keyboard Controls (Player 1)
-        nk_console* kbTree = nk_console_tree(settings, "Keyboard Controls", nk_false);
         {
+            nk_console* kbMenu = nk_console_button(settings, "Keyboard Controls");
+            nk_console_add_event(kbMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(kbMenu, "Back", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_LEFT);
             nk_console* w;
-            w = nk_console_key(kbTree, "B",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]);
-            w = nk_console_key(kbTree, "Y",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]);
-            w = nk_console_key(kbTree, "Select", &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT]);
-            w = nk_console_key(kbTree, "Start",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]);
-            w = nk_console_key(kbTree, "Up",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]);
-            w = nk_console_key(kbTree, "Down",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]);
-            w = nk_console_key(kbTree, "Left",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]);
-            w = nk_console_key(kbTree, "Right",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]);
-            w = nk_console_key(kbTree, "A",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]);
-            w = nk_console_key(kbTree, "X",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]);
-            w = nk_console_key(kbTree, "L",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]);
-            w = nk_console_key(kbTree, "R",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]);
-            w = nk_console_key(kbTree, "L2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]);
-            w = nk_console_key(kbTree, "R2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]);
-            w = nk_console_key(kbTree, "L3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]);
-            w = nk_console_key(kbTree, "R3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]);
+            w = nk_console_key(kbMenu, "B",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]);
+            w = nk_console_key(kbMenu, "Y",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]);
+            w = nk_console_key(kbMenu, "Select", &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT]);
+            w = nk_console_key(kbMenu, "Start",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]);
+            w = nk_console_key(kbMenu, "Up",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]);
+            w = nk_console_key(kbMenu, "Down",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]);
+            w = nk_console_key(kbMenu, "Left",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]);
+            w = nk_console_key(kbMenu, "Right",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]);
+            w = nk_console_key(kbMenu, "A",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]);
+            w = nk_console_key(kbMenu, "X",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]);
+            w = nk_console_key(kbMenu, "L",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]);
+            w = nk_console_key(kbMenu, "R",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]);
+            w = nk_console_key(kbMenu, "L2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]);
+            w = nk_console_key(kbMenu, "R2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]);
+            w = nk_console_key(kbMenu, "L3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]);
+            w = nk_console_key(kbMenu, "R3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]);
+            (void)w;
         }
 
         // Directories
-        nk_console* directoryTree = nk_console_tree(settings, "Directories", nk_false);
         {
-            nk_console* coreDirectory = nk_console_dir(directoryTree, "Cores", menu.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* dirMenu = nk_console_button(settings, "Directories");
+            nk_console_add_event(dirMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(dirMenu, "Back", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_LEFT);
+
+            nk_console* coreDirectory = nk_console_dir(dirMenu, "Cores", menu.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuCoreDirChanged, NULL, NULL);
 
-            nk_console* saveDirectory = nk_console_dir(directoryTree, "Saves", menu.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* saveDirectory = nk_console_dir(dirMenu, "Saves", menu.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(saveDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* coreAssetsDirectory = nk_console_dir(directoryTree, "Assets", menu.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* coreAssetsDirectory = nk_console_dir(dirMenu, "Assets", menu.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreAssetsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* systemDirectory = nk_console_dir(directoryTree, "System", menu.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* systemDirectory = nk_console_dir(dirMenu, "System", menu.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(systemDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* playlistsDirectory = nk_console_dir(directoryTree, "Playlists", menu.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* playlistsDirectory = nk_console_dir(dirMenu, "Playlists", menu.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(playlistsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* fileBrowserStartDirectory = nk_console_dir(directoryTree, "Content", menu.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* fileBrowserStartDirectory = nk_console_dir(dirMenu, "Content", menu.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuContentDirChanged, NULL, NULL);
         }
     }
