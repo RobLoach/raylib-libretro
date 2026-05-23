@@ -61,6 +61,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Match the window's refresh rate to the core's target FPS.
+    SetTargetFPS((int)GetLibretroFPS());
+    TraceLog(LOG_INFO, "LIBRETRO: Core FPS=%.2f AspectRatio=%.4f", GetLibretroFPS(), (double)GetLibretroAspectRatio());
+
     while (!WindowShouldClose() && !LibretroShouldClose()) {
         // Run a frame of the core.
         UpdateLibretro();

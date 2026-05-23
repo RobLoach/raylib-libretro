@@ -63,6 +63,8 @@ static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color 
 static void DrawLibretroV(Vector2 position, Color tint);
 static void DrawLibretroTexture(int posX, int posY, Color tint);
 static void DrawLibretroPro(Rectangle destRec, Color tint);
+static double GetLibretroFPS(void);
+static float GetLibretroAspectRatio(void);
 static const char* GetLibretroName(void);
 static const char* GetLibretroContentName(void);
 static const char* GetLibretroVersion(void);
@@ -2918,6 +2920,14 @@ static unsigned GetLibretroWidth(void) {
  */
 static unsigned GetLibretroHeight(void) {
     return LibretroCore.height;
+}
+
+static double GetLibretroFPS(void) {
+    return LibretroCore.fps > 0 ? (double)LibretroCore.fps : 60.0;
+}
+
+static float GetLibretroAspectRatio(void) {
+    return LibretroCore.aspectRatio;
 }
 
 /**
