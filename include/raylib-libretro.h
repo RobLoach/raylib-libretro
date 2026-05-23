@@ -404,9 +404,18 @@ static const char *GetLibretroCoreOption(const char *key) {
 }
 
 /**
- * Get a directory path for the given libretro directory type.
- * @param directory One of the RETRO_ENVIRONMENT_GET_*_DIRECTORY constants.
- * @return Directory path string, or an empty string if not configured. */
+ * Retrieves the directory that is configured as a libretro directory.
+ *
+ * @param directory The key of which directory to retrieve. Can be...
+ * - RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY
+ * - RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY
+ * - RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY
+ * - RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY
+ * - RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY
+ * - RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY
+ *
+ * @return The directory that's currently configured for the libretro directory. The application directory by default, or NULL if it's an incorrect directory.
+ */
 static const char* GetLibretroDirectory(int directory) {
     // Rotating buffer pool so multiple calls in one expression don't clobber each other.
     #define RAYLIB_LIBRETRO_DIR_BUFFERS 4
@@ -2317,10 +2326,18 @@ static void LibretroBuildExtPattern(const char *exts, char *pattern, size_t patt
 }
 
 /**
- * Determine the effective need_fullpath flag for a given content path.
- * @param path       Content path to check.
- * @param persistent Output parameter set to true if the path must stay valid after loading.
- * @return true if the core requires a full filesystem path for this content. */
+ * Retrieve whether or not the libretro core requires a full path for a given content file.
+ *
+ * This honors RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE calls.
+ *
+ * @param path       Content path to inspect. May be NULL, in which case the
+ *                   global retro_system_info::need_fullpath value is
+ *                   returned.
+ * @param persistent Optional out-param set to the matching override's
+ *                   persistent_data flag, or \c false when no override
+ *                   matched. May be NULL.
+ * @return The effective need_fullpath for the given path.
+ */
 static bool GetLibretroNeedFullpath(const char *path, bool *persistent) {
     if (persistent) *persistent = false;
     if (path == NULL) return LibretroCore.needFullpath;
@@ -2337,12 +2354,23 @@ static bool GetLibretroNeedFullpath(const char *path, bool *persistent) {
 }
 
 /**
- * Load content from a memory buffer.
- * @param fileData    Pointer to the content data in memory.
- * @param dataSize    Size of the buffer in bytes.
- * @param contentPath Virtual path reported to the core (used for extension detection).
- * @param persistent  When true, the core may keep the pointer alive after loading.
- * @return true on success.
+ * Load game data into the core, with full control over the path stored on
+ * LibretroCore.contentPath and over persistent_data ownership.
+ *
+ * When @p persistent is true (typically from a CONTENT_INFO_OVERRIDE
+ * declaring persistent_data), ownership of @p fileData transfers to
+ * LibretroCore.persistentGameData and the buffer is released by
+ * UnloadLibretroGame(). When false, the caller retains ownership and may
+ * free @p fileData immediately after this returns.
+ *
+ * @param fileData    ROM data. Must not be NULL.
+ * @param dataSize    Size of @p fileData in bytes.
+ * @param contentPath Optional path stored on LibretroCore.contentPath and
+ *                    surfaced via RETRO_ENVIRONMENT_GET_GAME_INFO_EXT. May
+ *                    be NULL.
+ * @param persistent  See RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE; when
+ *                    \c true, the buffer is kept alive until retro_deinit().
+ * @return \c true on success, \c false on failure.
  */
 static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize, const char* contentPath, bool persistent) {
     if (!IsLibretroReady()) {
