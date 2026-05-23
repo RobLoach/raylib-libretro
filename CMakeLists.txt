@@ -30,3 +30,13 @@ if(BUILD_RAYLIB_LIBRETRO)
     add_subdirectory(bin)
 endif()
 
+# Documentation
+find_package(Doxygen QUIET)
+if(DOXYGEN_FOUND)
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Doxyfile
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Generating API documentation"
+        VERBATIM)
+endif()
+

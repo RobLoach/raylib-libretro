@@ -63,6 +63,7 @@ typedef struct LibretroMenu {
     nk_console* saveStateButton;
     nk_console* loadStateButton;
     nk_console* resumeButton;
+    nk_console* resetGameButton;
     //nk_console* closeGameButton;
     int shaderSelectedIndex;
     int textureFilterIndex;
@@ -309,6 +310,14 @@ static void MenuResumeClicked(nk_console* widget, void* user_data) {
     if (IsLibretroGameReady()) {
         menu.active = false;
     }
+}
+
+static void MenuResetGameClicked(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    if (!IsLibretroGameReady()) return;
+    ResetLibretro();
+    menu.active = false;
 }
 
 // Fired when the user navigates back from Settings or Core Options. This is
@@ -782,6 +791,10 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_button_set_symbol(menu.loadStateButton, NK_SYMBOL_RECT_OUTLINE);
         nk_console_row_end(saveStateRow);
     }
+
+    // Reset Game
+    menu.resetGameButton = nk_console_button_onclick(menu.console, "Reset Game", &MenuResetGameClicked);
+    nk_console_button_set_symbol(menu.resetGameButton, NK_SYMBOL_CIRCLE_SOLID);
 
     // Load Game
     menu.loadGameWidget = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
@@ -1357,6 +1370,7 @@ static void UpdateLibretroMenuVisibility(void) {
     }
     //if (menu.loadStateButton) menu.loadStateButton->visible = gameReady;
     if (menu.resumeButton) menu.resumeButton->visible = gameReady;
+    if (menu.resetGameButton) menu.resetGameButton->visible = gameReady;
     //if (menu.closeGameButton) menu.closeGameButton->visible = gameReady;
 }
 
@@ -1371,6 +1385,12 @@ void UpdateLibretroMenu(void) {
     if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE)) {
         menu.active = !menu.active;
     } else if (!menu.active && IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyMenu))) {
+        menu.active = true;
+    }
+
+    // Open the menu automatically when the window loses focus or is minimized,
+    // but only while a game is running (no point pausing an empty menu).
+    if (!menu.active && IsLibretroGameReady() && (IsWindowMinimized() || !IsWindowFocused())) {
         menu.active = true;
     }
 
@@ -1426,7 +1446,10 @@ void UpdateLibretroMenu(void) {
 
     // Render
     struct nk_rect windowPos = nk_rect(0, 0, (float)GetScreenWidth()/scaling, (float)GetScreenHeight()/scaling);
-    nk_console_render_window(menu.console, "raylib-libretro", windowPos, NK_WINDOW_SCROLL_AUTO_HIDE | NK_WINDOW_TITLE);
+    nk_console_render_window(menu.console, "raylib-libretro", windowPos,
+        NK_WINDOW_SCROLL_AUTO_HIDE |
+        // Show the window title only on the top level.
+        ((nk_console_active_parent(menu.console) == menu.console) ? NK_WINDOW_TITLE : 0));
 }
 
 void DrawLibretroMenu(void) {
