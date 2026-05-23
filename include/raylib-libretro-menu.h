@@ -827,6 +827,9 @@ LibretroMenu* InitLibretroMenu(void) {
 
             nk_console* fullscreenCheckbox = nk_console_checkbox(graphicsMenu, "Fullscreen", &menu.fullscreen);
             nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
+            #ifdef __EMSCRIPTEN__
+            fullscreenCheckbox->visible = nk_false;
+            #endif
 
             static char shaderNames[256] = {0};
             if (shaderNames[0] == '\0') {
@@ -903,6 +906,9 @@ LibretroMenu* InitLibretroMenu(void) {
             w = nk_console_key(keysMenu, "Prev Slot", &menu.keyPrevSlot);
             w = nk_console_key(keysMenu, "Next Slot", &menu.keyNextSlot);
             w = nk_console_key(keysMenu, "Fullscreen", &menu.keyFullscreen);
+            #ifdef __EMSCRIPTEN__
+            w->visible = nk_false;
+            #endif
             w = nk_console_key(keysMenu, "Previous Shader", &menu.keyPrevShader);
             w = nk_console_key(keysMenu, "Next Shader", &menu.keyNextShader);
             w = nk_console_key(keysMenu, "Reset", &menu.keyReset);
