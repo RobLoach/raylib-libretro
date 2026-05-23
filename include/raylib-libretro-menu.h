@@ -63,6 +63,7 @@ typedef struct LibretroMenu {
     nk_console* saveStateButton;
     nk_console* loadStateButton;
     nk_console* resumeButton;
+    nk_console* resetGameButton;
     //nk_console* closeGameButton;
     int shaderSelectedIndex;
     int textureFilterIndex;
@@ -104,6 +105,7 @@ typedef struct LibretroMenu {
     nk_console* infoGamepadLabels[4];
     char infoCoreText[128];
     char infoGamepadText[4][64];
+    nk_rune keyboardP1[16]; // Indexed by RETRO_DEVICE_ID_JOYPAD_*
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
 #endif
@@ -185,6 +187,7 @@ static bool SaveLibretroMenuSettings(void);
 static bool SaveLibretroCoreOptions(void);
 static bool LoadLibretroMenuSettings(void);
 static void UpdateLibretroMenuVisibility(void);
+static void LibretroMenuApplyKeyboardPlayer1(void);
 static Font GetLibretroMenuFont(void) {
     return menu.font;
 }
@@ -313,6 +316,14 @@ static void MenuResumeClicked(nk_console* widget, void* user_data) {
     }
 }
 
+static void MenuResetGameClicked(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    if (!IsLibretroGameReady()) return;
+    ResetLibretro();
+    menu.active = false;
+}
+
 // Fired when the user navigates back from Settings or Core Options. This is
 // the natural commit point: anything the user just touched in those submenus
 // is now part of the loaded state, so write the cfg out and flush IDBFS so
@@ -320,6 +331,7 @@ static void MenuResumeClicked(nk_console* widget, void* user_data) {
 static void MenuCommitSettings(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     NK_UNUSED(user_data);
+    LibretroMenuApplyKeyboardPlayer1();
     SaveLibretroAllSettings();
 }
 
@@ -346,6 +358,9 @@ static void LibretroApplyDirectories(void) {
     TextCopy(LibretroCore.systemDirectory,          menu.systemDirectory);
     TextCopy(LibretroCore.playlistsDirectory,       menu.playlistsDirectory);
     TextCopy(LibretroCore.fileBrowserStartDirectory, menu.fileBrowserStartDirectory);
+    if (menu.saveDirectory[0] != '\0' && !DirectoryExists(menu.saveDirectory)) {
+        MakeDirectory(menu.saveDirectory);
+    }
 }
 
 static void MenuDirChanged(nk_console* widget, void* user_data) {
@@ -545,7 +560,72 @@ static bool MenuInitCore(const char* corePath) {
     return true;
 }
 
+/**
+ * Load the battery save (SRAM) for the currently loaded game from disk.
+ *
+ * Constructs the save path as `<saveDir>/<contentName>.srm` and, if the file
+ * exists, reads it into the core's SRAM region via @ref SetLibretroSRAMData.
+ * Does nothing when no game is ready or the core has no SRAM region.
+ *
+ * @return true  if SRAM was found on disk and successfully applied.
+ * @return false if no game is ready, no SRAM region exists, or the file is absent.
+ */
+static bool MenuLoadGameSRAM(void) {
+    if (!IsLibretroGameReady()) return false;
+    const char* sramPath = TextFormat("%s/%s.srm",
+        GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY),
+        GetLibretroContentName());
+    if (!FileExists(sramPath)) return false;
+    int fileSize = 0;
+    unsigned char* fileData = LoadFileData(sramPath, &fileSize);
+    if (fileData == NULL || fileSize == 0) {
+        UnloadFileData(fileData);
+        return false;
+    }
+    bool ok = SetLibretroSRAMData(fileData, (size_t)fileSize);
+    UnloadFileData(fileData);
+    if (ok) TraceLog(LOG_INFO, "MENU: SRAM loaded from %s", sramPath);
+    return ok;
+}
+
+/**
+ * Save the battery save (SRAM) for the currently loaded game to disk.
+ *
+ * Constructs the save path as `<saveDir>/<contentName>.srm` and writes the
+ * core's SRAM region (obtained via @ref GetLibretroSRAMData) to that file.
+ * Does nothing when no game is ready or the core has no SRAM region.
+ *
+ * @return true  if SRAM data exists and was written to disk successfully.
+ * @return false if no game is ready, no SRAM region exists, or the write failed.
+ */
+static bool MenuSaveGameSRAM(void) {
+    if (!IsLibretroGameReady()) return false;
+    size_t sramSize = 0;
+    void* sramData = GetLibretroSRAMData(&sramSize);
+    if (sramData == NULL || sramSize == 0) return false;
+    const char* sramPath = TextFormat("%s/%s.srm",
+        GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY),
+        GetLibretroContentName());
+    bool ok = SaveFileData(sramPath, sramData, (unsigned int)sramSize);
+    if (ok) {
+        TraceLog(LOG_INFO, "MENU: SRAM saved to %s", sramPath);
+        LibretroFlushPersistentStorage();
+    }
+    return ok;
+}
+
 static bool MenuLoadGame(const char* gamePath) {
+    BeginDrawing();
+        ClearBackground(BLACK);
+        const char* loadingText = TextFormat("Loading %s", GetFileName(gamePath));
+        Font font = IsFontValid(menu.font) ? menu.font : GetFontDefault();
+        float fontSize = (float)font.baseSize;
+        Vector2 textSize = MeasureTextEx(font, loadingText, fontSize, 1);
+        DrawTextEx(font, loadingText,
+            (Vector2){ (GetScreenWidth() - textSize.x) / 2, (GetScreenHeight() - textSize.y) / 2 },
+            fontSize, 1, GRAY);
+    EndDrawing();
+
     // Unload the current game if it's a thing.
     if (IsLibretroGameReady()) {
         UnloadLibretroGame();
@@ -579,6 +659,7 @@ static bool MenuLoadGame(const char* gamePath) {
 
     BuildLibretroMenuOptions(&menu);
     menu.active = false;
+    MenuLoadGameSRAM();
     return true;
 }
 
@@ -638,6 +719,22 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.fastForwardSpeed = 3;
     menu.keySlowMotion = (nk_rune)'G';
     menu.slowMotionSpeed = 0.5f;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]      = (nk_rune)'Z';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]      = (nk_rune)'A';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT] = (nk_rune)NK_KEY_SHIFT;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]  = (nk_rune)NK_KEY_ENTER;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]     = (nk_rune)NK_KEY_UP;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]   = (nk_rune)NK_KEY_DOWN;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]   = (nk_rune)NK_KEY_LEFT;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]  = (nk_rune)NK_KEY_RIGHT;
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]      = (nk_rune)'X';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]      = (nk_rune)'S';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]      = (nk_rune)'Q';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]      = (nk_rune)'W';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]     = (nk_rune)'E';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]     = (nk_rune)'R';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]     = (nk_rune)'D';
+    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]     = (nk_rune)'F';
     menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
         return NULL;
@@ -668,11 +765,12 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.cfg = rlconfig_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
 #endif
     TextCopy(menu.coreDirectory, "cores");
+    TextCopy(menu.saveDirectory, "saves");
 #ifdef __EMSCRIPTEN__
     // Default save/system directories point at the IDBFS mount so they
     // persist across page reloads. The user can still override via the
     // Settings menu; saved values take precedence on subsequent runs.
-    if (menu.saveDirectory[0]   == '\0') TextCopy(menu.saveDirectory,   "/userdata/saves");
+    TextCopy(menu.saveDirectory,   "/userdata/saves");
     if (menu.systemDirectory[0] == '\0') TextCopy(menu.systemDirectory, "/userdata/system");
 #endif
     LoadLibretroMenuSettings();
@@ -682,19 +780,6 @@ LibretroMenu* InitLibretroMenu(void) {
     // Build the Menu
     menu.resumeButton = nk_console_button_onclick(menu.console, "Resume", &MenuResumeClicked);
     nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_TRIANGLE_RIGHT);
-
-
-
-    // Load Game
-    menu.loadGameWidget = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
-    nk_console_add_event_handler(menu.loadGameWidget, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
-    if (menu.fileBrowserStartDirectory[0] != '\0') {
-        nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
-    }
-
-    // Close Game
-    //menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
-    //nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_X);
 
     // Save States
     {
@@ -710,6 +795,21 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_button_set_symbol(menu.loadStateButton, NK_SYMBOL_RECT_OUTLINE);
         nk_console_row_end(saveStateRow);
     }
+
+    // Reset Game
+    menu.resetGameButton = nk_console_button_onclick(menu.console, "Reset Game", &MenuResetGameClicked);
+    nk_console_button_set_symbol(menu.resetGameButton, NK_SYMBOL_CIRCLE_SOLID);
+
+    // Load Game
+    menu.loadGameWidget = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+    nk_console_add_event_handler(menu.loadGameWidget, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
+    if (menu.fileBrowserStartDirectory[0] != '\0') {
+        nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
+    }
+
+    // Close Game
+    //menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
+    //nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_X);
 
     // Settings
     nk_console* settings = nk_console_button(menu.console, "Settings");
@@ -794,6 +894,28 @@ LibretroMenu* InitLibretroMenu(void) {
             w = nk_console_key(keysTree, "Mute", &menu.keyMute);
             w = nk_console_key(keysTree, "Fast Forward", &menu.keyFastForward);
             w = nk_console_key(keysTree, "Slow Motion", &menu.keySlowMotion);
+        }
+
+        // Keyboard Controls (Player 1)
+        nk_console* kbTree = nk_console_tree(settings, "Keyboard Controls", nk_false);
+        {
+            nk_console* w;
+            w = nk_console_key(kbTree, "B",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]);
+            w = nk_console_key(kbTree, "Y",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]);
+            w = nk_console_key(kbTree, "Select", &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT]);
+            w = nk_console_key(kbTree, "Start",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]);
+            w = nk_console_key(kbTree, "Up",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]);
+            w = nk_console_key(kbTree, "Down",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]);
+            w = nk_console_key(kbTree, "Left",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]);
+            w = nk_console_key(kbTree, "Right",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]);
+            w = nk_console_key(kbTree, "A",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]);
+            w = nk_console_key(kbTree, "X",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]);
+            w = nk_console_key(kbTree, "L",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]);
+            w = nk_console_key(kbTree, "R",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]);
+            w = nk_console_key(kbTree, "L2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]);
+            w = nk_console_key(kbTree, "R2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]);
+            w = nk_console_key(kbTree, "L3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]);
+            w = nk_console_key(kbTree, "R3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]);
         }
 
         // Directories
@@ -1060,7 +1182,16 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroResolveAbsoluteDirectory(menu.systemDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroResolveAbsoluteDirectory(menu.playlistsDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory", LibretroResolveAbsoluteDirectory(menu.fileBrowserStartDirectory));
+    for (int i = 0; i < 16; i++) {
+        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("keyP1[%d]", i), (int)menu.keyboardP1[i]);
+    }
 #endif
+}
+
+static void LibretroMenuApplyKeyboardPlayer1(void) {
+    for (int i = 0; i < 16; i++) {
+        LibretroCore.keyboardPlayer1[i] = (int)NuklearKeyToKeyboardKey(menu.keyboardP1[i]);
+    }
 }
 
 static bool SaveLibretroMenuSettings(void) {
@@ -1125,6 +1256,7 @@ bool SaveLibretroAllSettings(void) {
     }
     bool ok = rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
     TraceLog(LOG_INFO, "MENU: Saved all settings to %s", RAYLIB_LIBRETRO_CFG_FILE);
+    MenuSaveGameSRAM();
     LibretroFlushPersistentStorage();
     return ok;
 #else
@@ -1211,9 +1343,15 @@ static bool LoadLibretroMenuSettings(void) {
     const char* fileBrowserStartDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory");
     if (fileBrowserStartDirectory) TextCopy(menu.fileBrowserStartDirectory, fileBrowserStartDirectory);
 
+    for (int i = 0; i < 16; i++) {
+        menu.keyboardP1[i] = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("keyP1[%d]", i), (int)menu.keyboardP1[i]);
+    }
+    LibretroMenuApplyKeyboardPlayer1();
+
     TraceLog(LOG_INFO, "MENU: Loaded menu settings from %s", RAYLIB_LIBRETRO_CFG_FILE);
     return true;
 #else
+    LibretroMenuApplyKeyboardPlayer1();
     return false;
 #endif
 }
@@ -1276,6 +1414,7 @@ static void UpdateLibretroMenuVisibility(void) {
     }
     //if (menu.loadStateButton) menu.loadStateButton->visible = gameReady;
     if (menu.resumeButton) menu.resumeButton->visible = gameReady;
+    if (menu.resetGameButton) menu.resetGameButton->visible = gameReady;
     //if (menu.closeGameButton) menu.closeGameButton->visible = gameReady;
 }
 
@@ -1290,6 +1429,12 @@ void UpdateLibretroMenu(void) {
     if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE)) {
         menu.active = !menu.active;
     } else if (!menu.active && IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyMenu))) {
+        menu.active = true;
+    }
+
+    // Open the menu automatically when the window loses focus or is minimized,
+    // but only while a game is running (no point pausing an empty menu).
+    if (!menu.active && IsLibretroGameReady() && (IsWindowMinimized() || !IsWindowFocused())) {
         menu.active = true;
     }
 
@@ -1369,7 +1514,10 @@ void UpdateLibretroMenu(void) {
 
     // Render
     struct nk_rect windowPos = nk_rect(0, 0, (float)GetScreenWidth()/scaling, (float)GetScreenHeight()/scaling);
-    nk_console_render_window(menu.console, "raylib-libretro", windowPos, NK_WINDOW_SCROLL_AUTO_HIDE);
+    nk_console_render_window(menu.console, "raylib-libretro", windowPos,
+        NK_WINDOW_SCROLL_AUTO_HIDE |
+        // Show the window title only on the top level.
+        ((nk_console_active_parent(menu.console) == menu.console) ? NK_WINDOW_TITLE : 0));
 }
 
 void DrawLibretroMenu(void) {

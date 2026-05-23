@@ -40,7 +40,7 @@ target_include_directories(my_app PRIVATE vendor/raylib-libretro/include)
 #include "raylib-libretro.h"
 
 int main(int argc, char* argv[]) {
-    InitWindow(800, 600, "My libretro app");
+    InitWindow(1280, 720, "My libretro app");
     InitAudioDevice();
 
     InitLibretro(argv[1]);          // Load core (.so/.dll/.dylib)

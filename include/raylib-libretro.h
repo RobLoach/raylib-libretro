@@ -50,49 +50,54 @@ extern "C" {
 // Libretro Raylib Integration (Module: raylib-libretro)
 //------------------------------------------------------------------------------------
 
-static bool InitLibretro(const char* core);   // Initialize the given libretro core
-static bool InitLibretroEx(const char* core, bool peek);   // Initialize the given libretro core
-static bool LoadLibretroGame(const char* gameFile);      // Load the provided content. Provide NULL to load the core without content.
-static bool IsLibretroReady(void);                           // Whether or not the core was successfully loaded.
-static bool IsLibretroGameReady(void);                       // Whether or not the game has been loaded.
-static void UpdateLibretro(void);                            // Run an iteration of the core.
-static bool LibretroShouldClose(void);                       // Check whether or not the core has requested to shutdown.
-static void DrawLibretro(void);                              // Draw the libretro state on the screen.
-static void DrawLibretroTint(Color tint);                // Draw the libretro state on the screen with a tint.
+static bool InitLibretro(const char* core);
+static bool InitLibretroEx(const char* core, bool peek);
+static bool LoadLibretroGame(const char* gameFile);
+static bool IsLibretroReady(void);
+static bool IsLibretroGameReady(void);
+static void UpdateLibretro(void);
+static bool LibretroShouldClose(void);
+static void DrawLibretro(void);
+static void DrawLibretroTint(Color tint);
 static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint);
 static void DrawLibretroV(Vector2 position, Color tint);
 static void DrawLibretroTexture(int posX, int posY, Color tint);
 static void DrawLibretroPro(Rectangle destRec, Color tint);
-static const char* GetLibretroName(void);                    // Get the name of the loaded libretro core.
-static const char* GetLibretroContentName(void);             // Get the filename (no extension) of the loaded content, or core name if none.
-static const char* GetLibretroVersion(void);                 // Get the version of the loaded libretro core.
-static unsigned GetLibretroWidth(void);                      // Get the desired width of the libretro core.
-static unsigned GetLibretroHeight(void);                     // Get the desired height of the libretro core.
-static unsigned GetLibretroRotation(void);                   // Get the current screen rotation (0=0°, 1=90°, 2=180°, 3=270°).
-static Texture2D GetLibretroTexture(void);                   // Retrieve the texture used to render the libretro state.
-static bool IsLibretroGameRequired(void);               // Determine whether or not the loaded core require content.
-static void ResetLibretro(void);                             // Reset the currently loaded libretro core.
-static void UnloadLibretroGame(void);                        // Unload the game that's currently loaded.
-static void CloseLibretro(void);                             // Close the initialized libretro core.
-static void SetLibretroVolume(float volume);             // Set the audio volume (0.0 - 1.0).
-static float GetLibretroVolume(void);                        // Get the current audio volume.
-static void SetLibretroSpeed(float speed);               // Set playback speed (1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion).
-static float GetLibretroSpeed(void);                         // Get the current playback speed.
-static bool SetLibretroCoreOption(const char* key, const char* value);  // Set a core option by key.
-static const char* GetLibretroCoreOption(const char* key);              // Get a core option value by key. Returns NULL if not found.
-static void* GetLibretroSerializedData(unsigned int* size);     // Retrieve the serialized data of the save state. Must be MemFree()'d afterwards.
+static const char* GetLibretroName(void);
+static const char* GetLibretroContentName(void);
+static const char* GetLibretroVersion(void);
+static unsigned GetLibretroWidth(void);
+static unsigned GetLibretroHeight(void);
+static unsigned GetLibretroRotation(void);
+static Texture2D GetLibretroTexture(void);
+static bool IsLibretroGameRequired(void);
+static bool ResetLibretro(void);
+static void UnloadLibretroGame(void);
+static void CloseLibretro(void);
+static void SetLibretroVolume(float volume);
+static float GetLibretroVolume(void);
+static void SetLibretroSpeed(float speed);
+static float GetLibretroSpeed(void);
+static bool SetLibretroCoreOption(const char* key, const char* value);
+static const char* GetLibretroCoreOption(const char* key);
+static void* GetLibretroSerializedData(unsigned int* size);
 static bool SetLibretroSerializedData(void* data, unsigned int size);
-static void ShowLibretroMessage(const char* msg, float duration); // Show an OSD message for the given duration in seconds.
-static bool DrawLibretroMessage(void); // Displays the OSD message on the screen. Returns true if there was one.
+static void* GetLibretroSRAMData(size_t* size);
+static bool SetLibretroSRAMData(const void* data, size_t size);
+static void ShowLibretroMessage(const char* msg, float duration);
+static bool DrawLibretroMessage(void);
 static const char* GetLibretroDirectory(int directory);
-static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count); // Get input descriptors; count set to number of entries.
-static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count);    // Get controller info; count set to number of ports.
-static const char* GetLibretroValidExtensions(void);                                       // Valid extensions reported by the core (pipe-separated).
-static bool IsLibretroBlockExtract(void);                                                  // Whether the core forbids the frontend from extracting archives.
-static bool GetLibretroNeedFullpath(const char* path, bool* persistent);               // Effective need_fullpath for a given path, honoring CONTENT_INFO_OVERRIDE.
-static void LibretroBuildExtPattern(const char* exts, char* pattern, size_t patternSize); // Translate "ext1|ext2" to ".ext1;.ext2" for IsFileExtension.
+static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count);
+static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count);
+static bool SetLibretroMemoryMaps(const struct retro_memory_map *map);
+static void UnloadLibretroMemoryMaps(void);
+static const struct retro_memory_descriptor* GetLibretroMemoryMaps(unsigned *count);
+static const char* GetLibretroValidExtensions(void);
+static bool IsLibretroBlockExtract(void);
+static bool GetLibretroNeedFullpath(const char* path, bool* persistent);
+static void LibretroBuildExtPattern(const char* exts, char* pattern, size_t patternSize);
 static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize,
-    const char* contentPath, bool persistent);                                             // Load from memory with contentPath + persistent_data ownership.
+    const char* contentPath, bool persistent);
 
 static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
@@ -318,6 +323,14 @@ typedef struct rLibretro {
 
     // Virtual joypad state injected by touch controls (port 0 only).
     bool virtualJoypadState[16];
+
+    // Memory map from RETRO_ENVIRONMENT_SET_MEMORY_MAPS (owned copy).
+    struct retro_memory_descriptor *memoryMapDescriptors;
+    unsigned memoryMapDescriptorCount;
+
+    // Keyboard bindings for player 1 (port 0). Stored as raylib KeyboardKey values.
+    // Index matches RETRO_DEVICE_ID_JOYPAD_* constants. KEY_NULL means no binding.
+    int keyboardPlayer1[16];
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -366,6 +379,11 @@ static const char *LibretroGetCoreVariable(const char *key) {
     return NULL;
 }
 
+/**
+ * Set a core option by key.
+ * @param key   Option key as reported by the core via RETRO_ENVIRONMENT_SET_VARIABLES.
+ * @param value New value for the option.
+ * @return true if the key was found and the value applied; false if the key is unknown. */
 static bool SetLibretroCoreOption(const char *key, const char *value) {
     for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
         if (TextIsEqual(LibretroCore.variableKeys[i], key)) {
@@ -377,6 +395,10 @@ static bool SetLibretroCoreOption(const char *key, const char *value) {
     return false;
 }
 
+/**
+ * Get a core option value by key.
+ * @param key Option key to look up.
+ * @return Current value string, or NULL if the key is not found. */
 static const char *GetLibretroCoreOption(const char *key) {
     return LibretroGetCoreVariable(key);
 }
@@ -424,14 +446,74 @@ static const char* GetLibretroDirectory(int directory) {
     return cleaned;
 }
 
+/**
+ * Get the input descriptors reported by the loaded core.
+ * @param count Output parameter filled with the number of descriptors.
+ * @return Pointer to the descriptor array, or NULL if none were set. */
 static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count) {
     if (count != NULL) *count = LibretroCore.inputDescriptorCount;
     return LibretroCore.inputDescriptors;
 }
 
+/**
+ * Get the controller port info reported by the loaded core.
+ * @param count Output parameter filled with the number of ports.
+ * @return Pointer to the controller info array, or NULL if none were set. */
 static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count) {
     if (count != NULL) *count = LibretroCore.controllerPortCount;
     return LibretroCore.controllerInfo;
+}
+
+/**
+ * Free the stored memory map descriptors. */
+static void UnloadLibretroMemoryMaps(void) {
+    if (LibretroCore.memoryMapDescriptors) {
+        for (unsigned i = 0; i < LibretroCore.memoryMapDescriptorCount; i++) {
+            if (LibretroCore.memoryMapDescriptors[i].addrspace) {
+                MemFree((void*)LibretroCore.memoryMapDescriptors[i].addrspace);
+            }
+        }
+        MemFree(LibretroCore.memoryMapDescriptors);
+        LibretroCore.memoryMapDescriptors = NULL;
+        LibretroCore.memoryMapDescriptorCount = 0;
+    }
+}
+
+/**
+ * Store an owned deep-copy of the core's memory map descriptors.
+ * @param map Pointer to the retro_memory_map provided by the core.
+ * @return true on success. */
+static bool SetLibretroMemoryMaps(const struct retro_memory_map *map) {
+    UnloadLibretroMemoryMaps();
+    if (!map || !map->descriptors || map->num_descriptors == 0) {
+        return map != NULL;
+    }
+    size_t sz = sizeof(struct retro_memory_descriptor) * map->num_descriptors;
+    LibretroCore.memoryMapDescriptors = (struct retro_memory_descriptor*)MemAlloc((unsigned int)sz);
+    if (!LibretroCore.memoryMapDescriptors) {
+        return false;
+    }
+    memcpy(LibretroCore.memoryMapDescriptors, map->descriptors, sz);
+    LibretroCore.memoryMapDescriptorCount = map->num_descriptors;
+    for (unsigned i = 0; i < map->num_descriptors; i++) {
+        if (map->descriptors[i].addrspace) {
+            size_t len = strlen(map->descriptors[i].addrspace) + 1;
+            char *copy = (char*)MemAlloc((unsigned int)len);
+            if (copy) memcpy(copy, map->descriptors[i].addrspace, len);
+            LibretroCore.memoryMapDescriptors[i].addrspace = copy;
+        }
+    }
+    TraceLog(LOG_INFO, "LIBRETRO: Memory map stored (%u descriptor(s))", map->num_descriptors);
+    return true;
+}
+
+/**
+ * Get the stored memory map descriptors.
+ * @param count Output parameter filled with the number of descriptors.
+ * @return Pointer to the descriptor array, or NULL if none are stored. */
+static const struct retro_memory_descriptor* GetLibretroMemoryMaps(unsigned *count) {
+    if (count != NULL) *count = LibretroCore.memoryMapDescriptorCount;
+    return LibretroCore.memoryMapDescriptors;
 }
 
 // Returns an absolute path for `path`. The result is either the input pointer
@@ -1018,8 +1100,11 @@ static bool LibretroSetEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_MEMORY_MAPS: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MEMORY_MAPS not implemented");
-            return false;
+            if (!data) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MEMORY_MAPS no data");
+                return false;
+            }
+            return SetLibretroMemoryMaps((const struct retro_memory_map *)data);
         }
 
         case RETRO_ENVIRONMENT_SET_GEOMETRY: {
@@ -1592,7 +1677,7 @@ static bool LibretroGetAudioVideo(void) {
 }
 
 /**
- * Runs an iteration of the libretro core.
+ * Run one emulation frame of the loaded core.
  */
 static void UpdateLibretro(void) {
     if (LibretroCore.textureRebuild) {
@@ -1647,11 +1732,12 @@ static void UpdateLibretro(void) {
         }
 
         // Build a per-key char map by draining both queues in tandem.
-        int keyCharMap[512] = {0};
+        // KEY_KB_MENU (348) is the highest raylib key code.
+        int keyCharMap[350] = {0};
         int pressedKey;
         while ((pressedKey = GetKeyPressed()) != 0) {
             int pressedChar = GetCharPressed();
-            if (pressedKey < 512) {
+            if (pressedKey < 350) {
                 keyCharMap[pressedKey] = pressedChar;
             }
         }
@@ -1705,14 +1791,15 @@ static void UpdateLibretro(void) {
 }
 
 /**
- * Retrieve whether or not the core has been loaded.
- */
+ * Check whether a core has been successfully initialized.
+ * @return true if a core is loaded and ready. */
 static bool IsLibretroReady(void) {
     return LibretroCore.handle != NULL;
 }
 
 /**
- * Returns whether or not the libretro core should close.
+ * Check whether the core has requested the frontend to shut down.
+ * @return true if the core wants to close.
  */
 static bool LibretroShouldClose(void) {
     return LibretroCore.shutdown;
@@ -1730,13 +1817,11 @@ static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *
     {
        for (w = 0; w < width; w++)
        {
-            uint8_t r   = (input[w] >> 16) & 0xff;
-            uint8_t g   = (input[w] >> 8) & 0xff;
-            uint8_t b   = (input[w]) & 0xff;
-            uint8_t a   = 0xff;
-
-            // Force the alpha channel
-            output[w]    = (a << 24) | (b << 16) | (g << 8) | r;
+            uint32_t xrgb = input[w];
+            output[w] = ((xrgb >> 16) & 0xFF)   // R = byte 0
+                      | (xrgb & 0xFF00)         // G = byte 1
+                      | ((xrgb & 0xFF) << 16)   // B = byte 2
+                      | 0xFF000000;             // A = 0xFF
        }
     }
 }
@@ -1788,7 +1873,7 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         break;
         case RETRO_PIXEL_FORMAT_0RGB1555: {
             LibretroMapPixelFormatARGB1555ToRGB565(LibretroCore.frameBuffer, data, width, height,
-                GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R5G6B5),
+                (int)(width * 2),
                 pitch);
             UpdateTexture(LibretroCore.texture, LibretroCore.frameBuffer);
         }
@@ -1798,7 +1883,7 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
             // Core: BSNES
             LibretroMapPixelFormatARGB8888ToRGBA8888(LibretroCore.frameBuffer, data,
                 width, height,
-                GetPixelDataSize(width, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8), pitch);
+                (int)(width * 4), pitch);
             UpdateTexture(LibretroCore.texture, LibretroCore.frameBuffer);
         }
         break;
@@ -1824,10 +1909,32 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
             // Return a bitmask of all buttons when requested.
             if (id == RETRO_DEVICE_ID_JOYPAD_MASK) {
                 int16_t mask = 0;
+                bool gpAvail = IsGamepadAvailable((int)port);
                 for (int btn = 0; btn < 16; btn++) {
-                    if (LibretroInputState(port, RETRO_DEVICE_JOYPAD, index, btn)) {
-                        mask |= (1 << btn);
+                    bool pressed = false;
+                    if (port == 0) {
+                        if (btn < 16 && LibretroCore.virtualJoypadState[btn]) {
+                            pressed = true;
+                        } else if (gpAvail) {
+                            int gamepadButton = LibretroMapRetroJoypadButtonToGamepadButton(btn);
+                            pressed = (gamepadButton != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gamepadButton));
+                        }
+                        if (!pressed) {
+                            int kbKey = (btn < 16) ? LibretroCore.keyboardPlayer1[btn] : KEY_NULL;
+                            if (kbKey != KEY_NULL) {
+                                pressed = IsKeyDown(kbKey);
+                            } else {
+                                int retroKey = LibretroMapRetroJoypadButtonToRetroKey(btn);
+                                if (retroKey != RETROK_UNKNOWN) {
+                                    int raylibKey = LibretroMapRetroKeyToKeyboardKey(retroKey);
+                                    pressed = (raylibKey > 0 && IsKeyDown(raylibKey));
+                                }
+                            }
+                        }
+                    } else if (gpAvail) {
+                        pressed = IsGamepadButtonDown((int)port, LibretroMapRetroJoypadButtonToGamepadButton(btn));
                     }
+                    if (pressed) mask |= (1 << btn);
                 }
                 return mask;
             }
@@ -1842,6 +1949,10 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                     if (gamepadButton != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gamepadButton)) {
                         return 1;
                     }
+                }
+                int kbKey = (id < 16) ? LibretroCore.keyboardPlayer1[id] : KEY_NULL;
+                if (kbKey != KEY_NULL) {
+                    return (int)IsKeyDown(kbKey);
                 }
                 int retroKey = LibretroMapRetroJoypadButtonToRetroKey(id);
                 if (retroKey == RETROK_UNKNOWN) {
@@ -1989,10 +2100,12 @@ static void LibretroAudioStreamCallback(void *audioData, unsigned int frameCount
     }
 
     size_t read_pos = (LibretroCore.audioRingWritePos + LibretroCore.audioRingBufferSize - LibretroCore.audioRingAvailable) % LibretroCore.audioRingBufferSize;
-    for (size_t i = 0; i < frames_to_read; i++) {
-        size_t idx = (read_pos + i) % LibretroCore.audioRingBufferSize;
-        output[i * 2]     = LibretroCore.audioRingBuffer[idx * 2];
-        output[i * 2 + 1] = LibretroCore.audioRingBuffer[idx * 2 + 1];
+    size_t first_chunk = LibretroCore.audioRingBufferSize - read_pos;
+    if (first_chunk > frames_to_read) first_chunk = frames_to_read;
+    size_t second_chunk = frames_to_read - first_chunk;
+    memcpy(output, LibretroCore.audioRingBuffer + read_pos * 2, first_chunk * 2 * sizeof(float));
+    if (second_chunk > 0) {
+        memcpy(output + first_chunk * 2, LibretroCore.audioRingBuffer, second_chunk * 2 * sizeof(float));
     }
 
     LibretroCore.audioRingAvailable -= frames_to_read;
@@ -2014,10 +2127,17 @@ static size_t LibretroAudioSampleBatch(const int16_t *data, size_t frames) {
         return 0;
     }
 
-    for (size_t i = 0; i < frames_to_write; i++) {
-        size_t idx = (LibretroCore.audioRingWritePos + i) % LibretroCore.audioRingBufferSize;
-        LibretroCore.audioRingBuffer[idx * 2]     = (float)data[i * 2]     / 32768.0f;
-        LibretroCore.audioRingBuffer[idx * 2 + 1] = (float)data[i * 2 + 1] / 32768.0f;
+    static const float scale = 1.0f / 32768.0f;
+    size_t wfirst = LibretroCore.audioRingBufferSize - LibretroCore.audioRingWritePos;
+    if (wfirst > frames_to_write) wfirst = frames_to_write;
+    size_t wsecond = frames_to_write - wfirst;
+    for (size_t i = 0; i < wfirst; i++) {
+        LibretroCore.audioRingBuffer[(LibretroCore.audioRingWritePos + i) * 2]     = (float)data[i * 2]     * scale;
+        LibretroCore.audioRingBuffer[(LibretroCore.audioRingWritePos + i) * 2 + 1] = (float)data[i * 2 + 1] * scale;
+    }
+    for (size_t i = 0; i < wsecond; i++) {
+        LibretroCore.audioRingBuffer[i * 2]     = (float)data[(wfirst + i) * 2]     * scale;
+        LibretroCore.audioRingBuffer[i * 2 + 1] = (float)data[(wfirst + i) * 2 + 1] * scale;
     }
 
     LibretroCore.audioRingWritePos = (LibretroCore.audioRingWritePos + frames_to_write) % LibretroCore.audioRingBufferSize;
@@ -2186,18 +2306,10 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
 }
 
 /**
- * Translate a libretro pipe-separated extension list into the
- * semicolon-separated, dot-prefixed form expected by raylib's
- * IsFileExtension().
- *
- * Example: "nes|smc|gba" → ".nes;.smc;.gba".
- *
- * @param exts        Source list. Must not be NULL.
- * @param pattern     Output buffer.
- * @param patternSize Capacity of @p pattern in bytes. Output is always
- *                    NUL-terminated when @p patternSize > 0; the result is
- *                    truncated if the buffer is too small.
- */
+ * Convert a pipe-separated extension list to a semicolon-separated pattern for IsFileExtension.
+ * @param exts        Source string in "ext1|ext2" format.
+ * @param pattern     Output buffer for the ".ext1;.ext2" result.
+ * @param patternSize Size of the output buffer in bytes. */
 static void LibretroBuildExtPattern(const char *exts, char *pattern, size_t patternSize) {
     if (patternSize == 0) return;
     size_t p = 0;
@@ -2302,28 +2414,27 @@ static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize, 
 }
 
 /**
- * Get the loaded core's reported valid content extensions.
- *
- * @return The pipe-separated extension list straight from
- *         retro_system_info::valid_extensions (e.g. "fds|nes|unf"), or an
- *         empty string if no core is loaded.
+ * Get the pipe-separated list of file extensions the core accepts.
+ * @return Extension list string (e.g. "nes|fds"), or empty string if not reported.
  */
 static const char* GetLibretroValidExtensions(void) {
     return LibretroCore.validExtensions;
 }
 
 /**
- * Whether the loaded core declared block_extract.
- *
- * When \c true, frontends must not extract archives before handing them to
- * the core — the core wants the raw archive path.
- *
- * @return \c true if the core set block_extract, \c false otherwise.
+ * Check whether the core forbids the frontend from extracting archives.
+ * @return true if the core wants archives passed as-is.
  */
 static bool IsLibretroBlockExtract(void) {
     return LibretroCore.blockExtract;
 }
 
+/**
+ * Load content (ROM/game) into the initialized core.
+ * @param gameFile Path to the content file, or NULL for content-less cores.
+ * @return true on success, false if loading failed.
+ * @note Call InitLibretro() before this function. Pass NULL for cores that do not require content.
+ */
 static bool LoadLibretroGame(const char* gameFile) {
     if (!IsLibretroReady()) {
         TraceLog(LOG_ERROR, "LIBRETRO: Core is required before loading a game");
@@ -2396,10 +2507,17 @@ static bool LoadLibretroGame(const char* gameFile) {
     return ok;
 }
 
+/**
+ * Get the display name of the loaded core.
+ * @return Library name string, or an empty string if no core is loaded. */
 static const char* GetLibretroName(void) {
     return LibretroCore.libraryName;
 }
 
+/**
+ * Get the base filename (no extension) of the loaded content, or the core name if no content is loaded.
+ * @return Content or core name string.
+ */
 static const char* GetLibretroContentName(void) {
     if (LibretroCore.contentPath[0] != '\0') {
         return GetFileNameWithoutExt(LibretroCore.contentPath);
@@ -2407,14 +2525,28 @@ static const char* GetLibretroContentName(void) {
     return LibretroCore.libraryName;
 }
 
+/**
+ * Get the version string of the loaded core.
+ * @return Version string reported by the core.
+ */
 static const char* GetLibretroVersion(void) {
     return LibretroCore.libraryVersion;
 }
 
+/**
+ * Check whether the loaded core requires content to run.
+ * @return true if content must be provided; false if the core can run standalone.
+ */
 static bool IsLibretroGameRequired(void) {
     return !LibretroCore.supportNoGame;
 }
 
+/**
+ * Load a libretro core, optionally in peek mode (metadata only, no full init).
+ * @param core Path to the core shared library.
+ * @param peek When true, only system info is queried; the core is not fully initialized.
+ * @return true on success.
+ */
 static bool InitLibretroEx(const char* core, bool peek) {
     // Avoid initializing twice.
     if (IsLibretroReady()) {
@@ -2527,10 +2659,22 @@ static bool InitLibretroEx(const char* core, bool peek) {
     return true;
 }
 
+/**
+ * Load a libretro core shared library and initialize it.
+ * @param core Path to the core .so/.dll/.dylib file.
+ * @return true on success, false if the library could not be loaded or initialized.
+ * @note Call InitAudioDevice() and InitWindow() before this function.
+ */
 static bool InitLibretro(const char* core) {
     return InitLibretroEx(core, false);
 }
 
+/**
+ * Draw the core framebuffer at pixel coordinates with a color tint.
+ * @param posX Horizontal screen position.
+ * @param posY Vertical screen position.
+ * @param tint Color tint applied to the framebuffer texture.
+ */
 static void DrawLibretroTexture(int posX, int posY, Color tint) {
     if (LibretroCore.loaded == false) {
         return;
@@ -2538,6 +2682,11 @@ static void DrawLibretroTexture(int posX, int posY, Color tint) {
     DrawTexture(LibretroCore.texture, posX, posY, tint);
 }
 
+/**
+ * Draw the core framebuffer at the given position with a color tint.
+ * @param position Top-left position in screen space.
+ * @param tint Color tint applied to the framebuffer texture.
+ */
 static void DrawLibretroV(Vector2 position, Color tint) {
     if (LibretroCore.loaded == false) {
         return;
@@ -2545,6 +2694,13 @@ static void DrawLibretroV(Vector2 position, Color tint) {
     DrawTextureV(LibretroCore.texture, position, tint);
 }
 
+/**
+ * Draw the core framebuffer with extended transform parameters.
+ * @param position Top-left origin in screen space.
+ * @param rotation Clockwise rotation in degrees.
+ * @param scale Uniform scale factor.
+ * @param tint Color tint applied to the framebuffer texture.
+ */
 static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint) {
     if (LibretroCore.loaded == false) {
         return;
@@ -2552,6 +2708,11 @@ static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color 
     DrawTextureEx(LibretroCore.texture, position, rotation, scale, tint);
 }
 
+/**
+ * Draw the core framebuffer scaled and fitted into a destination rectangle.
+ * @param destRec Destination rectangle in screen space.
+ * @param tint Color tint applied to the framebuffer texture.
+ */
 static void DrawLibretroPro(Rectangle destRec, Color tint) {
     if (LibretroCore.loaded == false) {
         return;
@@ -2561,6 +2722,10 @@ static void DrawLibretroPro(Rectangle destRec, Color tint) {
     DrawTexturePro(LibretroCore.texture, source, destRec, origin, 0, tint);
 }
 
+/**
+ * Draw the current OSD message if one is active.
+ * @return true if a message was drawn; false if there was nothing to display.
+ */
 static bool DrawLibretroMessage(void) {
     if (GetTime() > LibretroCore.osdEndTime) {
         return false;
@@ -2576,6 +2741,10 @@ static bool DrawLibretroMessage(void) {
     return true;
 }
 
+/**
+ * Draw the core framebuffer centered on the screen with a color tint.
+ * @param tint Color tint applied to the framebuffer texture.
+ */
 static void DrawLibretroTint(Color tint) {
     if (LibretroCore.loaded == false) {
         return;
@@ -2615,15 +2784,26 @@ static void DrawLibretroTint(Color tint) {
     DrawTexturePro(LibretroCore.texture, source, dest, origin, rotationDeg, tint);
 }
 
+/**
+ * Draw the core framebuffer centered on the screen.
+ */
 static void DrawLibretro(void) {
     DrawLibretroTint(WHITE);
 }
 
+/**
+ * Show an on-screen display (OSD) message.
+ * @param msg      Message text to display.
+ * @param duration How long to show the message, in seconds. */
 static void ShowLibretroMessage(const char* msg, float duration) {
     TextCopy(LibretroCore.osdMessage, msg);
     LibretroCore.osdEndTime = GetTime() + (double)duration;
 }
 
+/**
+ * Set the audio output volume.
+ * @param volume Volume level in the range [0.0, 1.0].
+ */
 static void SetLibretroVolume(float volume) {
     if (volume < 0) volume = 0.0f;
     else if (volume > 1.0f) volume = 1.0f;
@@ -2633,10 +2813,16 @@ static void SetLibretroVolume(float volume) {
     }
 }
 
+/**
+ * Get the current audio output volume.
+ * @return Volume level in the range [0.0, 1.0]. */
 static float GetLibretroVolume(void) {
     return LibretroCore.volume;
 }
 
+/**
+ * Set the emulation playback speed.
+ * @param speed Multiplier relative to normal speed (1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion). */
 static void SetLibretroSpeed(float speed) {
     if (speed <= 0.0f) speed = 0.1f;
     LibretroCore.speed = speed;
@@ -2647,43 +2833,105 @@ static void SetLibretroSpeed(float speed) {
     }
 }
 
+/**
+ * Get the current emulation playback speed multiplier.
+ * @return Current speed multiplier. */
 static float GetLibretroSpeed(void) {
     return LibretroCore.speed;
 }
 
+/**
+ * Get the current display rotation index (0=0°, 1=90°, 2=180°, 3=270°).
+ * @return Rotation index.
+ */
 static unsigned GetLibretroRotation(void) {
     return LibretroCore.rotation;
 }
 
+/**
+ * Get the native framebuffer width reported by the core.
+ * @return Width in pixels
+ */
 static unsigned GetLibretroWidth(void) {
     return LibretroCore.width;
 }
+
+/**
+ * Get the native framebuffer height reported by the core.
+ * @return Height in pixels.
+ */
 static unsigned GetLibretroHeight(void) {
     return LibretroCore.height;
 }
 
+/**
+ * Get the internal texture used to render the core framebuffer.
+ * @return Texture2D containing the last rendered frame.
+ */
 static Texture2D GetLibretroTexture(void) {
     return LibretroCore.texture;
 }
 
 /**
- * Retrieve whether or not the game has been loaded.
+ * Check whether content has been successfully loaded.
+ * @return true if a game/content is currently loaded.
  */
 static bool IsLibretroGameReady(void) {
     return LibretroCore.loaded && LibretroCore.retro_run != NULL;
 }
 
 /**
- * Reset the libretro core.
+ * Reset the currently loaded core (equivalent to a hardware reset).
+ * @note A game must be loaded before calling this.
+ * @return true if the core reset callback was called.
  */
-static void ResetLibretro(void) {
+static bool ResetLibretro(void) {
     if (IsLibretroReady() && LibretroCore.retro_reset) {
         LibretroCore.retro_reset();
+        return true;
     }
+    return false;
 }
 
 /**
- * Unload the active libretro game.
+ * Get a direct pointer to the core's battery-backed SRAM region.
+ * @param size Output parameter filled with the SRAM region size in bytes.
+ * @return Pointer into the core's SRAM memory, or NULL if the core has no SRAM.
+ */
+static void* GetLibretroSRAMData(size_t* size) {
+    if (!IsLibretroGameReady()) return NULL;
+    if (LibretroCore.retro_get_memory_data == NULL || LibretroCore.retro_get_memory_size == NULL) return NULL;
+
+    size_t sramSize = LibretroCore.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+    if (sramSize == 0) return NULL;
+
+    void* data = LibretroCore.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+    if (data == NULL) return NULL;
+
+    if (size != NULL) *size = sramSize;
+    return data;
+}
+
+/**
+ * Copy data into the core's SRAM region.
+ * @param data Source buffer to copy from.
+ * @param size Number of bytes to copy; clipped to the region size if larger.
+ * @return true on success, false if the core has no SRAM region.
+ */
+static bool SetLibretroSRAMData(const void* data, size_t size) {
+    if (data == NULL || size == 0) return false;
+
+    size_t sramSize = 0;
+    void* sramDest = GetLibretroSRAMData(&sramSize);
+    if (sramDest == NULL) return false;
+
+    size_t copySize = size < sramSize ? size : sramSize;
+    memcpy(sramDest, data, copySize);
+    return true;
+}
+
+/**
+ * Unload the currently loaded content without closing the core.
  */
 static void UnloadLibretroGame(void) {
     if (LibretroCore.retro_unload_game != NULL) {
@@ -2702,6 +2950,10 @@ static void UnloadLibretroGame(void) {
         LibretroCore.persistentGameData = NULL;
         LibretroCore.persistentGameDataSize = 0;
     }
+
+    // Free memory map descriptors — these are game-specific and must not
+    // outlive the game that provided them.
+    UnloadLibretroMemoryMaps();
 }
 
 /**
@@ -2768,11 +3020,12 @@ static void LibretroResetCoreState(void) {
 
     memset(LibretroCore.osdMessage, 0, sizeof(LibretroCore.osdMessage));
     LibretroCore.osdEndTime = 0.0;
+
+    UnloadLibretroMemoryMaps();
 }
 
 /**
- * Close the libretro core.
- */
+ * Deinitialize and unload the libretro core. */
 static void CloseLibretro(void) {
     // Make sure the game is unloaded prior to unloading the core.
     if (IsLibretroGameReady()) {
@@ -3259,6 +3512,11 @@ static void LibretroMapPixelFormatARGB1555ToRGB565(void *output_, const void *in
     }
 }
 
+/**
+ * Serialize the current emulator state into a new buffer.
+ * @param size Output parameter filled with the size of the returned buffer in bytes.
+ * @return Newly allocated buffer containing the serialized state, or NULL on failure.
+ * @note The caller is responsible for freeing the returned buffer with MemFree(). */
 static void* GetLibretroSerializedData(unsigned int* size) {
     if (!IsLibretroGameReady()) {
         return NULL;
@@ -3289,6 +3547,11 @@ static void* GetLibretroSerializedData(unsigned int* size) {
     return NULL;
 }
 
+/**
+ * Restore a previously serialized emulator state.
+ * @param data Pointer to the serialized state buffer.
+ * @param size Size of the buffer in bytes.
+ * @return true on success, false if the core rejected the data. */
 static bool SetLibretroSerializedData(void* data, unsigned int size) {
     if (!IsLibretroGameReady()) {
         return false;

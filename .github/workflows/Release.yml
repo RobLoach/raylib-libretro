@@ -94,6 +94,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Install CMake
+        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.25.0"
       - name: Generate Gradle wrapper
         working-directory: android
         run: gradle wrapper --gradle-version 8.6 --distribution-type bin

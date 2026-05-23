@@ -69,19 +69,6 @@ bool LoadLibretroGameFromJS(const char* gameFile) {
     return MenuLoadGame(gameFile);
 }
 
-// JS-callable canvas resize. shell.html calls this on window resize /
-// orientationchange so the drawing buffer tracks the viewport. Uses the
-// HTML5 API directly to avoid the deprecated Browser.setCanvasSize path
-// (which is what blows up with "setCanvasSize was not exported").
-EMSCRIPTEN_KEEPALIVE
-void ResizeCanvasFromJS(int width, int height) {
-    if (width <= 0 || height <= 0) return;
-    // HTML5 API directly: avoids the Browser.setCanvasSize / SetWindowSize
-    // paths that abort with "setCanvasSize was not exported". raylib's
-    // GLFW resize callback fires from emscripten and updates the window
-    // dimensions internally.
-    emscripten_set_canvas_element_size("#canvas", width, height);
-}
 #endif
 
 #define REWIND_BUFFER_FRAMES 600  // ~10 seconds at 60fps
@@ -476,8 +463,8 @@ void Close(void* userData) {
 App Main() {
     return (App){
         .title = "raylib-libretro",
-        .width = 800,
-        .height = 600,
+        .width = 1280,
+        .height = 720,
         .init = Init,
         .update = Update,
         .draw = Draw,
