@@ -68,7 +68,7 @@ extern "C" {
 static int LibretroTouchBuildButtons(TouchControlsButton* btns, int w, int h) {
     float ref  = (float)((w < h) ? w : h);
     float bs   = ref * 0.12f;   // D-pad / select / start button size
-    float fbs  = ref * 0.12f;   // face button size
+    float fbs  = ref * 0.15f;   // face button size
     float edge = ref * 0.02f;   // margin from screen edges
 
     // D-pad: bottom-left, cross layout, buttons touching (no gap)
@@ -83,16 +83,17 @@ static int LibretroTouchBuildButtons(TouchControlsButton* btns, int w, int h) {
     btns[n++] = (TouchControlsButton){{ dx + 2*bs,    dy + bs,   bs, bs }, RETRO_DEVICE_ID_JOYPAD_RIGHT, ">", DARKGRAY };
     btns[n++] = (TouchControlsButton){{ dx + bs,      dy + 2*bs, bs, bs }, RETRO_DEVICE_ID_JOYPAD_DOWN,  "v", DARKGRAY };
 
-    // Face buttons: bottom-right, larger, touching, SNES diamond
+    // Face buttons: bottom-right, larger, SNES diamond
     //   . X .
     //   Y . A
     //   . B .
-    float fy = h - 3*fbs - edge;
-    float fx = w - 3*fbs - w * 0.04f;
-    btns[n++] = (TouchControlsButton){{ fx + fbs,     fy,         fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_X, "X", DARKBLUE  };
-    btns[n++] = (TouchControlsButton){{ fx,            fy + fbs,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_Y, "Y", DARKGREEN };
-    btns[n++] = (TouchControlsButton){{ fx + 2*fbs,    fy + fbs,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_A, "A", MAROON    };
-    btns[n++] = (TouchControlsButton){{ fx + fbs,      fy + 2*fbs, fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_B, "B", GOLD      };
+    float fsp = fbs * 0.82f;  // center-to-center spacing (< fbs = slight overlap)
+    float fy = h - (2*fsp + fbs) - edge;
+    float fx = w - (2*fsp + fbs) - w * 0.04f;
+    btns[n++] = (TouchControlsButton){{ fx + fsp,     fy,         fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_X, "X", DARKBLUE  };
+    btns[n++] = (TouchControlsButton){{ fx,            fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_Y, "Y", DARKGREEN };
+    btns[n++] = (TouchControlsButton){{ fx + 2*fsp,    fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_A, "A", MAROON    };
+    btns[n++] = (TouchControlsButton){{ fx + fsp,      fy + 2*fsp, fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_B, "B", GOLD      };
 
     // Select / Start: bottom center with a small gap between them
     float selGap = ref * 0.01f;

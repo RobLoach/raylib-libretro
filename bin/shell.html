@@ -72,7 +72,44 @@
       // Parse ?game= and ?core= query parameters to auto-load URLs on startup.
       var _urlParams = new URLSearchParams(window.location.search);
 
+      // Keep canvas pixel dimensions in sync with the viewport so raylib's
+      // GetScreenWidth/Height, touch layout, and shader resolution uniforms
+      // all see the correct size after a browser resize.
+      function syncCanvasSize() {
+        var canvas = document.getElementById('canvas');
+        var w = window.innerWidth  | 0;
+        var h = window.innerHeight | 0;
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width  = w;
+          canvas.height = h;
+        }
+      }
+      window.addEventListener('resize', syncCanvasSize);
+      document.addEventListener('fullscreenchange', syncCanvasSize);
+      syncCanvasSize();
+
+      // Handle fullscreen key directly in JS — requestFullscreen() must be
+      // called from a user-gesture event handler, not the rAF-driven C loop.
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'F11') {
+          e.preventDefault();
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(function(){});
+          } else {
+            document.exitFullscreen();
+          }
+        }
+      });
+
       var Module = {
+        // Polyfill for raylib's ToggleFullscreen(), which calls
+        // Module.requestFullscreen(lockPointer, resizeCanvas) via EM_ASM.
+        // Newer Emscripten no longer exposes this on Module.
+        requestFullscreen: function(lockPointer, resizeCanvas) {
+          var el = document.documentElement;
+          if (el.requestFullscreen) el.requestFullscreen();
+          else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        },
         print: function (text) {
           if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
           console.log(text);
@@ -156,6 +193,9 @@
           }
         }],
         postRun: [function () {
+          // Re-sync canvas to viewport after module init sets its own size.
+          syncCanvasSize();
+        }, function () {
           // Hand off any background ?game= download to the running app.
           // LoadLibretroGameFromJS picks LoadLibretroGamePhysFS (when a core
           // was loaded via ?core=) or MenuLoadGame (autodetects from ROM

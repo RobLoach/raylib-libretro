@@ -314,10 +314,13 @@ bool Update(void* userData) {
         return false;
     }
 
-    // Fullscreen
+    // Fullscreen — handled in JS on Emscripten (requestFullscreen requires a
+    // direct user-gesture event handler, not the rAF-driven main loop).
+#ifndef __EMSCRIPTEN__
     if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyFullscreen))) {
         LibretroMenuFullscreenChanged(menu.console, NULL);
     }
+#endif
 
     // Screenshot
     else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyScreenshot))) {

@@ -989,9 +989,6 @@ LibretroMenu* InitLibretroMenu(void) {
     nk_console* quitButton = nk_console_button(menu.console, "Quit");
     nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuQuitClicked);
     nk_console_button_set_symbol(quitButton, NK_SYMBOL_X);
-    #ifdef __EMSCRIPTEN__ // Don't show quit on web.
-    quitButton->visible = false;
-    #endif
 
     menu.active = true;
     return &menu;
@@ -1264,7 +1261,11 @@ static bool LoadLibretroMenuSettings(void) {
     if (!menu.cfg) return false;
 
     nk_bool savedFullscreen = (nk_bool)rlconfig_get_int(menu.cfg, "raylib-libretro", "fullscreen", (int)menu.fullscreen);
+    // On Emscripten, requestFullscreen() requires a direct user-gesture event
+    // handler — calling it from startup or the rAF main loop is always denied.
+#ifndef __EMSCRIPTEN__
     if (savedFullscreen != (nk_bool)IsWindowFullscreen()) ToggleFullscreen();
+#endif
     menu.fullscreen = savedFullscreen;
 
     menu.shaderSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "shader", LIBRETRO_SHADER_NONE);
