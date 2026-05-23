@@ -814,16 +814,16 @@ LibretroMenu* InitLibretroMenu(void) {
     {
         // Back
         nk_console_button_set_symbol(
-            nk_console_button_onclick(settings, "Back", &nk_console_button_back),
-            NK_SYMBOL_TRIANGLE_LEFT);
+            nk_console_button_onclick(settings, "Settings", &nk_console_button_back),
+            NK_SYMBOL_X);
 
         // Graphics
         {
             nk_console* graphicsMenu = nk_console_button(settings, "Graphics");
             nk_console_add_event(graphicsMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
-                nk_console_button_onclick(graphicsMenu, "Back", &nk_console_button_back),
-                NK_SYMBOL_TRIANGLE_LEFT);
+                nk_console_button_onclick(graphicsMenu, "Graphics", &nk_console_button_back),
+                NK_SYMBOL_X);
 
             nk_console* fullscreenCheckbox = nk_console_checkbox(graphicsMenu, "Fullscreen", &menu.fullscreen);
             nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
@@ -858,8 +858,8 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* audioMenu = nk_console_button(settings, "Audio");
             nk_console_add_event(audioMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
-                nk_console_button_onclick(audioMenu, "Back", &nk_console_button_back),
-                NK_SYMBOL_TRIANGLE_LEFT);
+                nk_console_button_onclick(audioMenu, "Audio", &nk_console_button_back),
+                NK_SYMBOL_X);
 
             nk_console* volume = nk_console_slider_float(audioMenu, "Volume", 0.0f, &menu.volumeSelected, 1.0f, 0.1f);
             nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
@@ -870,8 +870,8 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* gameplayMenu = nk_console_button(settings, "Gameplay");
             nk_console_add_event(gameplayMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
-                nk_console_button_onclick(gameplayMenu, "Back", &nk_console_button_back),
-                NK_SYMBOL_TRIANGLE_LEFT);
+                nk_console_button_onclick(gameplayMenu, "Gameplay", &nk_console_button_back),
+                NK_SYMBOL_X);
 
             nk_console* ffSpeed = nk_console_slider_int(gameplayMenu, "Fast Forward Speed", 2, &menu.fastForwardSpeed, 10, 1);
             (void)ffSpeed;
@@ -892,8 +892,8 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* keysMenu = nk_console_button(settings, "Keys");
             nk_console_add_event(keysMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
-                nk_console_button_onclick(keysMenu, "Back", &nk_console_button_back),
-                NK_SYMBOL_TRIANGLE_LEFT);
+                nk_console_button_onclick(keysMenu, "Keys", &nk_console_button_back),
+                NK_SYMBOL_X);
             nk_console* w;
             w = nk_console_key(keysMenu, "Screenshot", &menu.keyScreenshot);
             w = nk_console_key(keysMenu, "Rewind", &menu.keyRewind);
@@ -920,8 +920,8 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* kbMenu = nk_console_button(settings, "Keyboard Controls");
             nk_console_add_event(kbMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
-                nk_console_button_onclick(kbMenu, "Back", &nk_console_button_back),
-                NK_SYMBOL_TRIANGLE_LEFT);
+                nk_console_button_onclick(kbMenu, "Keyboard Controls", &nk_console_button_back),
+                NK_SYMBOL_X);
             nk_console* w;
             w = nk_console_key(kbMenu, "B",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]);
             w = nk_console_key(kbMenu, "Y",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]);
@@ -947,8 +947,8 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* dirMenu = nk_console_button(settings, "Directories");
             nk_console_add_event(dirMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
-                nk_console_button_onclick(dirMenu, "Back", &nk_console_button_back),
-                NK_SYMBOL_TRIANGLE_LEFT);
+                nk_console_button_onclick(dirMenu, "Directories", &nk_console_button_back),
+                NK_SYMBOL_X);
 
             nk_console* coreDirectory = nk_console_dir(dirMenu, "Cores", menu.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuCoreDirChanged, NULL, NULL);
@@ -974,8 +974,8 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_add_event(menu.optionsMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
         {
             nk_console_button_set_symbol(
-                nk_console_button_onclick(menu.optionsMenu, "Back", &nk_console_button_back),
-                NK_SYMBOL_TRIANGLE_LEFT);
+                nk_console_button_onclick(menu.optionsMenu, "Core Options", &nk_console_button_back),
+                NK_SYMBOL_X);
         }
     }
 
@@ -1093,8 +1093,8 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
     m->optionsMenu->visible = nk_true;
 
     nk_console_button_set_symbol(
-        nk_console_button_onclick(m->optionsMenu, "Back", &nk_console_button_back),
-        NK_SYMBOL_TRIANGLE_LEFT);
+        nk_console_button_onclick(m->optionsMenu, "Core Options", &nk_console_button_back),
+        NK_SYMBOL_X);
 
     for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
         if (TextLength(LibretroCore.variableValuesList[i]) == 0) continue;
