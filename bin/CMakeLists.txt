@@ -283,6 +283,7 @@ install(FILES ../README.md DESTINATION .)
 install(FILES ../LICENSE DESTINATION .)
 install(DIRECTORY "${CORES_DIR}/" DESTINATION cores)
 install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/saves\")")
+install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/system\")")
 
 # Web
 if ("${PLATFORM}" STREQUAL "Web")

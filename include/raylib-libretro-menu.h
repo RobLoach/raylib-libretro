@@ -762,12 +762,13 @@ LibretroMenu* InitLibretroMenu(void) {
 #endif
     TextCopy(menu.coreDirectory, "cores");
     TextCopy(menu.saveDirectory, "saves");
+    TextCopy(menu.systemDirectory, "system");
 #ifdef __EMSCRIPTEN__
     // Default save/system directories point at the IDBFS mount so they
     // persist across page reloads. The user can still override via the
     // Settings menu; saved values take precedence on subsequent runs.
     TextCopy(menu.saveDirectory,   "/userdata/saves");
-    if (menu.systemDirectory[0] == '\0') TextCopy(menu.systemDirectory, "/userdata/system");
+    TextCopy(menu.systemDirectory, "/userdata/system");
 #endif
     LoadLibretroMenuSettings();
     LibretroApplyDirectories();
