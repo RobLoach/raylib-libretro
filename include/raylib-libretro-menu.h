@@ -1421,9 +1421,7 @@ void UpdateLibretroMenu(void) {
         menu.active = true;
     }
 
-    // Open the menu automatically when the window loses focus or is minimized,
-    // but only while a game is running (no point pausing an empty menu).
-    if (!menu.active && IsLibretroGameReady() && (IsWindowMinimized() || !IsWindowFocused())) {
+    if (!menu.active && IsLibretroGameReady() && IsWindowMinimized()) {
         menu.active = true;
     }
 
