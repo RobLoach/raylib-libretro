@@ -35,8 +35,8 @@ typedef struct TouchControlsButton {
 extern "C" {
 #endif
 
-void UpdateTouchControls(void);
-void DrawTouchControls(void);
+void UpdateLibretroTouchControls(void);
+void DrawLibretroTouchControls(void);
 bool IsTouchControlsMenuPressed(void);
 void SetTouchHapticsEnabled(bool enabled);
 bool GetTouchHapticsEnabled(void);
@@ -61,11 +61,12 @@ bool GetTouchHapticsEnabled(void);
 extern "C" {
 #endif
 
-// All sizes/positions are derived from a single reference unit so the layout
-// stays consistent across aspect ratios. The unit is a fraction of the smaller
-// screen dimension; buttons are square in that unit. The D-pad and face button
-// clusters are each 3x3 grids: D-pad uses a cross, face buttons use a diamond.
-static int LibretroTouchBuildButtons(TouchControlsButton* btns, int w, int h) {
+/**
+ * Retrieves the number of touch buttons available.
+ *
+ * If the button data is not built yet, it'll construct them.
+ */
+static int GetLibretroTouchButtons(TouchControlsButton* btns, int w, int h) {
     float ref  = (float)((w < h) ? w : h);
     float bs   = ref * 0.12f;   // D-pad / select / start button size
     float fbs  = ref * 0.15f;   // face button size
@@ -111,10 +112,14 @@ static int LibretroTouchBuildButtons(TouchControlsButton* btns, int w, int h) {
     return n;
 }
 
-// Use the menu's loaded font when the menu header was included earlier in the
-// same translation unit. Falls back to raylib's built-in font otherwise so
-// touch.h remains usable standalone.
-static Font LibretroTouchFont(void) {
+/**
+ * Retrieves the font to be used for the on-screen touch controls.
+ *
+ * Will use the Menu if it's available, the default font otherwise.
+ *
+ * @return The Font to be used.
+ */
+static Font GetLibretroTouchFont(void) {
 #ifdef RAYLIB_LIBRETRO_MENU_H
     Font f = GetLibretroMenuFont();
     if (f.texture.id != 0) return f;
@@ -122,18 +127,17 @@ static Font LibretroTouchFont(void) {
     return GetFontDefault();
 }
 
-static bool LibretroTouchIsCircleButton(int id) {
+static bool IsLibretroTouchFaceButton(int id) {
     return id == RETRO_DEVICE_ID_JOYPAD_A || id == RETRO_DEVICE_ID_JOYPAD_B ||
            id == RETRO_DEVICE_ID_JOYPAD_X || id == RETRO_DEVICE_ID_JOYPAD_Y;
 }
 
-static bool LibretroTouchIsDpadButton(int id) {
+static bool IsLibretroTouchDpadButton(int id) {
     return id == RETRO_DEVICE_ID_JOYPAD_UP   || id == RETRO_DEVICE_ID_JOYPAD_DOWN ||
            id == RETRO_DEVICE_ID_JOYPAD_LEFT || id == RETRO_DEVICE_ID_JOYPAD_RIGHT;
 }
 
-
-static Rectangle LibretroTouchMenuRect(int w, int h) {
+static Rectangle GetLibretroTouchMenuRect(int w, int h) {
     float ref = (float)((w < h) ? w : h);
     float bs  = ref * 0.10f;
     float margin = ref * 0.02f;
@@ -208,7 +212,7 @@ static int LibretroTouchCachedH = -1;
 static void LibretroTouchEnsureLayout(void) {
     int w = GetScreenWidth(), h = GetScreenHeight();
     if (w == LibretroTouchCachedW && h == LibretroTouchCachedH && LibretroTouchButtonsCount > 0) return;
-    LibretroTouchButtonsCount = LibretroTouchBuildButtons(LibretroTouchButtons, w, h);
+    LibretroTouchButtonsCount = GetLibretroTouchButtons(LibretroTouchButtons, w, h);
     LibretroTouchCachedW = w;
     LibretroTouchCachedH = h;
 }
@@ -264,7 +268,7 @@ static void LibretroTouchTriggerHaptic(void) {
 #endif
 }
 
-void UpdateTouchControls(void) {
+void UpdateLibretroTouchControls(void) {
     LibretroTouchEnsureLayout();
 
     bool prevState[16] = {0};
@@ -343,7 +347,7 @@ void UpdateTouchControls(void) {
 
     // Non-D-pad buttons: rect collision.
     for (int i = 0; i < LibretroTouchButtonsCount; i++) {
-        if (LibretroTouchIsDpadButton(LibretroTouchButtons[i].buttonId)) continue;
+        if (IsLibretroTouchDpadButton(LibretroTouchButtons[i].buttonId)) continue;
         for (int p = 0; p < nPoints; p++) {
             if (CheckCollisionPointRec(points[p], LibretroTouchButtons[i].rect)) {
                 LibretroCore.virtualJoypadState[LibretroTouchButtons[i].buttonId] = true;
@@ -354,7 +358,7 @@ void UpdateTouchControls(void) {
 
     // Menu open-on-release detection. Arm when a press starts inside the menu
     // button; fire once when the press ends while still over the button.
-    Rectangle guide = LibretroTouchMenuRect(LibretroTouchCachedW, LibretroTouchCachedH);
+    Rectangle guide = GetLibretroTouchMenuRect(LibretroTouchCachedW, LibretroTouchCachedH);
     LibretroTouchMenuTriggered = false;
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), guide)) {
@@ -407,7 +411,7 @@ bool IsTouchControlsMenuPressed(void) {
 void SetTouchHapticsEnabled(bool enabled) { LibretroTouchHapticsEnabled = enabled; }
 bool GetTouchHapticsEnabled(void) { return LibretroTouchHapticsEnabled; }
 
-void DrawTouchControls(void) {
+void DrawLibretroTouchControls(void) {
     LibretroTouchEnsureLayout();
 
     // Idle fade: smoothly trend toward 25% opacity after 3 s of no touch input.
@@ -476,7 +480,7 @@ void DrawTouchControls(void) {
     for (int i = 0; i < LibretroTouchButtonsCount; i++) {
         TouchControlsButton* btns = LibretroTouchButtons;
         int id = btns[i].buttonId;
-        if (LibretroTouchIsDpadButton(id)) continue;  // drawn separately as circular D-pad
+        if (IsLibretroTouchDpadButton(id)) continue;  // drawn separately as circular D-pad
         bool isMenuLike = (id == RETRO_DEVICE_ID_JOYPAD_SELECT || id == RETRO_DEVICE_ID_JOYPAD_START);
         bool touchHeld    = LibretroCore.virtualJoypadState[id];
         bool physicalHeld = LibretroTouchIsPhysicalButtonDown(id);
@@ -486,14 +490,14 @@ void DrawTouchControls(void) {
         c.a = (unsigned char)(((touchHeld || physicalHeld) ? heldA : restA) * alpha);
         float fcx = btns[i].rect.x + btns[i].rect.width  * 0.5f;
         float fcy = btns[i].rect.y + btns[i].rect.height * 0.5f;
-        if (LibretroTouchIsCircleButton(id)) {
+        if (IsLibretroTouchFaceButton(id)) {
             DrawCircle((int)fcx, (int)fcy, btns[i].rect.width * 0.5f, c);
         } else {
             DrawRectangleRounded(btns[i].rect, 0.5f, 6, c);
         }
         Color textColor = LibretroTouchFadeColor(WHITE, alpha);
         if (isMenuLike) textColor.a = (unsigned char)(180 * alpha);
-        Font font = LibretroTouchFont();
+        Font font = GetLibretroTouchFont();
         float fs = btns[i].rect.height * 0.4f;
         Vector2 ts = MeasureTextEx(font, btns[i].label, fs, 1.0f);
         DrawTextEx(font, btns[i].label,
@@ -502,7 +506,7 @@ void DrawTouchControls(void) {
     }
 
     // Menu button
-    Rectangle guide = LibretroTouchMenuRect(LibretroTouchCachedW, LibretroTouchCachedH);
+    Rectangle guide = GetLibretroTouchMenuRect(LibretroTouchCachedW, LibretroTouchCachedH);
     bool hovered = false;
     int touchCount = GetTouchPointCount();
     for (int t = 0; t < touchCount; t++) {

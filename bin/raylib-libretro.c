@@ -206,7 +206,7 @@ bool Update(void* userData) {
     if (data->menu->touchControls) {
         SetTouchHapticsEnabled(data->menu->touchHapticsEnabled);
         if (!data->menu->active) {
-            UpdateTouchControls();
+            UpdateLibretroTouchControls();
             if (IsTouchControlsMenuPressed()) {
                 data->pendingMenuOpen = true;
             }
@@ -229,7 +229,7 @@ bool Update(void* userData) {
                     SetLibretroSerializedData(stateData, stateSize);
                     MemFree(stateData);
                 } else {
-                    ShowLibretroMessage("Rewind limit reached", 1.0f);
+                    SetLibretroMessage("Rewind limit reached", 1.0f);
                 }
             } else {
                 unsigned int size = 0;
@@ -253,23 +253,23 @@ bool Update(void* userData) {
                     data->savedVolume = GetLibretroVolume();
                     SetLibretroSpeed(data->menu->fastForwardSpeed);
                     SetLibretroVolume(0.0f);
-                    ShowLibretroMessage(TextFormat("Fast Forward %dx", data->menu->fastForwardSpeed), 1.0f);
+                    SetLibretroMessage(TextFormat("Fast Forward %dx", data->menu->fastForwardSpeed), 1.0f);
                 }
             } else if (smDown) {
                 if (GetLibretroSpeed() > 1.0f) SetLibretroVolume(data->savedVolume);
                 if (GetLibretroSpeed() != data->menu->slowMotionSpeed) {
                     SetLibretroSpeed(data->menu->slowMotionSpeed);
-                    ShowLibretroMessage(TextFormat("Slow Motion %.0f%%", data->menu->slowMotionSpeed * 100.0f), 1.0f);
+                    SetLibretroMessage(TextFormat("Slow Motion %.0f%%", data->menu->slowMotionSpeed * 100.0f), 1.0f);
                 }
             } else if (GetLibretroSpeed() != 1.0f) {
                 if (GetLibretroSpeed() > 1.0f) SetLibretroVolume(data->savedVolume);
                 SetLibretroSpeed(1.0f);
-                ShowLibretroMessage("Normal Speed", 1.0f);
+                SetLibretroMessage("Normal Speed", 1.0f);
             }
         }
 
         bool wasFastForwarding = GetLibretroSpeed() > 1.0f;
-        if (GetLibretroSpeed() > 1.0f) {
+        if (wasFastForwarding) {
             int steps = (int)GetLibretroSpeed();
             if (steps < 1) steps = 1;
             for (int i = 0; i < steps; i++) UpdateLibretro();
@@ -323,34 +323,34 @@ bool Update(void* userData) {
 #endif
 
     // Screenshot
-    else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyScreenshot))) {
+    if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyScreenshot))) {
         const char* screenshotsDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
         bool taken = false;
         for (int i = 1; i < 1000; i++) {
             const char* screenshotName = TextFormat("%s/screenshot-%i.png", screenshotsDir, i);
             if (!FileExists(screenshotName)) {
                 TakeScreenshot(screenshotName);
-                ShowLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0f);
+                SetLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0f);
                 taken = true;
                 break;
             }
         }
         if (!taken) {
-            ShowLibretroMessage("Screenshot slots full", 2.0f);
+            SetLibretroMessage("Screenshot slots full", 2.0f);
         }
     }
 
     // Cycle Shader Reverse
     else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyPrevShader)) && !menu.active) {
         CycleLibretroShaderReverse();
-        ShowLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
+        SetLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
         menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
     }
 
     // Cycle Shader Next
     else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyNextShader)) && !menu.active) {
         CycleLibretroShader();
-        ShowLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
+        SetLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
         // TODO: For some reason, cycling the shader doens't update the menu label.
         menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
     }
@@ -368,37 +368,39 @@ bool Update(void* userData) {
     // Prev Slot
     else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyPrevSlot)) && !menu.active) {
         menu.saveSlotIndex = (menu.saveSlotIndex - 1 + 10) % 10;
-        ShowLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
+        SetLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
     }
 
     // Next Slot
     else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyNextSlot)) && !menu.active) {
         menu.saveSlotIndex = (menu.saveSlotIndex + 1) % 10;
-        ShowLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
+        SetLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
     }
 
     // Reset
     else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyReset)) && !menu.active) {
         if (IsLibretroGameReady()) {
             ResetLibretro();
-            ShowLibretroMessage("Reset", 2.0f);
+            SetLibretroMessage("Reset", 2.0f);
         }
     }
 
-    // Volume
+    // Volume Up
     else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyVolumeUp)) && !menu.active) {
         float vol = GetLibretroVolume() + 0.1f;
         SetLibretroVolume(vol);
         vol = GetLibretroVolume();
         menu.volumeSelected = vol;
-        ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0f);
+        SetLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0f);
     }
+
+    // Volume Down
     else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyVolumeDown)) && !menu.active) {
         float vol = GetLibretroVolume() - 0.1f;
         SetLibretroVolume(vol);
         vol = GetLibretroVolume();
         menu.volumeSelected = vol;
-        ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0f);
+        SetLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0f);
     }
 
     // Mute
@@ -407,12 +409,12 @@ bool Update(void* userData) {
             data->savedVolumeBeforeMute = GetLibretroVolume();
             SetLibretroVolume(0.0f);
             data->muted = true;
-            ShowLibretroMessage("Muted", 1.0f);
+            SetLibretroMessage("Muted", 1.0f);
         } else {
             SetLibretroVolume(data->savedVolumeBeforeMute);
             menu.volumeSelected = data->savedVolumeBeforeMute;
             data->muted = false;
-            ShowLibretroMessage(TextFormat("Volume: %d%%", (int)(data->savedVolumeBeforeMute * 10.0f + 0.5f) * 10), 1.0f);
+            SetLibretroMessage(TextFormat("Volume: %d%%", (int)(data->savedVolumeBeforeMute * 10.0f + 0.5f) * 10), 1.0f);
         }
     }
 
@@ -437,7 +439,7 @@ void Draw(void* userData) {
 
     DrawLibretroMenu();
     if (data->menu->touchControls && !data->menu->active) {
-        DrawTouchControls();
+        DrawLibretroTouchControls();
     }
     DrawLibretroMessage();
 }

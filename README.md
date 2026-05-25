@@ -119,7 +119,7 @@ bool SetLibretroCoreOption(const char* key, const char* value);
 const char* GetLibretroCoreOption(const char* key);
 void* GetLibretroSerializedData(unsigned int* size);
 bool SetLibretroSerializedData(void* data, unsigned int size);
-void ShowLibretroMessage(const char* msg, float duration);
+void SetLibretroMessage(const char* msg, float duration);
 bool DrawLibretroMessage();
 const char* GetLibretroDirectory(int directory);
 ```

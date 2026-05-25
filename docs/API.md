@@ -166,7 +166,7 @@ Restore a save state from a previously captured buffer. Returns `true` on succes
 
 ### OSD messages
 
-#### `void ShowLibretroMessage(const char* msg, float duration)`
+#### `void SetLibretroMessage(const char* msg, float duration)`
 Queue an on-screen message to display for `duration` seconds.
 
 #### `bool DrawLibretroMessage()`

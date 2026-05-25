@@ -296,11 +296,11 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
         SaveFileData(TextFormat("%s/%s_%02d.sav", savesDir, GetLibretroContentName(), menu.saveSlotIndex + 1), saveData, (int)size);
         MemFree(saveData);
         LibretroFlushPersistentStorage();
-        ShowLibretroMessage(TextFormat("Slot %d Saved", menu.saveSlotIndex + 1), 2.0f);
+        SetLibretroMessage(TextFormat("Slot %d Saved", menu.saveSlotIndex + 1), 2.0f);
         menu.active = false;
     }
     else {
-        ShowLibretroMessage("State Saved Failed", 2.0f);
+        SetLibretroMessage("State Saved Failed", 2.0f);
     }
 }
 
@@ -630,25 +630,25 @@ static bool MenuLoadGame(const char* gamePath) {
     // Detect a workable core.
     const char* corePath = FindCoreForGame(gamePath);
     if (!corePath) {
-        ShowLibretroMessage(TextFormat("No core found for %s", GetFileName(gamePath)), 2.0f);
+        SetLibretroMessage(TextFormat("No core found for %s", GetFileName(gamePath)), 2.0f);
         return false;
     }
 
     // Load the core
     if (!MenuInitCore(corePath)) {
-        ShowLibretroMessage("Failed to load core", 2.0f);
+        SetLibretroMessage("Failed to load core", 2.0f);
         return false;
     }
 
     // Load the game (PhysFS-aware so .zip archives Just Work).
     if (!LoadLibretroGamePhysFS(gamePath)) {
         if (IsLibretroGameRequired()) {
-            ShowLibretroMessage("Failed to load game", 2.0f);
+            SetLibretroMessage("Failed to load game", 2.0f);
             return false;
         }
         // Core supports running without content; fall back to standalone.
         if (!LoadLibretroGame(NULL)) {
-            ShowLibretroMessage("Failed to load core", 2.0f);
+            SetLibretroMessage("Failed to load core", 2.0f);
             return false;
         }
     }
@@ -680,11 +680,11 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     if (saveData != NULL) {
         SetLibretroSerializedData(saveData, (unsigned int)dataSize);
         MemFree(saveData);
-        ShowLibretroMessage(TextFormat("Slot %d Loaded", menu.saveSlotIndex + 1), 2.0f);
+        SetLibretroMessage(TextFormat("Slot %d Loaded", menu.saveSlotIndex + 1), 2.0f);
         menu.active = false;
     }
     else {
-        ShowLibretroMessage("Load State failed", 2.0f);
+        SetLibretroMessage("Load State failed", 2.0f);
     }
 }
 

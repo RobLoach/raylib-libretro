@@ -132,7 +132,7 @@ static bool LibretroPhysFSPickFileInZip(const char* zipFile, char* outPath) {
     const char* exts = GetLibretroValidExtensions();
     if (!found && exts != NULL && exts[0] != '\0') {
         char pattern[256];
-        LibretroBuildExtPattern(exts, pattern, sizeof(pattern));
+        GetLibretroFileExtensionPattern(exts, pattern, sizeof(pattern));
         for (unsigned int i = 0; i < entries.count; i++) {
             const char* name = GetFileName(entries.paths[i]);
             if (IsFileExtension(name, pattern)) {
