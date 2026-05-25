@@ -162,16 +162,16 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 
 // Dynamic loading methods.
 #define LoadLibretroMethodHandle(V, S) do {\
-    function_t func = dylib_proc(LibretroCore.handle, #S); \
+    function_t func = dylib_proc(Libretro.core.handle, #S); \
     memcpy(&V, &func, sizeof(func)); \
     if (!func) { \
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load symbol '" #S "' ", dylib_error()); \
         return false; \
     }\
 } while (0)
-#define LoadLibretroMethod(S) LoadLibretroMethodHandle(LibretroCore.S, S)
+#define LoadLibretroMethod(S) LoadLibretroMethodHandle(Libretro.core.S, S)
 
-typedef struct rLibretro {
+typedef struct rLibretroCore {
     // Dynamic library symbols.
     void *handle;
     void (*retro_init)(void);
@@ -216,7 +216,6 @@ typedef struct rLibretro {
     enum retro_pixel_format pixelFormat;
     unsigned performanceLevel;
     bool loaded;
-    float volume;
 
     // The last performance counter registered. TODO: Make it a linked list.
     struct retro_perf_counter* perf_counter_last;
@@ -231,7 +230,6 @@ typedef struct rLibretro {
     // Raylib objects used to play the libretro core.
     Texture texture;
     bool textureRebuild;
-    int textureFilter; // TextureFilter
 
     // Pre-allocated frame conversion buffer (avoids per-frame MemAlloc).
     void *frameBuffer;
@@ -275,9 +273,6 @@ typedef struct rLibretro {
     bool variablesDirty; // Whether or not the variables have been changed since last RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE call.
     bool variablesVisibilityDirty; // Whether option visibility changed and the menu should rebuild.
 
-    // Playback speed: 1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion.
-    float speed;
-
     // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
     unsigned rotation;
 
@@ -304,15 +299,6 @@ typedef struct rLibretro {
     struct retro_game_info_ext gameInfoExt;
     bool gameInfoExtValid;
 
-    // Directory configuration. Empty string means use GetApplicationDirectory().
-    // TODO: Change this to be MemAlloc-ed?
-    char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char systemDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char playlistsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char fileBrowserStartDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-
     float rumbleStrong[RAYLIB_LIBRETRO_RUMBLE_PORTS];
     float rumbleWeak[RAYLIB_LIBRETRO_RUMBLE_PORTS];
 
@@ -333,10 +319,23 @@ typedef struct rLibretro {
     // Memory map from RETRO_ENVIRONMENT_SET_MEMORY_MAPS (owned copy).
     struct retro_memory_descriptor *memoryMapDescriptors;
     unsigned memoryMapDescriptorCount;
+} rLibretroCore;
 
-    // Keyboard bindings for player 1 (port 0). Stored as raylib KeyboardKey values.
-    // Index matches RETRO_DEVICE_ID_JOYPAD_* constants. KEY_NULL means no binding.
+typedef struct rLibretro {
+    // Persistent settings that survive core loads.
+    float volume;
+    float speed;
+    int textureFilter; // TextureFilter
     int keyboardPlayer1[16];
+    char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char systemDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char playlistsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char fileBrowserStartDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+
+    // Per-core state (reset with memset(0) on core unload).
+    rLibretroCore core;
 } rLibretro;
 
 #if defined(__cplusplus)
@@ -346,40 +345,40 @@ extern "C" {
 /**
  * The global libretro core object.
  *
- * TODO: Figure out a way to have LibretroCore not be a static global?
+ * TODO: Figure out a way to have Libretro not be a static global?
  */
-static rLibretro LibretroCore = {0};
+static rLibretro Libretro = {0};
 
 static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
     const char *label, const char *valuesList, const char *displayList, const char *tooltip) {
-    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-        if (TextIsEqual(LibretroCore.variableKeys[i], key)) {
+    for (unsigned i = 0; i < Libretro.core.variableCount; i++) {
+        if (TextIsEqual(Libretro.core.variableKeys[i], key)) {
             return; // Already registered; don't overwrite user-set value.
         }
     }
-    if (LibretroCore.variableCount >= LIBRETRO_MAX_CORE_VARIABLES) {
+    if (Libretro.core.variableCount >= LIBRETRO_MAX_CORE_VARIABLES) {
         TraceLog(LOG_WARNING, "LIBRETRO: Core variable limit reached, ignoring: %s", key);
         return;
     }
-    unsigned n = LibretroCore.variableCount;
-    TextCopy(LibretroCore.variableKeys[n],        key);
-    TextCopy(LibretroCore.variableValues[n],      defaultValue  ? defaultValue  : "");
-    TextCopy(LibretroCore.variableLabels[n],      label         ? label         : "");
-    TextCopy(LibretroCore.variableValuesList[n],  valuesList    ? valuesList    : "");
-    TextCopy(LibretroCore.variableDisplayList[n], displayList   ? displayList   : "");
-    TextCopy(LibretroCore.variableTooltips[n],    tooltip       ? tooltip       : "");
-    LibretroCore.variableVisible[n] = true;
-    LibretroCore.variableCount++;
+    unsigned n = Libretro.core.variableCount;
+    TextCopy(Libretro.core.variableKeys[n],        key);
+    TextCopy(Libretro.core.variableValues[n],      defaultValue  ? defaultValue  : "");
+    TextCopy(Libretro.core.variableLabels[n],      label         ? label         : "");
+    TextCopy(Libretro.core.variableValuesList[n],  valuesList    ? valuesList    : "");
+    TextCopy(Libretro.core.variableDisplayList[n], displayList   ? displayList   : "");
+    TextCopy(Libretro.core.variableTooltips[n],    tooltip       ? tooltip       : "");
+    Libretro.core.variableVisible[n] = true;
+    Libretro.core.variableCount++;
     // A new option appeared: cores that register variables after the menu has
     // been built (e.g. mgba registering GB model options during its deferred
     // setup on first retro_run) need the Core Options section to refresh.
-    LibretroCore.variablesVisibilityDirty = true;
+    Libretro.core.variablesVisibilityDirty = true;
 }
 
 static const char *LibretroGetCoreVariable(const char *key) {
-    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-        if (TextIsEqual(LibretroCore.variableKeys[i], key)) {
-            return LibretroCore.variableValues[i];
+    for (unsigned i = 0; i < Libretro.core.variableCount; i++) {
+        if (TextIsEqual(Libretro.core.variableKeys[i], key)) {
+            return Libretro.core.variableValues[i];
         }
     }
     return NULL;
@@ -391,10 +390,10 @@ static const char *LibretroGetCoreVariable(const char *key) {
  * @param value New value for the option.
  * @return true if the key was found and the value applied; false if the key is unknown. */
 static bool SetLibretroCoreOption(const char *key, const char *value) {
-    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-        if (TextIsEqual(LibretroCore.variableKeys[i], key)) {
-            snprintf(LibretroCore.variableValues[i], LIBRETRO_CORE_VARIABLE_VALUE_LEN, "%s", value);
-            LibretroCore.variablesDirty = true;
+    for (unsigned i = 0; i < Libretro.core.variableCount; i++) {
+        if (TextIsEqual(Libretro.core.variableKeys[i], key)) {
+            snprintf(Libretro.core.variableValues[i], LIBRETRO_CORE_VARIABLE_VALUE_LEN, "%s", value);
+            Libretro.core.variablesDirty = true;
             return true;
         }
     }
@@ -430,11 +429,11 @@ static const char* GetLibretroDirectory(int directory) {
 
     char* output = NULL;
     switch (directory) {
-        case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: output = LibretroCore.saveDirectory; break;
-        case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY: output = LibretroCore.coreAssetsDirectory; break; // RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY
-        case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: output = LibretroCore.systemDirectory; break;
-        case RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY: output = LibretroCore.playlistsDirectory; break;
-        case RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY: output = LibretroCore.fileBrowserStartDirectory; break;
+        case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: output = Libretro.saveDirectory; break;
+        case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY: output = Libretro.coreAssetsDirectory; break; // RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY
+        case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: output = Libretro.systemDirectory; break;
+        case RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY: output = Libretro.playlistsDirectory; break;
+        case RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY: output = Libretro.fileBrowserStartDirectory; break;
         default: return NULL;
     }
 
@@ -457,8 +456,8 @@ static const char* GetLibretroDirectory(int directory) {
  * @param count Output parameter filled with the number of descriptors.
  * @return Pointer to the descriptor array, or NULL if none were set. */
 static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count) {
-    if (count != NULL) *count = LibretroCore.inputDescriptorCount;
-    return LibretroCore.inputDescriptors;
+    if (count != NULL) *count = Libretro.core.inputDescriptorCount;
+    return Libretro.core.inputDescriptors;
 }
 
 /**
@@ -466,22 +465,22 @@ static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned
  * @param count Output parameter filled with the number of ports.
  * @return Pointer to the controller info array, or NULL if none were set. */
 static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count) {
-    if (count != NULL) *count = LibretroCore.controllerPortCount;
-    return LibretroCore.controllerInfo;
+    if (count != NULL) *count = Libretro.core.controllerPortCount;
+    return Libretro.core.controllerInfo;
 }
 
 /**
  * Free the stored memory map descriptors. */
 static void UnloadLibretroMemoryMaps(void) {
-    if (LibretroCore.memoryMapDescriptors) {
-        for (unsigned i = 0; i < LibretroCore.memoryMapDescriptorCount; i++) {
-            if (LibretroCore.memoryMapDescriptors[i].addrspace) {
-                MemFree((void*)LibretroCore.memoryMapDescriptors[i].addrspace);
+    if (Libretro.core.memoryMapDescriptors) {
+        for (unsigned i = 0; i < Libretro.core.memoryMapDescriptorCount; i++) {
+            if (Libretro.core.memoryMapDescriptors[i].addrspace) {
+                MemFree((void*)Libretro.core.memoryMapDescriptors[i].addrspace);
             }
         }
-        MemFree(LibretroCore.memoryMapDescriptors);
-        LibretroCore.memoryMapDescriptors = NULL;
-        LibretroCore.memoryMapDescriptorCount = 0;
+        MemFree(Libretro.core.memoryMapDescriptors);
+        Libretro.core.memoryMapDescriptors = NULL;
+        Libretro.core.memoryMapDescriptorCount = 0;
     }
 }
 
@@ -495,18 +494,18 @@ static bool SetLibretroMemoryMaps(const struct retro_memory_map *map) {
         return map != NULL;
     }
     size_t sz = sizeof(struct retro_memory_descriptor) * map->num_descriptors;
-    LibretroCore.memoryMapDescriptors = (struct retro_memory_descriptor*)MemAlloc((unsigned int)sz);
-    if (!LibretroCore.memoryMapDescriptors) {
+    Libretro.core.memoryMapDescriptors = (struct retro_memory_descriptor*)MemAlloc((unsigned int)sz);
+    if (!Libretro.core.memoryMapDescriptors) {
         return false;
     }
-    memcpy(LibretroCore.memoryMapDescriptors, map->descriptors, sz);
-    LibretroCore.memoryMapDescriptorCount = map->num_descriptors;
+    memcpy(Libretro.core.memoryMapDescriptors, map->descriptors, sz);
+    Libretro.core.memoryMapDescriptorCount = map->num_descriptors;
     for (unsigned i = 0; i < map->num_descriptors; i++) {
         if (map->descriptors[i].addrspace) {
             size_t len = strlen(map->descriptors[i].addrspace) + 1;
             char *copy = (char*)MemAlloc((unsigned int)len);
             if (copy) memcpy(copy, map->descriptors[i].addrspace, len);
-            LibretroCore.memoryMapDescriptors[i].addrspace = copy;
+            Libretro.core.memoryMapDescriptors[i].addrspace = copy;
         }
     }
     TraceLog(LOG_INFO, "LIBRETRO: Memory map stored (%u descriptor(s))", map->num_descriptors);
@@ -518,8 +517,8 @@ static bool SetLibretroMemoryMaps(const struct retro_memory_map *map) {
  * @param count Output parameter filled with the number of descriptors.
  * @return Pointer to the descriptor array, or NULL if none are stored. */
 static const struct retro_memory_descriptor* GetLibretroMemoryMaps(unsigned *count) {
-    if (count != NULL) *count = LibretroCore.memoryMapDescriptorCount;
-    return LibretroCore.memoryMapDescriptors;
+    if (count != NULL) *count = Libretro.core.memoryMapDescriptorCount;
+    return Libretro.core.memoryMapDescriptors;
 }
 
 // Returns an absolute path for `path`. The result is either the input pointer
@@ -567,52 +566,52 @@ static size_t UpdateLibretroAudioSampleBatch(const int16_t *data, size_t frames)
 
 static void CloseLibretroVideo(void) {
     // Unload the existing texture if it exists already.
-    if (IsTextureValid(LibretroCore.texture)) {
-        UnloadTexture(LibretroCore.texture);
-        memset(&LibretroCore.texture, 0, sizeof(LibretroCore.texture));
+    if (IsTextureValid(Libretro.core.texture)) {
+        UnloadTexture(Libretro.core.texture);
+        memset(&Libretro.core.texture, 0, sizeof(Libretro.core.texture));
     }
 
-    if (LibretroCore.frameBuffer != NULL) {
-        MemFree(LibretroCore.frameBuffer);
+    if (Libretro.core.frameBuffer != NULL) {
+        MemFree(Libretro.core.frameBuffer);
     }
-    LibretroCore.frameBuffer = NULL;
-    LibretroCore.frameBufferSize = 0;
-    LibretroCore.textureRebuild = false;
+    Libretro.core.frameBuffer = NULL;
+    Libretro.core.frameBufferSize = 0;
+    Libretro.core.textureRebuild = false;
 }
 
 static bool InitLibretroVideo(void) {
     CloseLibretroVideo();
 
     // Build the rendering image.
-    if (LibretroCore.width == 0 || LibretroCore.height == 0) {
+    if (Libretro.core.width == 0 || Libretro.core.height == 0) {
         return false;
     }
 
-    Image image = GenImageColor(LibretroCore.width, LibretroCore.height, BLACK);
+    Image image = GenImageColor(Libretro.core.width, Libretro.core.height, BLACK);
     if (!IsImageValid(image)) {
         return false;
     }
-    ImageFormat(&image, LibretroRetroPixelFormatToPixelFormat(LibretroCore.pixelFormat));
+    ImageFormat(&image, LibretroRetroPixelFormatToPixelFormat(Libretro.core.pixelFormat));
 
     // Create the texture.
-    LibretroCore.texture = LoadTextureFromImage(image);
+    Libretro.core.texture = LoadTextureFromImage(image);
     UnloadImage(image);
-    if (!IsTextureValid(LibretroCore.texture)) {
+    if (!IsTextureValid(Libretro.core.texture)) {
         return false;
     }
 
-    SetTextureFilter(LibretroCore.texture, LibretroCore.textureFilter);
+    SetTextureFilter(Libretro.core.texture, Libretro.textureFilter);
 
     // (Re-)allocate the frame conversion buffer sized for XRGB8888→RGBA8888 (worst case).
-    size_t needed = (size_t)GetPixelDataSize(LibretroCore.width, LibretroCore.height, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    size_t needed = (size_t)GetPixelDataSize(Libretro.core.width, Libretro.core.height, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
     if (needed == 0) {
         CloseLibretroVideo();
         return false;
     }
-    LibretroCore.frameBuffer = MemAlloc(needed);
-    LibretroCore.frameBufferSize = needed;
+    Libretro.core.frameBuffer = MemAlloc(needed);
+    Libretro.core.frameBufferSize = needed;
 
-    LibretroCore.textureRebuild = false;
+    Libretro.core.textureRebuild = false;
     return true;
 }
 
@@ -622,7 +621,7 @@ static bool InitLibretroVideo(void) {
  * @return retro_time_t The current in-game time in microseconds.
  */
 static retro_time_t GetLibretroTimeUSEC(void) {
-    return (retro_time_t)(LibretroCore.gameTimeNSEC / 1000);
+    return (retro_time_t)(Libretro.core.gameTimeNSEC / 1000);
 }
 
 /**
@@ -642,7 +641,7 @@ static uint64_t GetLibretroCPUFeatures(void) {
  * @return retro_perf_tick_t The current value of the high resolution counter.
  */
 static retro_perf_tick_t GetLibretroPerfCounter(void) {
-    return LibretroCore.gameTimeNSEC;
+    return Libretro.core.gameTimeNSEC;
 }
 
 /**
@@ -651,7 +650,7 @@ static retro_perf_tick_t GetLibretroPerfCounter(void) {
  * @see retro_perf_register_t
  */
 static void SetLibretroPerformanceCounter(struct retro_perf_counter* counter) {
-    LibretroCore.perf_counter_last = counter;
+    Libretro.core.perf_counter_last = counter;
     counter->registered = true;
 }
 
@@ -682,10 +681,10 @@ static void StopLibretroPerformanceCounter(struct retro_perf_counter* counter) {
  */
 static void LogLibretroPerformanceCounter(void) {
     // TODO: Use a linked list of counters, and loop through them all.
-    if (LibretroCore.perf_counter_last == NULL) {
+    if (Libretro.core.perf_counter_last == NULL) {
         return;
     }
-    TraceLog(LOG_INFO, "LIBRETRO: Timer %s: %i - %i", LibretroCore.perf_counter_last->ident, LibretroCore.perf_counter_last->start, LibretroCore.perf_counter_last->total);
+    TraceLog(LOG_INFO, "LIBRETRO: Timer %s: %i - %i", Libretro.core.perf_counter_last->ident, Libretro.core.perf_counter_last->start, Libretro.core.perf_counter_last->total);
 }
 
 static bool SetLibretroRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
@@ -694,11 +693,11 @@ static bool SetLibretroRumbleState(unsigned port, enum retro_rumble_effect effec
     }
     float normalized = (float)strength / 65535.0f;
     if (effect == RETRO_RUMBLE_STRONG) {
-        LibretroCore.rumbleStrong[port] = normalized;
+        Libretro.core.rumbleStrong[port] = normalized;
     } else {
-        LibretroCore.rumbleWeak[port] = normalized;
+        Libretro.core.rumbleWeak[port] = normalized;
     }
-    SetGamepadVibration((int)port, LibretroCore.rumbleStrong[port], LibretroCore.rumbleWeak[port], 3600.0f);
+    SetGamepadVibration((int)port, Libretro.core.rumbleStrong[port], Libretro.core.rumbleWeak[port], 3600.0f);
     return true;
 }
 
@@ -708,8 +707,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (data == NULL) {
                 return false;
             }
-            LibretroCore.rotation = *(const unsigned *)data;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_ROTATION: %u (%u°)", LibretroCore.rotation, LibretroCore.rotation * 90);
+            Libretro.core.rotation = *(const unsigned *)data;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_ROTATION: %u (%u°)", Libretro.core.rotation, Libretro.core.rotation * 90);
             return true;
         }
 
@@ -739,14 +738,14 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE: %s (%i frames)", message->msg, message->frames);
-            TextCopy(LibretroCore.osdMessage, message->msg);
-            LibretroCore.osdEndTime = GetTime() + message->frames / (LibretroCore.fps > 0 ? (double)LibretroCore.fps : 60.0);
+            TextCopy(Libretro.core.osdMessage, message->msg);
+            Libretro.core.osdEndTime = GetTime() + message->frames / (Libretro.core.fps > 0 ? (double)Libretro.core.fps : 60.0);
             return true;
         }
 
         case RETRO_ENVIRONMENT_SHUTDOWN: {
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SHUTDOWN");
-            LibretroCore.shutdown = true;
+            Libretro.core.shutdown = true;
             return true;
         }
 
@@ -755,8 +754,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL no data provided");
                 return false;
             }
-            LibretroCore.performanceLevel = *(const unsigned *)data;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL(%i)", LibretroCore.performanceLevel);
+            Libretro.core.performanceLevel = *(const unsigned *)data;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL(%i)", Libretro.core.performanceLevel);
             return true;
         }
 
@@ -776,9 +775,9 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT no data set");
                 return false;
             }
-            LibretroCore.pixelFormat = *pixelFormat;
+            Libretro.core.pixelFormat = *pixelFormat;
 
-            switch (LibretroCore.pixelFormat) {
+            switch (Libretro.core.pixelFormat) {
             case RETRO_PIXEL_FORMAT_0RGB1555:
                 TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT 0RGB1555");
                 break;
@@ -790,7 +789,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 break;
             default:
                 TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_SET_PIXEL_FORMAT Unknown. Falling to RGB565");
-                LibretroCore.pixelFormat = RETRO_PIXEL_FORMAT_RGB565;
+                Libretro.core.pixelFormat = RETRO_PIXEL_FORMAT_RGB565;
                 return false;
             }
             return true;
@@ -806,20 +805,20 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             for (const struct retro_input_descriptor *d = desc; d->description != NULL; d++) {
                 count++;
             }
-            if (LibretroCore.inputDescriptors != NULL) {
-                MemFree(LibretroCore.inputDescriptors);
-                LibretroCore.inputDescriptors = NULL;
-                LibretroCore.inputDescriptorCount = 0;
+            if (Libretro.core.inputDescriptors != NULL) {
+                MemFree(Libretro.core.inputDescriptors);
+                Libretro.core.inputDescriptors = NULL;
+                Libretro.core.inputDescriptorCount = 0;
             }
             if (count > 0) {
-                LibretroCore.inputDescriptors = (struct retro_input_descriptor *)MemAlloc(count * sizeof(struct retro_input_descriptor));
-                if (LibretroCore.inputDescriptors != NULL) {
+                Libretro.core.inputDescriptors = (struct retro_input_descriptor *)MemAlloc(count * sizeof(struct retro_input_descriptor));
+                if (Libretro.core.inputDescriptors != NULL) {
                     for (unsigned i = 0; i < count; i++) {
-                        LibretroCore.inputDescriptors[i] = desc[i];
+                        Libretro.core.inputDescriptors[i] = desc[i];
                         TraceLog(LOG_INFO, "LIBRETRO: Input port %u device %u index %u id %u: %s",
                             desc[i].port, desc[i].device, desc[i].index, desc[i].id, desc[i].description);
                     }
-                    LibretroCore.inputDescriptorCount = count;
+                    Libretro.core.inputDescriptorCount = count;
                 }
             }
             return true;
@@ -831,7 +830,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const struct retro_keyboard_callback * callback = (const struct retro_keyboard_callback *)data;
-            LibretroCore.keyboard_event = callback->callback;
+            Libretro.core.keyboard_event = callback->callback;
             return true;
         }
 
@@ -868,7 +867,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_VARIABLES no data set");
                 return false;
             }
-            LibretroCore.variableOptionsVersion = 0;
+            Libretro.core.variableOptionsVersion = 0;
             const struct retro_variable *var = (const struct retro_variable *)data;
             for (; var->key != NULL; var++) {
                 // Description format: "Desc text; option1|option2|...". Default is the first option.
@@ -907,8 +906,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             bool *updated = (bool *)data;
-            *updated = LibretroCore.variablesDirty;
-            LibretroCore.variablesDirty = false;
+            *updated = Libretro.core.variablesDirty;
+            Libretro.core.variablesDirty = false;
             return true;
         }
 
@@ -918,8 +917,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME no data provided");
                 return false;
             }
-            LibretroCore.supportNoGame = *(bool*)data;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: %s", LibretroCore.supportNoGame ? "true" : "false");
+            Libretro.core.supportNoGame = *(bool*)data;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: %s", Libretro.core.supportNoGame ? "true" : "false");
             return true;
         }
 
@@ -929,7 +928,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** path = (const char**)data;
-            *path = LibretroCore.corePath[0] != '\0' ? LibretroCore.corePath : NULL;
+            *path = Libretro.core.corePath[0] != '\0' ? Libretro.core.corePath : NULL;
             return true;
         }
 
@@ -939,7 +938,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const struct retro_frame_time_callback *frame_time = (const struct retro_frame_time_callback*)data;
-            LibretroCore.runloop_frame_time = *frame_time;
+            Libretro.core.runloop_frame_time = *frame_time;
             return true;
         }
 
@@ -949,7 +948,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             struct retro_audio_callback *audio_cb = (struct retro_audio_callback*)data;
-            LibretroCore.audio_callback = *audio_cb;
+            Libretro.core.audio_callback = *audio_cb;
             return true;
         }
 
@@ -1043,17 +1042,17 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const struct retro_system_av_info av = *(const struct retro_system_av_info *)data;
-            bool sampleRateChanged = (av.timing.sample_rate != LibretroCore.sampleRate);
-            bool dimsChanged = (av.geometry.base_width != LibretroCore.width || av.geometry.base_height != LibretroCore.height);
-            LibretroCore.width = av.geometry.base_width;
-            LibretroCore.height = av.geometry.base_height;
-            LibretroCore.fps = (unsigned int)av.timing.fps;
-            LibretroCore.sampleRate = av.timing.sample_rate;
-            LibretroCore.aspectRatio = av.geometry.aspect_ratio;
+            bool sampleRateChanged = (av.timing.sample_rate != Libretro.core.sampleRate);
+            bool dimsChanged = (av.geometry.base_width != Libretro.core.width || av.geometry.base_height != Libretro.core.height);
+            Libretro.core.width = av.geometry.base_width;
+            Libretro.core.height = av.geometry.base_height;
+            Libretro.core.fps = (unsigned int)av.timing.fps;
+            Libretro.core.sampleRate = av.timing.sample_rate;
+            Libretro.core.aspectRatio = av.geometry.aspect_ratio;
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO %i x %i @ %i FPS",
-                LibretroCore.width,
-                LibretroCore.height,
-                LibretroCore.fps
+                Libretro.core.width,
+                Libretro.core.height,
+                Libretro.core.fps
             );
             if (dimsChanged) {
                 InitLibretroVideo();
@@ -1061,7 +1060,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (sampleRateChanged) {
                 InitLibretroAudio();
             }
-            SetTargetFPS((int)(LibretroCore.fps * LibretroCore.speed));
+            SetTargetFPS((int)(Libretro.core.fps * Libretro.speed));
             return true;
         }
 
@@ -1081,26 +1080,26 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const struct retro_controller_info *info = (const struct retro_controller_info *)data;
-            if (LibretroCore.controllerInfo != NULL) {
-                MemFree(LibretroCore.controllerInfo);
-                LibretroCore.controllerInfo = NULL;
-                LibretroCore.controllerPortCount = 0;
+            if (Libretro.core.controllerInfo != NULL) {
+                MemFree(Libretro.core.controllerInfo);
+                Libretro.core.controllerInfo = NULL;
+                Libretro.core.controllerPortCount = 0;
             }
             unsigned portCount = 0;
             for (unsigned port = 0; info[port].types != NULL; port++) {
                 portCount++;
             }
             if (portCount > 0) {
-                LibretroCore.controllerInfo = (struct retro_controller_info *)MemAlloc(portCount * sizeof(struct retro_controller_info));
-                if (LibretroCore.controllerInfo != NULL) {
+                Libretro.core.controllerInfo = (struct retro_controller_info *)MemAlloc(portCount * sizeof(struct retro_controller_info));
+                if (Libretro.core.controllerInfo != NULL) {
                     for (unsigned port = 0; port < portCount; port++) {
-                        LibretroCore.controllerInfo[port] = info[port];
+                        Libretro.core.controllerInfo[port] = info[port];
                         TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_CONTROLLER_INFO port %u (%u types)", port, info[port].num_types);
                         for (unsigned i = 0; i < info[port].num_types; i++) {
                             TraceLog(LOG_INFO, "    > [%u] %s (id: %u)", i, info[port].types[i].desc, info[port].types[i].id);
                         }
                     }
-                    LibretroCore.controllerPortCount = portCount;
+                    Libretro.core.controllerPortCount = portCount;
                 }
             }
             return true;
@@ -1120,15 +1119,15 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const struct retro_game_geometry *geom = (const struct retro_game_geometry *)data;
-            LibretroCore.width = geom->base_width;
-            LibretroCore.height = geom->base_height;
-            LibretroCore.aspectRatio = geom->aspect_ratio;
+            Libretro.core.width = geom->base_width;
+            Libretro.core.height = geom->base_height;
+            Libretro.core.aspectRatio = geom->aspect_ratio;
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_GEOMETRY %i x %i @ %f",
-                LibretroCore.width,
-                LibretroCore.height,
-                LibretroCore.aspectRatio
+                Libretro.core.width,
+                Libretro.core.height,
+                Libretro.core.aspectRatio
             );
-            LibretroCore.textureRebuild = true;
+            Libretro.core.textureRebuild = true;
             return true;
         }
 
@@ -1193,7 +1192,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             }
 
             struct retro_vfs_interface_info * vfs_interface = (struct retro_vfs_interface_info *)data;
-            vfs_interface->iface = &LibretroCore.vfs_interface;
+            vfs_interface->iface = &Libretro.core.vfs_interface;
 
             // VFS 1
             if (vfs_interface->required_interface_version >= 1) {
@@ -1266,7 +1265,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_FASTFORWARDING data missing");
                 return false;
             }
-            *output = (LibretroCore.speed > 1.0f);
+            *output = (Libretro.speed > 1.0f);
             return true;
         }
 
@@ -1301,7 +1300,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS data missing");
                 return false;
             }
-            LibretroCore.variableOptionsVersion = 1;
+            Libretro.core.variableOptionsVersion = 1;
             for (; opts->key != NULL; opts++) {
                 const char *def = opts->default_value;
                 if (def == NULL && opts->values[0].value != NULL) {
@@ -1351,10 +1350,10 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: {
             const struct retro_core_option_display *disp = (const struct retro_core_option_display *)data;
             if (!disp || !disp->key) return false;
-            for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-                if (TextIsEqual(LibretroCore.variableKeys[i], disp->key)) {
-                    LibretroCore.variableVisible[i] = disp->visible;
-                    LibretroCore.variablesVisibilityDirty = true;
+            for (unsigned i = 0; i < Libretro.core.variableCount; i++) {
+                if (TextIsEqual(Libretro.core.variableKeys[i], disp->key)) {
+                    Libretro.core.variableVisible[i] = disp->visible;
+                    Libretro.core.variablesVisibilityDirty = true;
                     return true;
                 }
             }
@@ -1396,8 +1395,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LibretroMapRetroLogLevelToTraceLogType(message->level), "LIBRETRO: %s", message->msg);
             }
             if (message->target == RETRO_MESSAGE_TARGET_OSD || message->target == RETRO_MESSAGE_TARGET_ALL) {
-                TextCopy(LibretroCore.osdMessage, message->msg);
-                LibretroCore.osdEndTime = GetTime() + message->duration / 1000.0;
+                TextCopy(Libretro.core.osdMessage, message->msg);
+                Libretro.core.osdEndTime = GetTime() + message->duration / 1000.0;
             }
             return true;
         }
@@ -1418,13 +1417,13 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
 
         case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: {
             if (data == NULL) {
-                LibretroCore.audio_buffer_status_callback.callback = NULL;
+                Libretro.core.audio_buffer_status_callback.callback = NULL;
                 TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK disabled");
                 return true;
             }
             const struct retro_audio_buffer_status_callback *cb =
                 (const struct retro_audio_buffer_status_callback *)data;
-            LibretroCore.audio_buffer_status_callback = *cb;
+            Libretro.core.audio_buffer_status_callback = *cb;
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK registered");
             return true;
         }
@@ -1435,15 +1434,15 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             unsigned latencyMs = *(const unsigned *)data;
-            if (latencyMs == LibretroCore.minimumAudioLatencyMs) {
+            if (latencyMs == Libretro.core.minimumAudioLatencyMs) {
                 return true;
             }
-            LibretroCore.minimumAudioLatencyMs = latencyMs;
+            Libretro.core.minimumAudioLatencyMs = latencyMs;
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY: %u ms", latencyMs);
             // Reinit audio so the new minimum is reflected in the ring buffer.
             // Safe before audio init (no-op via the NULL check) and at runtime
             // (matches the SET_SYSTEM_AV_INFO sample-rate-change path above).
-            if (LibretroCore.audioRingBuffer != NULL && LibretroCore.sampleRate > 0.0) {
+            if (Libretro.core.audioRingBuffer != NULL && Libretro.core.sampleRate > 0.0) {
                 InitLibretroAudio();
             }
             return true;
@@ -1468,18 +1467,18 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             // its real array.
             if (data == NULL) return true;
 
-            LibretroCore.contentInfoOverrideCount = 0;
+            Libretro.core.contentInfoOverrideCount = 0;
             const struct retro_system_content_info_override *o =
                 (const struct retro_system_content_info_override *)data;
             for (; o->extensions != NULL; o++) {
-                if (LibretroCore.contentInfoOverrideCount >= LIBRETRO_MAX_CONTENT_INFO_OVERRIDES) {
+                if (Libretro.core.contentInfoOverrideCount >= LIBRETRO_MAX_CONTENT_INFO_OVERRIDES) {
                     TraceLog(LOG_WARNING, "LIBRETRO: Too many content info overrides; dropping rest");
                     break;
                 }
-                unsigned i = LibretroCore.contentInfoOverrideCount++;
-                TextCopy(LibretroCore.contentInfoOverrideExts[i], o->extensions);
-                LibretroCore.contentInfoOverrideNeedFullpath[i] = o->need_fullpath;
-                LibretroCore.contentInfoOverridePersistent[i]   = o->persistent_data;
+                unsigned i = Libretro.core.contentInfoOverrideCount++;
+                TextCopy(Libretro.core.contentInfoOverrideExts[i], o->extensions);
+                Libretro.core.contentInfoOverrideNeedFullpath[i] = o->need_fullpath;
+                Libretro.core.contentInfoOverridePersistent[i]   = o->persistent_data;
                 TraceLog(LOG_INFO, "LIBRETRO: content_info_override: ext=\"%s\" need_fullpath=%s persistent=%s",
                     o->extensions,
                     o->need_fullpath ? "true" : "false",
@@ -1489,8 +1488,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_GAME_INFO_EXT: {
-            if (data == NULL || !LibretroCore.gameInfoExtValid) return false;
-            *(const struct retro_game_info_ext **)data = &LibretroCore.gameInfoExt;
+            if (data == NULL || !Libretro.core.gameInfoExtValid) return false;
+            *(const struct retro_game_info_ext **)data = &Libretro.core.gameInfoExt;
             return true;
         }
 
@@ -1502,7 +1501,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (opts->definitions == NULL) {
                 return false;
             }
-            LibretroCore.variableOptionsVersion = 2;
+            Libretro.core.variableOptionsVersion = 2;
             const struct retro_core_option_v2_definition *def = opts->definitions;
             for (; def->key != NULL; def++) {
                 const char *defaultVal = def->default_value;
@@ -1556,7 +1555,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: {
             const struct retro_core_options_update_display_callback *cb =
                 (const struct retro_core_options_update_display_callback *)data;
-            LibretroCore.options_update_display_callback = (cb && cb->callback) ? cb->callback : NULL;
+            Libretro.core.options_update_display_callback = (cb && cb->callback) ? cb->callback : NULL;
             return true;
         }
 
@@ -1573,15 +1572,15 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (state == NULL) {
                 return false;
             }
-            if (LibretroCore.speed > 1.0f) {
+            if (Libretro.speed > 1.0f) {
                 state->mode = RETRO_THROTTLE_FAST_FORWARD;
-                state->rate = LibretroCore.fps * LibretroCore.speed;
-            } else if (LibretroCore.speed < 1.0f) {
+                state->rate = Libretro.core.fps * Libretro.speed;
+            } else if (Libretro.speed < 1.0f) {
                 state->mode = RETRO_THROTTLE_SLOW_MOTION;
-                state->rate = LibretroCore.fps * LibretroCore.speed;
+                state->rate = Libretro.core.fps * Libretro.speed;
             } else {
                 state->mode = RETRO_THROTTLE_NONE;
-                state->rate = (float)LibretroCore.fps;
+                state->rate = (float)Libretro.core.fps;
             }
             return true;
         }
@@ -1664,21 +1663,21 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
  * Retrieve the audio/video information for the core.
  */
 static bool LibretroGetAudioVideo(void) {
-    if (LibretroCore.retro_get_system_av_info == NULL) {
+    if (Libretro.core.retro_get_system_av_info == NULL) {
         return false;
     }
 
     struct retro_system_av_info av = {0};
-    LibretroCore.retro_get_system_av_info(&av);
-    LibretroCore.width = av.geometry.base_width;
-    LibretroCore.height = av.geometry.base_height;
-    LibretroCore.fps = (unsigned int)av.timing.fps;
-    LibretroCore.sampleRate = av.timing.sample_rate;
-    LibretroCore.aspectRatio = av.geometry.aspect_ratio;
+    Libretro.core.retro_get_system_av_info(&av);
+    Libretro.core.width = av.geometry.base_width;
+    Libretro.core.height = av.geometry.base_height;
+    Libretro.core.fps = (unsigned int)av.timing.fps;
+    Libretro.core.sampleRate = av.timing.sample_rate;
+    Libretro.core.aspectRatio = av.geometry.aspect_ratio;
     TraceLog(LOG_INFO, "LIBRETRO: Video and Audio information");
-    TraceLog(LOG_INFO, "    > Display size: %i x %i", LibretroCore.width, LibretroCore.height);
-    TraceLog(LOG_INFO, "    > Target FPS:   %i", LibretroCore.fps);
-    TraceLog(LOG_INFO, "    > Sample rate:  %.2f Hz", LibretroCore.sampleRate);
+    TraceLog(LOG_INFO, "    > Display size: %i x %i", Libretro.core.width, Libretro.core.height);
+    TraceLog(LOG_INFO, "    > Target FPS:   %i", Libretro.core.fps);
+    TraceLog(LOG_INFO, "    > Sample rate:  %.2f Hz", Libretro.core.sampleRate);
     return true;
 }
 
@@ -1686,33 +1685,33 @@ static bool LibretroGetAudioVideo(void) {
  * Run one emulation frame of the loaded core.
  */
 static void UpdateLibretro(void) {
-    if (LibretroCore.textureRebuild) {
+    if (Libretro.core.textureRebuild) {
         InitLibretroVideo();
     }
 
     if (IsLibretroGameReady()) {
-        LibretroCore.gameTimeNSEC += (retro_perf_tick_t)((double)GetFrameTime() * 1000000000.0);
+        Libretro.core.gameTimeNSEC += (retro_perf_tick_t)((double)GetFrameTime() * 1000000000.0);
     }
 
     // Update the game loop timer.
-    if (LibretroCore.runloop_frame_time.callback) {
+    if (Libretro.core.runloop_frame_time.callback) {
         retro_time_t current = GetLibretroTimeUSEC();
-        retro_time_t delta = current - LibretroCore.runloop_frame_time_last;
+        retro_time_t delta = current - Libretro.core.runloop_frame_time_last;
 
-        if (!LibretroCore.runloop_frame_time_last) {
-            delta = LibretroCore.runloop_frame_time.reference;
+        if (!Libretro.core.runloop_frame_time_last) {
+            delta = Libretro.core.runloop_frame_time.reference;
         }
-        LibretroCore.runloop_frame_time_last = current;
-        LibretroCore.runloop_frame_time.callback(delta);
+        Libretro.core.runloop_frame_time_last = current;
+        Libretro.core.runloop_frame_time.callback(delta);
     }
 
     // Ask the core to emit the audio.
-    if (LibretroCore.audio_callback.callback) {
-        LibretroCore.audio_callback.callback();
+    if (Libretro.core.audio_callback.callback) {
+        Libretro.core.audio_callback.callback();
     }
 
     // Check keyboard event callback.
-    if (LibretroCore.keyboard_event != NULL) {
+    if (Libretro.core.keyboard_event != NULL) {
         // Prepare the key modifiers.
         uint16_t key_modifiers = 0;
         if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
@@ -1753,10 +1752,10 @@ static void UpdateLibretro(void) {
             int raylibKey = LibretroRetroKeyToKeyboardKey(key);
             if (raylibKey > 0) {
                 if (IsKeyPressed(raylibKey)) {
-                    LibretroCore.keyboard_event(true, key, (uint32_t)keyCharMap[raylibKey], key_modifiers);
+                    Libretro.core.keyboard_event(true, key, (uint32_t)keyCharMap[raylibKey], key_modifiers);
                 }
                 else if (IsKeyReleased(raylibKey)) {
-                    LibretroCore.keyboard_event(false, key, 0, key_modifiers);
+                    Libretro.core.keyboard_event(false, key, 0, key_modifiers);
                 }
             }
         }
@@ -1765,51 +1764,51 @@ static void UpdateLibretro(void) {
     if (IsLibretroGameReady()) {
         // Report audio buffer occupancy to the core just before retro_run, so
         // it can decide whether to frameskip to avoid under-runs.
-        if (LibretroCore.audio_buffer_status_callback.callback && LibretroCore.audioRingBufferSize > 0) {
-            unsigned occupancy = (unsigned)((LibretroCore.audioRingAvailable * 100) / LibretroCore.audioRingBufferSize);
+        if (Libretro.core.audio_buffer_status_callback.callback && Libretro.core.audioRingBufferSize > 0) {
+            unsigned occupancy = (unsigned)((Libretro.core.audioRingAvailable * 100) / Libretro.core.audioRingBufferSize);
             if (occupancy > 100) occupancy = 100;
             bool underrun_likely = occupancy < 25;
-            LibretroCore.audio_buffer_status_callback.callback(true, occupancy, underrun_likely);
+            Libretro.core.audio_buffer_status_callback.callback(true, occupancy, underrun_likely);
         }
 
-        LibretroCore.retro_run();
+        Libretro.core.retro_run();
 
         // Flush any single-sample accumulator left over from retro_run so
         // samples arrive in the ring buffer within the same frame.
-        if (LibretroCore.singleSampleCount > 0) {
-            UpdateLibretroAudioSampleBatch(LibretroCore.singleSampleBuffer, LibretroCore.singleSampleCount);
-            LibretroCore.singleSampleCount = 0;
+        if (Libretro.core.singleSampleCount > 0) {
+            UpdateLibretroAudioSampleBatch(Libretro.core.singleSampleBuffer, Libretro.core.singleSampleCount);
+            Libretro.core.singleSampleCount = 0;
         }
 
         // Dynamic Rate Control: nudge audio pitch to steer ring-buffer occupancy
         // toward 50% so the audio stays in sync.
-        if (LibretroCore.drcEnabled && LibretroCore.audioRingBufferSize > 0 && IsAudioStreamValid(LibretroCore.audioStream)) {
+        if (Libretro.core.drcEnabled && Libretro.core.audioRingBufferSize > 0 && IsAudioStreamValid(Libretro.core.audioStream)) {
             // Positive drift when buffer is full (consume faster).
             // Negative drift when buffer is empty (consume slower).
-            float drift = ((float)LibretroCore.audioRingAvailable / (float)LibretroCore.audioRingBufferSize) - 0.5f;
-            LibretroCore.drcAdjustment += drift * 0.001f;
-            if (LibretroCore.drcAdjustment < 0.995f) LibretroCore.drcAdjustment = 0.995f;
-            if (LibretroCore.drcAdjustment > 1.005f) LibretroCore.drcAdjustment = 1.005f;
-            SetAudioStreamPitch(LibretroCore.audioStream, LibretroCore.drcAdjustment);
+            float drift = ((float)Libretro.core.audioRingAvailable / (float)Libretro.core.audioRingBufferSize) - 0.5f;
+            Libretro.core.drcAdjustment += drift * 0.001f;
+            if (Libretro.core.drcAdjustment < 0.995f) Libretro.core.drcAdjustment = 0.995f;
+            if (Libretro.core.drcAdjustment > 1.005f) Libretro.core.drcAdjustment = 1.005f;
+            SetAudioStreamPitch(Libretro.core.audioStream, Libretro.core.drcAdjustment);
         }
 
         // Some cores (notably mgba GB/GBC) defer the actual core reset until
         // the first retro_run, so retro_get_system_av_info called pre-run
         // returns sample_rate=0. Once we have a frame, re-query AV info and
         // reinit audio if a valid sample rate has appeared.
-        if (LibretroCore.sampleRate <= 0.0 && LibretroCore.retro_get_system_av_info) {
+        if (Libretro.core.sampleRate <= 0.0 && Libretro.core.retro_get_system_av_info) {
             struct retro_system_av_info av = {0};
-            LibretroCore.retro_get_system_av_info(&av);
+            Libretro.core.retro_get_system_av_info(&av);
             if (av.timing.sample_rate > 0.0) {
-                LibretroCore.sampleRate = av.timing.sample_rate;
-                TraceLog(LOG_INFO, "LIBRETRO: Sample rate now %.2f Hz (post-retro_run); reinitializing audio", LibretroCore.sampleRate);
+                Libretro.core.sampleRate = av.timing.sample_rate;
+                TraceLog(LOG_INFO, "LIBRETRO: Sample rate now %.2f Hz (post-retro_run); reinitializing audio", Libretro.core.sampleRate);
                 InitLibretroAudio();
             }
         }
 
-        if (LibretroCore.options_update_display_callback) {
-            if (LibretroCore.options_update_display_callback()) {
-                LibretroCore.variablesVisibilityDirty = true;
+        if (Libretro.core.options_update_display_callback) {
+            if (Libretro.core.options_update_display_callback()) {
+                Libretro.core.variablesVisibilityDirty = true;
             }
         }
     }
@@ -1819,7 +1818,7 @@ static void UpdateLibretro(void) {
  * Check whether a core has been successfully initialized.
  * @return true if a core is loaded and ready. */
 static bool IsLibretroReady(void) {
-    return LibretroCore.handle != NULL;
+    return Libretro.core.handle != NULL;
 }
 
 /**
@@ -1827,7 +1826,7 @@ static bool IsLibretroReady(void) {
  * @return true if the core wants to close.
  */
 static bool LibretroShouldClose(void) {
-    return LibretroCore.shutdown;
+    return Libretro.core.shutdown;
 }
 
 static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *input_,
@@ -1862,54 +1861,54 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
     }
 
     // Resize the video if needed.
-    if (width != LibretroCore.width || height != LibretroCore.height) {
-        LibretroCore.width = width;
-        LibretroCore.height = height;
+    if (width != Libretro.core.width || height != Libretro.core.height) {
+        Libretro.core.width = width;
+        Libretro.core.height = height;
         if (!InitLibretroVideo()) {
             return;
         }
     }
 
-    if (!IsTextureValid(LibretroCore.texture)) {
+    if (!IsTextureValid(Libretro.core.texture)) {
         return;
     }
 
-    switch (LibretroCore.pixelFormat) {
+    switch (Libretro.core.pixelFormat) {
         case RETRO_PIXEL_FORMAT_UNKNOWN:
         case RETRO_PIXEL_FORMAT_RGB565: {
             // For small pitches, we can use the data 1:1, otherwise we need to adjust it.
             if (pitch == width * 2) {
                 // Core: FCEUM
-                UpdateTexture(LibretroCore.texture, data);
+                UpdateTexture(Libretro.core.texture, data);
             }
             else {
                 // Core: SNES9x
                 const uint8_t *src = (const uint8_t *)data;
-                uint8_t *dst = (uint8_t *)LibretroCore.frameBuffer;
+                uint8_t *dst = (uint8_t *)Libretro.core.frameBuffer;
                 size_t row_bytes = width * 2;
                 for (unsigned h = 0; h < height; h++) {
                     memcpy(dst, src, row_bytes);
                     src += pitch;
                     dst += row_bytes;
                 }
-                UpdateTexture(LibretroCore.texture, LibretroCore.frameBuffer);
+                UpdateTexture(Libretro.core.texture, Libretro.core.frameBuffer);
             }
         }
         break;
         case RETRO_PIXEL_FORMAT_0RGB1555: {
-            LibretroPixelFormatARGB1555ToRGB565(LibretroCore.frameBuffer, data, width, height,
+            LibretroPixelFormatARGB1555ToRGB565(Libretro.core.frameBuffer, data, width, height,
                 (int)(width * 2),
                 pitch);
-            UpdateTexture(LibretroCore.texture, LibretroCore.frameBuffer);
+            UpdateTexture(Libretro.core.texture, Libretro.core.frameBuffer);
         }
         break;
         case RETRO_PIXEL_FORMAT_XRGB8888: {
             // Core: Blastem
             // Core: BSNES
-            LibretroMapPixelFormatARGB8888ToRGBA8888(LibretroCore.frameBuffer, data,
+            LibretroMapPixelFormatARGB8888ToRGBA8888(Libretro.core.frameBuffer, data,
                 width, height,
                 (int)(width * 4), pitch);
-            UpdateTexture(LibretroCore.texture, LibretroCore.frameBuffer);
+            UpdateTexture(Libretro.core.texture, Libretro.core.frameBuffer);
         }
         break;
     }
@@ -1917,8 +1916,8 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
 
 static void LibretroInputPoll(void) {
     // Mouse
-    LibretroCore.inputLastMousePosition = LibretroCore.inputMousePosition;
-    LibretroCore.inputMousePosition = GetMousePosition();
+    Libretro.core.inputLastMousePosition = Libretro.core.inputMousePosition;
+    Libretro.core.inputMousePosition = GetMousePosition();
 }
 
 static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index, unsigned id) {
@@ -1938,14 +1937,14 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                 for (int btn = 0; btn < 16; btn++) {
                     bool pressed = false;
                     if (port == 0) {
-                        if (btn < 16 && LibretroCore.virtualJoypadState[btn]) {
+                        if (btn < 16 && Libretro.core.virtualJoypadState[btn]) {
                             pressed = true;
                         } else if (gpAvail) {
                             int gamepadButton = LibretroRetroJoypadButtonToGamepadButton(btn);
                             pressed = (gamepadButton != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gamepadButton));
                         }
                         if (!pressed) {
-                            int kbKey = (btn < 16) ? LibretroCore.keyboardPlayer1[btn] : KEY_NULL;
+                            int kbKey = (btn < 16) ? Libretro.keyboardPlayer1[btn] : KEY_NULL;
                             if (kbKey != KEY_NULL) {
                                 pressed = IsKeyDown(kbKey);
                             } else {
@@ -1966,7 +1965,7 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
 
             // Port 0: gamepad if available, otherwise keyboard.
             if (port == 0) {
-                if (id < 16 && LibretroCore.virtualJoypadState[id]) {
+                if (id < 16 && Libretro.core.virtualJoypadState[id]) {
                     return 1;
                 }
                 if (IsGamepadAvailable(0)) {
@@ -1975,7 +1974,7 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                         return 1;
                     }
                 }
-                int kbKey = (id < 16) ? LibretroCore.keyboardPlayer1[id] : KEY_NULL;
+                int kbKey = (id < 16) ? Libretro.keyboardPlayer1[id] : KEY_NULL;
                 if (kbKey != KEY_NULL) {
                     return (int)IsKeyDown(kbKey);
                 }
@@ -2004,9 +2003,9 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                 case RETRO_DEVICE_ID_MOUSE_MIDDLE:
                     return IsMouseButtonDown(MOUSE_MIDDLE_BUTTON);
                 case RETRO_DEVICE_ID_MOUSE_X:
-                    return LibretroCore.inputMousePosition.x - LibretroCore.inputLastMousePosition.x;
+                    return Libretro.core.inputMousePosition.x - Libretro.core.inputLastMousePosition.x;
                 case RETRO_DEVICE_ID_MOUSE_Y:
-                    return LibretroCore.inputMousePosition.y - LibretroCore.inputLastMousePosition.y;
+                    return Libretro.core.inputMousePosition.y - Libretro.core.inputLastMousePosition.y;
                 case RETRO_DEVICE_ID_MOUSE_WHEELUP:
                     return GetMouseWheelMove() > 0;
                 case RETRO_DEVICE_ID_MOUSE_WHEELDOWN:
@@ -2056,9 +2055,9 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                 case RETRO_DEVICE_ID_LIGHTGUN_DPAD_RIGHT:
                     return IsKeyDown(KEY_RIGHT);
                 case RETRO_DEVICE_ID_LIGHTGUN_X:
-                    return LibretroCore.inputMousePosition.x - LibretroCore.inputLastMousePosition.x;
+                    return Libretro.core.inputMousePosition.x - Libretro.core.inputLastMousePosition.x;
                 case RETRO_DEVICE_ID_LIGHTGUN_Y:
-                    return LibretroCore.inputMousePosition.y - LibretroCore.inputLastMousePosition.y;
+                    return Libretro.core.inputMousePosition.y - Libretro.core.inputLastMousePosition.y;
             }
             return 0;
         }
@@ -2112,61 +2111,61 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
 static void LibretroAudioStreamCallback(void *audioData, unsigned int frameCount) {
     float *output = (float *)audioData;
 
-    if (!LibretroCore.audioRingBuffer || LibretroCore.audioRingAvailable == 0) {
+    if (!Libretro.core.audioRingBuffer || Libretro.core.audioRingAvailable == 0) {
         memset(output, 0, frameCount * 2 * sizeof(float));
         return;
     }
 
     size_t frames_to_read = frameCount;
-    if (frames_to_read > LibretroCore.audioRingAvailable) {
-        size_t silence_frames = frames_to_read - LibretroCore.audioRingAvailable;
-        memset(output + LibretroCore.audioRingAvailable * 2, 0, silence_frames * 2 * sizeof(float));
-        frames_to_read = LibretroCore.audioRingAvailable;
+    if (frames_to_read > Libretro.core.audioRingAvailable) {
+        size_t silence_frames = frames_to_read - Libretro.core.audioRingAvailable;
+        memset(output + Libretro.core.audioRingAvailable * 2, 0, silence_frames * 2 * sizeof(float));
+        frames_to_read = Libretro.core.audioRingAvailable;
     }
 
-    size_t read_pos = (LibretroCore.audioRingWritePos + LibretroCore.audioRingBufferSize - LibretroCore.audioRingAvailable) % LibretroCore.audioRingBufferSize;
-    size_t first_chunk = LibretroCore.audioRingBufferSize - read_pos;
+    size_t read_pos = (Libretro.core.audioRingWritePos + Libretro.core.audioRingBufferSize - Libretro.core.audioRingAvailable) % Libretro.core.audioRingBufferSize;
+    size_t first_chunk = Libretro.core.audioRingBufferSize - read_pos;
     if (first_chunk > frames_to_read) first_chunk = frames_to_read;
     size_t second_chunk = frames_to_read - first_chunk;
-    memcpy(output, LibretroCore.audioRingBuffer + read_pos * 2, first_chunk * 2 * sizeof(float));
+    memcpy(output, Libretro.core.audioRingBuffer + read_pos * 2, first_chunk * 2 * sizeof(float));
     if (second_chunk > 0) {
-        memcpy(output + first_chunk * 2, LibretroCore.audioRingBuffer, second_chunk * 2 * sizeof(float));
+        memcpy(output + first_chunk * 2, Libretro.core.audioRingBuffer, second_chunk * 2 * sizeof(float));
     }
 
-    LibretroCore.audioRingAvailable -= frames_to_read;
+    Libretro.core.audioRingAvailable -= frames_to_read;
 }
 
 /**
  * Write a batch of int16_t stereo frames into the ring buffer.
  */
 static size_t UpdateLibretroAudioSampleBatch(const int16_t *data, size_t frames) {
-    if (!data || frames == 0 || !LibretroCore.audioRingBuffer) return 0;
+    if (!data || frames == 0 || !Libretro.core.audioRingBuffer) return 0;
 
-    size_t available_space = LibretroCore.audioRingBufferSize - LibretroCore.audioRingAvailable;
+    size_t available_space = Libretro.core.audioRingBufferSize - Libretro.core.audioRingAvailable;
     size_t frames_to_write = (frames < available_space) ? frames : available_space;
 
     if (frames_to_write == 0) {
-        if (LibretroCore.audioDropWarnCount++ < 3) {
+        if (Libretro.core.audioDropWarnCount++ < 3) {
             TraceLog(LOG_WARNING, "LIBRETRO: Audio ring buffer full, dropping %zu frames", frames);
         }
         return 0;
     }
 
     static const float scale = 1.0f / 32768.0f;
-    size_t wfirst = LibretroCore.audioRingBufferSize - LibretroCore.audioRingWritePos;
+    size_t wfirst = Libretro.core.audioRingBufferSize - Libretro.core.audioRingWritePos;
     if (wfirst > frames_to_write) wfirst = frames_to_write;
     size_t wsecond = frames_to_write - wfirst;
     for (size_t i = 0; i < wfirst; i++) {
-        LibretroCore.audioRingBuffer[(LibretroCore.audioRingWritePos + i) * 2]     = (float)data[i * 2]     * scale;
-        LibretroCore.audioRingBuffer[(LibretroCore.audioRingWritePos + i) * 2 + 1] = (float)data[i * 2 + 1] * scale;
+        Libretro.core.audioRingBuffer[(Libretro.core.audioRingWritePos + i) * 2]     = (float)data[i * 2]     * scale;
+        Libretro.core.audioRingBuffer[(Libretro.core.audioRingWritePos + i) * 2 + 1] = (float)data[i * 2 + 1] * scale;
     }
     for (size_t i = 0; i < wsecond; i++) {
-        LibretroCore.audioRingBuffer[i * 2]     = (float)data[(wfirst + i) * 2]     * scale;
-        LibretroCore.audioRingBuffer[i * 2 + 1] = (float)data[(wfirst + i) * 2 + 1] * scale;
+        Libretro.core.audioRingBuffer[i * 2]     = (float)data[(wfirst + i) * 2]     * scale;
+        Libretro.core.audioRingBuffer[i * 2 + 1] = (float)data[(wfirst + i) * 2 + 1] * scale;
     }
 
-    LibretroCore.audioRingWritePos = (LibretroCore.audioRingWritePos + frames_to_write) % LibretroCore.audioRingBufferSize;
-    LibretroCore.audioRingAvailable += frames_to_write;
+    Libretro.core.audioRingWritePos = (Libretro.core.audioRingWritePos + frames_to_write) % Libretro.core.audioRingBufferSize;
+    Libretro.core.audioRingAvailable += frames_to_write;
 
     return frames_to_write;
 }
@@ -2175,29 +2174,29 @@ static size_t UpdateLibretroAudioSampleBatch(const int16_t *data, size_t frames)
  * Accumulate single-sample callbacks into a buffer before flushing to the ring buffer.
  */
 static void UpdateLibretroAudioSample(int16_t left, int16_t right) {
-    if (LibretroCore.singleSampleCount >= LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE) {
-        UpdateLibretroAudioSampleBatch(LibretroCore.singleSampleBuffer, LibretroCore.singleSampleCount);
-        LibretroCore.singleSampleCount = 0;
+    if (Libretro.core.singleSampleCount >= LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE) {
+        UpdateLibretroAudioSampleBatch(Libretro.core.singleSampleBuffer, Libretro.core.singleSampleCount);
+        Libretro.core.singleSampleCount = 0;
     }
 
-    LibretroCore.singleSampleBuffer[LibretroCore.singleSampleCount * 2]     = left;
-    LibretroCore.singleSampleBuffer[LibretroCore.singleSampleCount * 2 + 1] = right;
-    LibretroCore.singleSampleCount++;
+    Libretro.core.singleSampleBuffer[Libretro.core.singleSampleCount * 2]     = left;
+    Libretro.core.singleSampleBuffer[Libretro.core.singleSampleCount * 2 + 1] = right;
+    Libretro.core.singleSampleCount++;
 }
 
 static void CloseLibretroAudio(void) {
     // Unload the audiostream first.
-    if (IsAudioStreamValid(LibretroCore.audioStream)) {
-        StopAudioStream(LibretroCore.audioStream);
-        UnloadAudioStream(LibretroCore.audioStream);
-        memset(&LibretroCore.audioStream, 0, sizeof(LibretroCore.audioStream));
+    if (IsAudioStreamValid(Libretro.core.audioStream)) {
+        StopAudioStream(Libretro.core.audioStream);
+        UnloadAudioStream(Libretro.core.audioStream);
+        memset(&Libretro.core.audioStream, 0, sizeof(Libretro.core.audioStream));
     }
-    if (LibretroCore.audioRingBuffer != NULL) {
-        MemFree(LibretroCore.audioRingBuffer);
-        LibretroCore.audioRingBuffer = NULL;
+    if (Libretro.core.audioRingBuffer != NULL) {
+        MemFree(Libretro.core.audioRingBuffer);
+        Libretro.core.audioRingBuffer = NULL;
     }
-    LibretroCore.audioRingAvailable = 0;
-    LibretroCore.audioRingWritePos = 0;
+    Libretro.core.audioRingAvailable = 0;
+    Libretro.core.audioRingWritePos = 0;
 }
 
 static void InitLibretroAudio(void) {
@@ -2207,7 +2206,7 @@ static void InitLibretroAudio(void) {
     // (mgba GB/GBC) defer their internal reset until the first retro_run,
     // so retro_get_system_av_info returns 0 here. UpdateLibretro will
     // re-call InitLibretroAudio after the first run once the rate appears.
-    if (LibretroCore.sampleRate <= 0.0) {
+    if (Libretro.core.sampleRate <= 0.0) {
         TraceLog(LOG_INFO, "LIBRETRO: Deferring audio init (sample rate not yet known)");
         return;
     }
@@ -2216,33 +2215,33 @@ static void InitLibretroAudio(void) {
     // LIBRETRO_AUDIO_RING_BUFFER_SIZE frames; grown to satisfy the core's
     // RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY request if any.
     size_t frames = LIBRETRO_AUDIO_RING_BUFFER_SIZE;
-    if (LibretroCore.minimumAudioLatencyMs > 0) {
-        size_t requested = (size_t)((LibretroCore.minimumAudioLatencyMs / 1000.0) * LibretroCore.sampleRate);
+    if (Libretro.core.minimumAudioLatencyMs > 0) {
+        size_t requested = (size_t)((Libretro.core.minimumAudioLatencyMs / 1000.0) * Libretro.core.sampleRate);
         if (requested > frames) frames = requested;
     }
-    LibretroCore.audioRingBufferSize = frames;
-    LibretroCore.audioRingBuffer = (float *)MemAlloc(LibretroCore.audioRingBufferSize * 2 * sizeof(float));
-    LibretroCore.audioRingWritePos = 0;
-    LibretroCore.audioRingAvailable = 0;
+    Libretro.core.audioRingBufferSize = frames;
+    Libretro.core.audioRingBuffer = (float *)MemAlloc(Libretro.core.audioRingBufferSize * 2 * sizeof(float));
+    Libretro.core.audioRingWritePos = 0;
+    Libretro.core.audioRingAvailable = 0;
 
     // Create the audio stream: 32-bit float, stereo, pulled via callback.
     int sampleSize = 32;
     int channels = 2;
-    LibretroCore.audioStream = LoadAudioStream((unsigned int)LibretroCore.sampleRate, sampleSize, channels);
-    SetAudioStreamCallback(LibretroCore.audioStream, LibretroAudioStreamCallback);
-    SetAudioStreamVolume(LibretroCore.audioStream, LibretroCore.volume);
-    LibretroCore.drcAdjustment = 1.0f;
-    LibretroCore.drcEnabled = true;
-    LibretroCore.audioDropWarnCount = 0;
-    PlayAudioStream(LibretroCore.audioStream);
+    Libretro.core.audioStream = LoadAudioStream((unsigned int)Libretro.core.sampleRate, sampleSize, channels);
+    SetAudioStreamCallback(Libretro.core.audioStream, LibretroAudioStreamCallback);
+    SetAudioStreamVolume(Libretro.core.audioStream, Libretro.volume);
+    Libretro.core.drcAdjustment = 1.0f;
+    Libretro.core.drcEnabled = true;
+    Libretro.core.audioDropWarnCount = 0;
+    PlayAudioStream(Libretro.core.audioStream);
 
     // Let the core know that the audio device has been initialized.
-    if (LibretroCore.audio_callback.set_state) {
-        LibretroCore.audio_callback.set_state(true);
+    if (Libretro.core.audio_callback.set_state) {
+        Libretro.core.audio_callback.set_state(true);
     }
 
     TraceLog(LOG_INFO, "LIBRETRO: Audio stream initialized (%i Hz, %i-bit float, ring buffer %i frames)",
-        (int)LibretroCore.sampleRate, sampleSize, (int)LibretroCore.audioRingBufferSize);
+        (int)Libretro.core.sampleRate, sampleSize, (int)Libretro.core.audioRingBufferSize);
 }
 
 static bool InitLibretroAudioVideo(void) {
@@ -2250,49 +2249,49 @@ static bool InitLibretroAudioVideo(void) {
     InitLibretroVideo();
     InitLibretroAudio();
 
-    SetTargetFPS((int)(LibretroCore.fps * LibretroCore.speed));
+    SetTargetFPS((int)(Libretro.core.fps * Libretro.speed));
 
     return true;
 }
 
-// Populate LibretroCore.gameInfoExt from LibretroCore.contentPath for
+// Populate Libretro.core.gameInfoExt from Libretro.core.contentPath for
 // RETRO_ENVIRONMENT_GET_GAME_INFO_EXT. Caller must set contentPath first.
 // `data`/`size` are only valid while retro_load_game() is executing.
 static void SetLibretroGameInfoExt(const void *data, size_t size) {
-    memset(&LibretroCore.gameInfoExt, 0, sizeof(LibretroCore.gameInfoExt));
-    LibretroCore.contentDir[0]  = '\0';
-    LibretroCore.contentName[0] = '\0';
-    LibretroCore.contentExt[0]  = '\0';
-    LibretroCore.gameInfoExtValid = false;
+    memset(&Libretro.core.gameInfoExt, 0, sizeof(Libretro.core.gameInfoExt));
+    Libretro.core.contentDir[0]  = '\0';
+    Libretro.core.contentName[0] = '\0';
+    Libretro.core.contentExt[0]  = '\0';
+    Libretro.core.gameInfoExtValid = false;
 
-    if (LibretroCore.contentPath[0] == '\0') return;
+    if (Libretro.core.contentPath[0] == '\0') return;
 
-    TextCopy(LibretroCore.contentDir,  GetDirectoryPath(LibretroCore.contentPath));
-    TextCopy(LibretroCore.contentName, GetFileNameWithoutExt(LibretroCore.contentPath));
+    TextCopy(Libretro.core.contentDir,  GetDirectoryPath(Libretro.core.contentPath));
+    TextCopy(Libretro.core.contentName, GetFileNameWithoutExt(Libretro.core.contentPath));
 
     // Extension without leading dot, lower-cased.
-    const char *ext = GetFileExtension(LibretroCore.contentPath);
+    const char *ext = GetFileExtension(Libretro.core.contentPath);
     if (ext != NULL && ext[0] == '.') ext++;
     if (ext != NULL) {
         size_t i = 0;
-        for (; ext[i] != '\0' && i + 1 < sizeof(LibretroCore.contentExt); i++) {
+        for (; ext[i] != '\0' && i + 1 < sizeof(Libretro.core.contentExt); i++) {
             char c = ext[i];
             if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
-            LibretroCore.contentExt[i] = c;
+            Libretro.core.contentExt[i] = c;
         }
-        LibretroCore.contentExt[i] = '\0';
+        Libretro.core.contentExt[i] = '\0';
     }
 
-    LibretroCore.gameInfoExt.full_path       = LibretroCore.contentPath;
-    LibretroCore.gameInfoExt.dir             = LibretroCore.contentDir;
-    LibretroCore.gameInfoExt.name            = LibretroCore.contentName;
-    LibretroCore.gameInfoExt.ext             = LibretroCore.contentExt;
-    LibretroCore.gameInfoExt.meta            = "";
-    LibretroCore.gameInfoExt.data            = data;
-    LibretroCore.gameInfoExt.size            = size;
-    LibretroCore.gameInfoExt.file_in_archive = false;
-    LibretroCore.gameInfoExt.persistent_data = false;
-    LibretroCore.gameInfoExtValid            = true;
+    Libretro.core.gameInfoExt.full_path       = Libretro.core.contentPath;
+    Libretro.core.gameInfoExt.dir             = Libretro.core.contentDir;
+    Libretro.core.gameInfoExt.name            = Libretro.core.contentName;
+    Libretro.core.gameInfoExt.ext             = Libretro.core.contentExt;
+    Libretro.core.gameInfoExt.meta            = "";
+    Libretro.core.gameInfoExt.data            = data;
+    Libretro.core.gameInfoExt.size            = size;
+    Libretro.core.gameInfoExt.file_in_archive = false;
+    Libretro.core.gameInfoExt.persistent_data = false;
+    Libretro.core.gameInfoExtValid            = true;
 }
 
 static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSize) {
@@ -2306,7 +2305,7 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
     }
 
     // Check if it needs the full path
-    if (LibretroCore.needFullpath) {
+    if (Libretro.core.needFullpath) {
         TraceLog(LOG_ERROR, "LIBRETRO: The core requires the full path, can't load from memory");
         // TODO: Allow saving to a temporary location and then use LoadLibretroGame()?
         return false;
@@ -2319,14 +2318,14 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
     info.size = (size_t)dataSize;
     info.meta = "";
     SetLibretroGameInfoExt(fileData, (size_t)dataSize);
-    if (!LibretroCore.retro_load_game(&info)) {
+    if (!Libretro.core.retro_load_game(&info)) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with retro_load_game()");
-        LibretroCore.loaded = false;
+        Libretro.core.loaded = false;
         return false;
     }
 
-    LibretroCore.loaded = InitLibretroAudioVideo();
-    if (!LibretroCore.loaded) {
+    Libretro.core.loaded = InitLibretroAudioVideo();
+    if (!Libretro.core.loaded) {
         return false;
     }
     TraceLog(LOG_INFO, "LIBRETRO: Loaded content from memory");
@@ -2368,32 +2367,32 @@ static void GetLibretroFileExtensionPattern(const char *exts, char *pattern, siz
  */
 static bool GetLibretroNeedFullpath(const char *path, bool *persistent) {
     if (persistent) *persistent = false;
-    if (path == NULL) return LibretroCore.needFullpath;
+    if (path == NULL) return Libretro.core.needFullpath;
 
-    for (unsigned i = 0; i < LibretroCore.contentInfoOverrideCount; i++) {
+    for (unsigned i = 0; i < Libretro.core.contentInfoOverrideCount; i++) {
         char pattern[LIBRETRO_CONTENT_INFO_OVERRIDE_EXTS_LEN + 16];
-        GetLibretroFileExtensionPattern(LibretroCore.contentInfoOverrideExts[i], pattern, sizeof(pattern));
+        GetLibretroFileExtensionPattern(Libretro.core.contentInfoOverrideExts[i], pattern, sizeof(pattern));
         if (IsFileExtension(path, pattern)) {
-            if (persistent) *persistent = LibretroCore.contentInfoOverridePersistent[i];
-            return LibretroCore.contentInfoOverrideNeedFullpath[i];
+            if (persistent) *persistent = Libretro.core.contentInfoOverridePersistent[i];
+            return Libretro.core.contentInfoOverrideNeedFullpath[i];
         }
     }
-    return LibretroCore.needFullpath;
+    return Libretro.core.needFullpath;
 }
 
 /**
  * Load game data into the core, with full control over the path stored on
- * LibretroCore.contentPath and over persistent_data ownership.
+ * Libretro.core.contentPath and over persistent_data ownership.
  *
  * When @p persistent is true (typically from a CONTENT_INFO_OVERRIDE
  * declaring persistent_data), ownership of @p fileData transfers to
- * LibretroCore.persistentGameData and the buffer is released by
+ * Libretro.core.persistentGameData and the buffer is released by
  * UnloadLibretroGame(). When false, the caller retains ownership and may
  * free @p fileData immediately after this returns.
  *
  * @param fileData    ROM data. Must not be NULL.
  * @param dataSize    Size of @p fileData in bytes.
- * @param contentPath Optional path stored on LibretroCore.contentPath and
+ * @param contentPath Optional path stored on Libretro.core.contentPath and
  *                    surfaced via RETRO_ENVIRONMENT_GET_GAME_INFO_EXT. May
  *                    be NULL.
  * @param persistent  See RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE; when
@@ -2410,9 +2409,9 @@ static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize, 
     }
 
     if (contentPath != NULL && contentPath[0] != '\0') {
-        TextCopy(LibretroCore.contentPath, contentPath);
+        TextCopy(Libretro.core.contentPath, contentPath);
     } else {
-        LibretroCore.contentPath[0] = '\0';
+        Libretro.core.contentPath[0] = '\0';
     }
 
     struct retro_game_info info;
@@ -2421,22 +2420,22 @@ static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize, 
     info.size = (size_t)dataSize;
     info.meta = "";
     SetLibretroGameInfoExt(fileData, (size_t)dataSize);
-    if (!LibretroCore.retro_load_game(&info)) {
+    if (!Libretro.core.retro_load_game(&info)) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with retro_load_game()");
-        LibretroCore.loaded = false;
+        Libretro.core.loaded = false;
         return false;
     }
 
     if (persistent) {
-        if (LibretroCore.persistentGameData != NULL && LibretroCore.persistentGameData != fileData) {
-            UnloadFileData(LibretroCore.persistentGameData);
+        if (Libretro.core.persistentGameData != NULL && Libretro.core.persistentGameData != fileData) {
+            UnloadFileData(Libretro.core.persistentGameData);
         }
-        LibretroCore.persistentGameData = fileData;
-        LibretroCore.persistentGameDataSize = dataSize;
+        Libretro.core.persistentGameData = fileData;
+        Libretro.core.persistentGameDataSize = dataSize;
     }
 
-    LibretroCore.loaded = InitLibretroAudioVideo();
-    if (!LibretroCore.loaded) return false;
+    Libretro.core.loaded = InitLibretroAudioVideo();
+    if (!Libretro.core.loaded) return false;
     TraceLog(LOG_INFO, "LIBRETRO: Loaded content from memory");
     return true;
 }
@@ -2446,7 +2445,7 @@ static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize, 
  * @return Extension list string (e.g. "nes|fds"), or empty string if not reported.
  */
 static const char* GetLibretroValidExtensions(void) {
-    return LibretroCore.validExtensions;
+    return Libretro.core.validExtensions;
 }
 
 /**
@@ -2454,7 +2453,7 @@ static const char* GetLibretroValidExtensions(void) {
  * @return true if the core wants archives passed as-is.
  */
 static bool IsLibretroBlockExtract(void) {
-    return LibretroCore.blockExtract;
+    return Libretro.core.blockExtract;
 }
 
 /**
@@ -2480,11 +2479,11 @@ static bool LoadLibretroGame(const char* gameFile) {
         info.size = 0;
         info.path = NULL;
         info.meta = "";
-        LibretroCore.contentPath[0] = '\0';
+        Libretro.core.contentPath[0] = '\0';
         SetLibretroGameInfoExt(NULL, 0);
-        if (LibretroCore.retro_load_game(&info)) {
+        if (Libretro.core.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded without content");
-            LibretroCore.loaded = true;
+            Libretro.core.loaded = true;
             return InitLibretroAudioVideo();
         }
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load core without content");
@@ -2493,7 +2492,7 @@ static bool LoadLibretroGame(const char* gameFile) {
 
     if (!FileExists(gameFile)) {
         TraceLog(LOG_ERROR, "LIBRETRO: Given content does not exist: %s", gameFile);
-        LibretroCore.loaded = false;
+        Libretro.core.loaded = false;
         return false;
     }
 
@@ -2505,17 +2504,17 @@ static bool LoadLibretroGame(const char* gameFile) {
         info.size = 0;
         info.path = gameFile;
         info.meta = "";
-        TextCopy(LibretroCore.contentPath, gameFile);
+        TextCopy(Libretro.core.contentPath, gameFile);
         SetLibretroGameInfoExt(NULL, 0);
-        if (LibretroCore.retro_load_game(&info)) {
+        if (Libretro.core.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded content with full path: %s", gameFile);
-            LibretroCore.loaded = true;
+            Libretro.core.loaded = true;
             return InitLibretroAudioVideo();
         }
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load full path: %s", gameFile);
-        LibretroCore.loaded = false;
-        LibretroCore.contentPath[0] = '\0';
-        LibretroCore.gameInfoExtValid = false;
+        Libretro.core.loaded = false;
+        Libretro.core.contentPath[0] = '\0';
+        Libretro.core.gameInfoExtValid = false;
         return false;
     }
 
@@ -2523,7 +2522,7 @@ static bool LoadLibretroGame(const char* gameFile) {
     unsigned char* gameData = LoadFileData(gameFile, &size);
     if (gameData == NULL || size == 0) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with LoadFileData()");
-        LibretroCore.loaded = false;
+        Libretro.core.loaded = false;
         UnloadFileData(gameData);
         return false;
     }
@@ -2539,7 +2538,7 @@ static bool LoadLibretroGame(const char* gameFile) {
  * Get the display name of the loaded core.
  * @return Library name string, or an empty string if no core is loaded. */
 static const char* GetLibretroName(void) {
-    return LibretroCore.libraryName;
+    return Libretro.core.libraryName;
 }
 
 /**
@@ -2547,10 +2546,10 @@ static const char* GetLibretroName(void) {
  * @return Content or core name string.
  */
 static const char* GetLibretroContentName(void) {
-    if (LibretroCore.contentPath[0] != '\0') {
-        return GetFileNameWithoutExt(LibretroCore.contentPath);
+    if (Libretro.core.contentPath[0] != '\0') {
+        return GetFileNameWithoutExt(Libretro.core.contentPath);
     }
-    return LibretroCore.libraryName;
+    return Libretro.core.libraryName;
 }
 
 /**
@@ -2558,7 +2557,7 @@ static const char* GetLibretroContentName(void) {
  * @return Version string reported by the core.
  */
 static const char* GetLibretroVersion(void) {
-    return LibretroCore.libraryVersion;
+    return Libretro.core.libraryVersion;
 }
 
 /**
@@ -2566,7 +2565,7 @@ static const char* GetLibretroVersion(void) {
  * @return true if content must be provided; false if the core can run standalone.
  */
 static bool IsLibretroGameRequired(void) {
-    return !LibretroCore.supportNoGame;
+    return !Libretro.core.supportNoGame;
 }
 
 /**
@@ -2594,29 +2593,29 @@ static bool InitLibretroEx(const char* core, bool peek) {
     // fields are intentionally not reset in ResetLibretroCoreState so that
     // the peek path can populate them and CloseLibretro doesn't wipe them
     // before ScanLibretroCoreDirectory reads them.
-    LibretroCore.corePath[0]        = '\0';
-    LibretroCore.libraryName[0]     = '\0';
-    LibretroCore.libraryVersion[0]  = '\0';
-    LibretroCore.validExtensions[0] = '\0';
-    LibretroCore.needFullpath       = false;
-    LibretroCore.blockExtract       = false;
-    LibretroCore.supportNoGame      = false;
-    LibretroCore.apiVersion         = 0;
-    LibretroCore.performanceLevel   = 0;
-    LibretroCore.pixelFormat        = RETRO_PIXEL_FORMAT_0RGB1555;
+    Libretro.core.corePath[0]        = '\0';
+    Libretro.core.libraryName[0]     = '\0';
+    Libretro.core.libraryVersion[0]  = '\0';
+    Libretro.core.validExtensions[0] = '\0';
+    Libretro.core.needFullpath       = false;
+    Libretro.core.blockExtract       = false;
+    Libretro.core.supportNoGame      = false;
+    Libretro.core.apiVersion         = 0;
+    Libretro.core.performanceLevel   = 0;
+    Libretro.core.pixelFormat        = RETRO_PIXEL_FORMAT_0RGB1555;
 
     // Open the dynamic library.
-    LibretroCore.handle = dylib_load(core);
-    if (!LibretroCore.handle) {
+    Libretro.core.handle = dylib_load(core);
+    if (!Libretro.core.handle) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load provided library");
         return false;
     }
 
     // Find the libretro API version.
     LoadLibretroMethod(retro_api_version);
-    LibretroCore.apiVersion = LibretroCore.retro_api_version();
-    TraceLog(LOG_INFO, "LIBRETRO: API version: %i", LibretroCore.apiVersion);
-    if (LibretroCore.apiVersion != 1) {
+    Libretro.core.apiVersion = Libretro.core.retro_api_version();
+    TraceLog(LOG_INFO, "LIBRETRO: API version: %i", Libretro.core.apiVersion);
+    if (Libretro.core.apiVersion != 1) {
         CloseLibretro();
         TraceLog(LOG_ERROR, "LIBRETRO: Incompatible API version");
         return false;
@@ -2625,17 +2624,17 @@ static bool InitLibretroEx(const char* core, bool peek) {
     // Retrieve the libretro core system information.
     LoadLibretroMethod(retro_get_system_info);
     struct retro_system_info systemInfo;
-    LibretroCore.retro_get_system_info(&systemInfo);
-    TextCopy(LibretroCore.libraryName, systemInfo.library_name);
-    TextCopy(LibretroCore.libraryVersion, systemInfo.library_version);
-    TextCopy(LibretroCore.validExtensions, systemInfo.valid_extensions);
-    LibretroCore.needFullpath = systemInfo.need_fullpath;
-    LibretroCore.blockExtract = systemInfo.block_extract;
+    Libretro.core.retro_get_system_info(&systemInfo);
+    TextCopy(Libretro.core.libraryName, systemInfo.library_name);
+    TextCopy(Libretro.core.libraryVersion, systemInfo.library_version);
+    TextCopy(Libretro.core.validExtensions, systemInfo.valid_extensions);
+    Libretro.core.needFullpath = systemInfo.need_fullpath;
+    Libretro.core.blockExtract = systemInfo.block_extract;
     TraceLog(LOG_INFO, "LIBRETRO: Core loaded successfully");
-    TraceLog(LOG_INFO, "    > Name:         %s", LibretroCore.libraryName);
-    TraceLog(LOG_INFO, "    > Version:      %s", LibretroCore.libraryVersion);
-    if (TextLength(LibretroCore.validExtensions) > 0) {
-        TraceLog(LOG_INFO, "    > Extensions:   %s", LibretroCore.validExtensions);
+    TraceLog(LOG_INFO, "    > Name:         %s", Libretro.core.libraryName);
+    TraceLog(LOG_INFO, "    > Version:      %s", Libretro.core.libraryVersion);
+    if (TextLength(Libretro.core.validExtensions) > 0) {
+        TraceLog(LOG_INFO, "    > Extensions:   %s", Libretro.core.validExtensions);
     }
 
     if (peek) {
@@ -2669,21 +2668,21 @@ static bool InitLibretroEx(const char* core, bool peek) {
     LoadLibretroMethod(retro_get_memory_size);
 
     // Initialize the core.
-    TextCopy(LibretroCore.corePath, core);
-    LibretroCore.shutdown = false;
-    LibretroCore.volume = 1.0f;
-    LibretroCore.speed = 1.0f;
+    TextCopy(Libretro.core.corePath, core);
+    Libretro.core.shutdown = false;
+    Libretro.volume = 1.0f;
+    Libretro.speed = 1.0f;
 
     // Set up the callbacks.
-    LibretroCore.retro_set_video_refresh(LibretroVideoRefresh);
-    LibretroCore.retro_set_input_poll(LibretroInputPoll);
-    LibretroCore.retro_set_input_state(LibretroInputState);
-    LibretroCore.retro_set_audio_sample(UpdateLibretroAudioSample);
-    LibretroCore.retro_set_audio_sample_batch(UpdateLibretroAudioSampleBatch);
-    LibretroCore.retro_set_environment(CallLibretroEnvironment);
+    Libretro.core.retro_set_video_refresh(LibretroVideoRefresh);
+    Libretro.core.retro_set_input_poll(LibretroInputPoll);
+    Libretro.core.retro_set_input_state(LibretroInputState);
+    Libretro.core.retro_set_audio_sample(UpdateLibretroAudioSample);
+    Libretro.core.retro_set_audio_sample_batch(UpdateLibretroAudioSampleBatch);
+    Libretro.core.retro_set_environment(CallLibretroEnvironment);
 
     // Initialize the core.
-    LibretroCore.retro_init();
+    Libretro.core.retro_init();
     return true;
 }
 
@@ -2704,10 +2703,10 @@ static bool InitLibretro(const char* core) {
  * @param tint Color tint applied to the framebuffer texture.
  */
 static void DrawLibretroTexture(int posX, int posY, Color tint) {
-    if (LibretroCore.loaded == false) {
+    if (Libretro.core.loaded == false) {
         return;
     }
-    DrawTexture(LibretroCore.texture, posX, posY, tint);
+    DrawTexture(Libretro.core.texture, posX, posY, tint);
 }
 
 /**
@@ -2716,10 +2715,10 @@ static void DrawLibretroTexture(int posX, int posY, Color tint) {
  * @param tint Color tint applied to the framebuffer texture.
  */
 static void DrawLibretroV(Vector2 position, Color tint) {
-    if (LibretroCore.loaded == false) {
+    if (Libretro.core.loaded == false) {
         return;
     }
-    DrawTextureV(LibretroCore.texture, position, tint);
+    DrawTextureV(Libretro.core.texture, position, tint);
 }
 
 /**
@@ -2730,10 +2729,10 @@ static void DrawLibretroV(Vector2 position, Color tint) {
  * @param tint Color tint applied to the framebuffer texture.
  */
 static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint) {
-    if (LibretroCore.loaded == false) {
+    if (Libretro.core.loaded == false) {
         return;
     }
-    DrawTextureEx(LibretroCore.texture, position, rotation, scale, tint);
+    DrawTextureEx(Libretro.core.texture, position, rotation, scale, tint);
 }
 
 /**
@@ -2742,12 +2741,12 @@ static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color 
  * @param tint Color tint applied to the framebuffer texture.
  */
 static void DrawLibretroPro(Rectangle destRec, Color tint) {
-    if (LibretroCore.loaded == false) {
+    if (Libretro.core.loaded == false) {
         return;
     }
-    Rectangle source = {0, 0, LibretroCore.width, LibretroCore.height};
+    Rectangle source = {0, 0, Libretro.core.width, Libretro.core.height};
     Vector2 origin = {0, 0};
-    DrawTexturePro(LibretroCore.texture, source, destRec, origin, 0, tint);
+    DrawTexturePro(Libretro.core.texture, source, destRec, origin, 0, tint);
 }
 
 /**
@@ -2755,17 +2754,17 @@ static void DrawLibretroPro(Rectangle destRec, Color tint) {
  * @return true if a message was drawn; false if there was nothing to display.
  */
 static bool DrawLibretroMessage(void) {
-    if (GetTime() > LibretroCore.osdEndTime) {
+    if (GetTime() > Libretro.core.osdEndTime) {
         return false;
     }
 
     int fontSize = 20;
     int padding = 8;
-    int textWidth = MeasureText(LibretroCore.osdMessage, fontSize);
+    int textWidth = MeasureText(Libretro.core.osdMessage, fontSize);
     int x = (GetScreenWidth() - textWidth) / 2;
     int y = GetScreenHeight() - fontSize - padding * 2;
     DrawRectangle(x - padding, y - padding, textWidth + padding * 2, fontSize + padding * 2, (Color){0, 0, 0, 180});
-    DrawText(LibretroCore.osdMessage, x, y, fontSize, WHITE);
+    DrawText(Libretro.core.osdMessage, x, y, fontSize, WHITE);
     return true;
 }
 
@@ -2774,17 +2773,17 @@ static bool DrawLibretroMessage(void) {
  * @param tint Color tint applied to the framebuffer texture.
  */
 static void DrawLibretroTint(Color tint) {
-    if (LibretroCore.loaded == false) {
+    if (Libretro.core.loaded == false) {
         return;
     }
 
-    float rotationDeg = (float)LibretroCore.rotation * 90.0f;
-    bool swapDims = (LibretroCore.rotation == 1 || LibretroCore.rotation == 3);
+    float rotationDeg = (float)Libretro.core.rotation * 90.0f;
+    bool swapDims = (Libretro.core.rotation == 1 || Libretro.core.rotation == 3);
 
     // Find the aspect ratio.
-    float aspect = LibretroCore.aspectRatio;
+    float aspect = Libretro.core.aspectRatio;
     if (aspect <= 0) {
-        aspect = (float)LibretroCore.width / (float)LibretroCore.height;
+        aspect = (float)Libretro.core.width / (float)Libretro.core.height;
     }
 
     // When rotated 90/270, the visual bounding box has the inverted aspect ratio.
@@ -2806,10 +2805,10 @@ static void DrawLibretroTint(Color tint) {
     // Draw centered with rotation around the dest rect's center.
     float cx = GetScreenWidth() / 2.0f;
     float cy = GetScreenHeight() / 2.0f;
-    Rectangle source = {0, 0, LibretroCore.width, LibretroCore.height};
+    Rectangle source = {0, 0, Libretro.core.width, Libretro.core.height};
     Rectangle dest = {cx, cy, (float)destW, (float)destH};
     Vector2 origin = {destW / 2.0f, destH / 2.0f};
-    DrawTexturePro(LibretroCore.texture, source, dest, origin, rotationDeg, tint);
+    DrawTexturePro(Libretro.core.texture, source, dest, origin, rotationDeg, tint);
 }
 
 /**
@@ -2824,8 +2823,8 @@ static void DrawLibretro(void) {
  * @param msg      Message text to display.
  * @param duration How long to show the message, in seconds. */
 static void SetLibretroMessage(const char* msg, float duration) {
-    TextCopy(LibretroCore.osdMessage, msg);
-    LibretroCore.osdEndTime = GetTime() + (double)duration;
+    TextCopy(Libretro.core.osdMessage, msg);
+    Libretro.core.osdEndTime = GetTime() + (double)duration;
 }
 
 /**
@@ -2835,9 +2834,9 @@ static void SetLibretroMessage(const char* msg, float duration) {
 static void SetLibretroVolume(float volume) {
     if (volume < 0) volume = 0.0f;
     else if (volume > 1.0f) volume = 1.0f;
-    LibretroCore.volume = volume;
-    if (IsAudioStreamValid(LibretroCore.audioStream)) {
-        SetAudioStreamVolume(LibretroCore.audioStream, volume);
+    Libretro.volume = volume;
+    if (IsAudioStreamValid(Libretro.core.audioStream)) {
+        SetAudioStreamVolume(Libretro.core.audioStream, volume);
     }
 }
 
@@ -2845,7 +2844,7 @@ static void SetLibretroVolume(float volume) {
  * Get the current audio output volume.
  * @return Volume level in the range [0.0, 1.0]. */
 static float GetLibretroVolume(void) {
-    return LibretroCore.volume;
+    return Libretro.volume;
 }
 
 /**
@@ -2853,11 +2852,11 @@ static float GetLibretroVolume(void) {
  * @param speed Multiplier relative to normal speed (1.0 = normal, >1.0 = fast-forward, <1.0 = slow-motion). */
 static void SetLibretroSpeed(float speed) {
     if (speed <= 0.0f) speed = 0.1f;
-    LibretroCore.speed = speed;
+    Libretro.speed = speed;
     if (speed > 1.0f) {
         SetTargetFPS(0);
     } else {
-        SetTargetFPS((int)(LibretroCore.fps * speed));
+        SetTargetFPS((int)(Libretro.core.fps * speed));
     }
 }
 
@@ -2865,7 +2864,7 @@ static void SetLibretroSpeed(float speed) {
  * Get the current emulation playback speed multiplier.
  * @return Current speed multiplier. */
 static float GetLibretroSpeed(void) {
-    return LibretroCore.speed;
+    return Libretro.speed;
 }
 
 /**
@@ -2882,10 +2881,10 @@ static float GetLibretroSpeed(void) {
  * @param enabled true to enable DRC, false to disable and restore unity pitch.
  */
 static void SetLibretroDynamicRateControl(bool enabled) {
-    LibretroCore.drcEnabled = enabled;
-    if (!enabled && IsAudioStreamValid(LibretroCore.audioStream)) {
-        LibretroCore.drcAdjustment = 1.0f;
-        SetAudioStreamPitch(LibretroCore.audioStream, 1.0f);
+    Libretro.core.drcEnabled = enabled;
+    if (!enabled && IsAudioStreamValid(Libretro.core.audioStream)) {
+        Libretro.core.drcAdjustment = 1.0f;
+        SetAudioStreamPitch(Libretro.core.audioStream, 1.0f);
     }
 }
 
@@ -2895,7 +2894,7 @@ static void SetLibretroDynamicRateControl(bool enabled) {
  * @return true if DRC is enabled, false otherwise.
  */
 static bool IsLibretroDynamicRateControlEnabled(void) {
-    return LibretroCore.drcEnabled;
+    return Libretro.core.drcEnabled;
 }
 
 /**
@@ -2903,7 +2902,7 @@ static bool IsLibretroDynamicRateControlEnabled(void) {
  * @return Rotation index.
  */
 static unsigned GetLibretroRotation(void) {
-    return LibretroCore.rotation;
+    return Libretro.core.rotation;
 }
 
 /**
@@ -2911,7 +2910,7 @@ static unsigned GetLibretroRotation(void) {
  * @return Width in pixels
  */
 static unsigned GetLibretroWidth(void) {
-    return LibretroCore.width;
+    return Libretro.core.width;
 }
 
 /**
@@ -2919,15 +2918,15 @@ static unsigned GetLibretroWidth(void) {
  * @return Height in pixels.
  */
 static unsigned GetLibretroHeight(void) {
-    return LibretroCore.height;
+    return Libretro.core.height;
 }
 
 static double GetLibretroFPS(void) {
-    return LibretroCore.fps > 0 ? (double)LibretroCore.fps : 60.0;
+    return Libretro.core.fps > 0 ? (double)Libretro.core.fps : 60.0;
 }
 
 static float GetLibretroAspectRatio(void) {
-    return LibretroCore.aspectRatio;
+    return Libretro.core.aspectRatio;
 }
 
 /**
@@ -2935,7 +2934,7 @@ static float GetLibretroAspectRatio(void) {
  * @return Texture2D containing the last rendered frame.
  */
 static Texture2D GetLibretroTexture(void) {
-    return LibretroCore.texture;
+    return Libretro.core.texture;
 }
 
 /**
@@ -2943,7 +2942,7 @@ static Texture2D GetLibretroTexture(void) {
  * @return true if a game/content is currently loaded.
  */
 static bool IsLibretroGameReady(void) {
-    return LibretroCore.loaded && LibretroCore.retro_run != NULL;
+    return Libretro.core.loaded && Libretro.core.retro_run != NULL;
 }
 
 /**
@@ -2952,8 +2951,8 @@ static bool IsLibretroGameReady(void) {
  * @return true if the core reset callback was called.
  */
 static bool ResetLibretro(void) {
-    if (IsLibretroReady() && LibretroCore.retro_reset) {
-        LibretroCore.retro_reset();
+    if (IsLibretroReady() && Libretro.core.retro_reset) {
+        Libretro.core.retro_reset();
         return true;
     }
     return false;
@@ -2966,12 +2965,12 @@ static bool ResetLibretro(void) {
  */
 static void* GetLibretroSRAMData(size_t* size) {
     if (!IsLibretroGameReady()) return NULL;
-    if (LibretroCore.retro_get_memory_data == NULL || LibretroCore.retro_get_memory_size == NULL) return NULL;
+    if (Libretro.core.retro_get_memory_data == NULL || Libretro.core.retro_get_memory_size == NULL) return NULL;
 
-    size_t sramSize = LibretroCore.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+    size_t sramSize = Libretro.core.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
     if (sramSize == 0) return NULL;
 
-    void* data = LibretroCore.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+    void* data = Libretro.core.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
     if (data == NULL) return NULL;
 
     if (size != NULL) *size = sramSize;
@@ -3000,21 +2999,21 @@ static bool SetLibretroSRAMData(const void* data, size_t size) {
  * Unload the currently loaded content without closing the core.
  */
 static void UnloadLibretroGame(void) {
-    if (LibretroCore.retro_unload_game != NULL) {
-        LibretroCore.retro_unload_game();
-        LibretroCore.retro_unload_game = NULL;
+    if (Libretro.core.retro_unload_game != NULL) {
+        Libretro.core.retro_unload_game();
+        Libretro.core.retro_unload_game = NULL;
     }
-    LibretroCore.retro_run = NULL;
-    LibretroCore.loaded = false;
-    LibretroCore.contentPath[0] = '\0';
-    LibretroCore.gameInfoExtValid = false;
-    memset(&LibretroCore.gameInfoExt, 0, sizeof(LibretroCore.gameInfoExt));
+    Libretro.core.retro_run = NULL;
+    Libretro.core.loaded = false;
+    Libretro.core.contentPath[0] = '\0';
+    Libretro.core.gameInfoExtValid = false;
+    memset(&Libretro.core.gameInfoExt, 0, sizeof(Libretro.core.gameInfoExt));
 
     // Release the persistent ROM buffer kept alive for persistent_data=true.
-    if (LibretroCore.persistentGameData != NULL) {
-        UnloadFileData(LibretroCore.persistentGameData);
-        LibretroCore.persistentGameData = NULL;
-        LibretroCore.persistentGameDataSize = 0;
+    if (Libretro.core.persistentGameData != NULL) {
+        UnloadFileData(Libretro.core.persistentGameData);
+        Libretro.core.persistentGameData = NULL;
+        Libretro.core.persistentGameDataSize = 0;
     }
 
     // Free memory map descriptors — these are game-specific and must not
@@ -3028,36 +3027,36 @@ static void UnloadLibretroGame(void) {
  */
 static void ResetLibretroCoreState(void) {
     // Core Variables
-    memset(LibretroCore.variableKeys,        0, sizeof(LibretroCore.variableKeys));
-    memset(LibretroCore.variableValues,      0, sizeof(LibretroCore.variableValues));
-    memset(LibretroCore.variableLabels,      0, sizeof(LibretroCore.variableLabels));
-    memset(LibretroCore.variableValuesList,  0, sizeof(LibretroCore.variableValuesList));
-    memset(LibretroCore.variableDisplayList, 0, sizeof(LibretroCore.variableDisplayList));
-    memset(LibretroCore.variableTooltips,    0, sizeof(LibretroCore.variableTooltips));
-    memset(LibretroCore.variableVisible,     0, sizeof(LibretroCore.variableVisible));
-    LibretroCore.variableCount          = 0;
-    LibretroCore.variableOptionsVersion = 0;
-    LibretroCore.variablesDirty         = false;
-    LibretroCore.variablesVisibilityDirty = false;
+    memset(Libretro.core.variableKeys,        0, sizeof(Libretro.core.variableKeys));
+    memset(Libretro.core.variableValues,      0, sizeof(Libretro.core.variableValues));
+    memset(Libretro.core.variableLabels,      0, sizeof(Libretro.core.variableLabels));
+    memset(Libretro.core.variableValuesList,  0, sizeof(Libretro.core.variableValuesList));
+    memset(Libretro.core.variableDisplayList, 0, sizeof(Libretro.core.variableDisplayList));
+    memset(Libretro.core.variableTooltips,    0, sizeof(Libretro.core.variableTooltips));
+    memset(Libretro.core.variableVisible,     0, sizeof(Libretro.core.variableVisible));
+    Libretro.core.variableCount          = 0;
+    Libretro.core.variableOptionsVersion = 0;
+    Libretro.core.variablesDirty         = false;
+    Libretro.core.variablesVisibilityDirty = false;
 
     // Audio & Video
-    LibretroCore.rotation    = 0;
-    LibretroCore.width       = 0;
-    LibretroCore.height      = 0;
-    LibretroCore.fps         = 0;
-    LibretroCore.sampleRate  = 0.0;
-    LibretroCore.aspectRatio = 0.0f;
-    LibretroCore.minimumAudioLatencyMs = 0;
-    memset(&LibretroCore.audio_buffer_status_callback, 0, sizeof(LibretroCore.audio_buffer_status_callback));
+    Libretro.core.rotation    = 0;
+    Libretro.core.width       = 0;
+    Libretro.core.height      = 0;
+    Libretro.core.fps         = 0;
+    Libretro.core.sampleRate  = 0.0;
+    Libretro.core.aspectRatio = 0.0f;
+    Libretro.core.minimumAudioLatencyMs = 0;
+    memset(&Libretro.core.audio_buffer_status_callback, 0, sizeof(Libretro.core.audio_buffer_status_callback));
 
     // VFS
-    memset(&LibretroCore.vfs_interface, 0, sizeof(LibretroCore.vfs_interface));
+    memset(&Libretro.core.vfs_interface, 0, sizeof(Libretro.core.vfs_interface));
 
     // Content Information
-    memset(LibretroCore.contentInfoOverrideExts,        0, sizeof(LibretroCore.contentInfoOverrideExts));
-    memset(LibretroCore.contentInfoOverrideNeedFullpath, 0, sizeof(LibretroCore.contentInfoOverrideNeedFullpath));
-    memset(LibretroCore.contentInfoOverridePersistent,   0, sizeof(LibretroCore.contentInfoOverridePersistent));
-    LibretroCore.contentInfoOverrideCount = 0;
+    memset(Libretro.core.contentInfoOverrideExts,        0, sizeof(Libretro.core.contentInfoOverrideExts));
+    memset(Libretro.core.contentInfoOverrideNeedFullpath, 0, sizeof(Libretro.core.contentInfoOverrideNeedFullpath));
+    memset(Libretro.core.contentInfoOverridePersistent,   0, sizeof(Libretro.core.contentInfoOverridePersistent));
+    Libretro.core.contentInfoOverrideCount = 0;
 
     // Runtime flags that should not survive a core close. shutdown is the
     // RETRO_ENVIRONMENT_SHUTDOWN request from the previous core; loaded is
@@ -3070,28 +3069,28 @@ static void ResetLibretroCoreState(void) {
     // and then calls CloseLibretro() before returning; the caller
     // (ScanLibretroCoreDirectory) reads them off the global afterwards. They
     // get re-freshened at the start of the next InitLibretroEx.
-    LibretroCore.loaded   = false;
-    LibretroCore.shutdown = false;
+    Libretro.core.loaded   = false;
+    Libretro.core.shutdown = false;
 
     // Performance Counter
-    LibretroCore.perf_counter_last = NULL;
+    Libretro.core.perf_counter_last = NULL;
 
-    LibretroCore.speed = 1.0f;
-    memset(LibretroCore.rumbleStrong, 0, sizeof(LibretroCore.rumbleStrong));
-    memset(LibretroCore.rumbleWeak,   0, sizeof(LibretroCore.rumbleWeak));
+    Libretro.speed = 1.0f;
+    memset(Libretro.core.rumbleStrong, 0, sizeof(Libretro.core.rumbleStrong));
+    memset(Libretro.core.rumbleWeak,   0, sizeof(Libretro.core.rumbleWeak));
 
     // Per-session counters / accumulators.
-    LibretroCore.gameTimeNSEC      = 0;
-    LibretroCore.singleSampleCount = 0;
-    LibretroCore.audioDropWarnCount = 0;
+    Libretro.core.gameTimeNSEC      = 0;
+    Libretro.core.singleSampleCount = 0;
+    Libretro.core.audioDropWarnCount = 0;
 
     // On-Screen Message
-    memset(LibretroCore.osdMessage, 0, sizeof(LibretroCore.osdMessage));
-    LibretroCore.osdEndTime = 0.0;
+    memset(Libretro.core.osdMessage, 0, sizeof(Libretro.core.osdMessage));
+    Libretro.core.osdEndTime = 0.0;
 
     // Dynamic Rate Control
-    LibretroCore.drcAdjustment = 1.0f;
-    LibretroCore.drcEnabled = true;
+    Libretro.core.drcAdjustment = 1.0f;
+    Libretro.core.drcEnabled = true;
 
     UnloadLibretroMemoryMaps();
 }
@@ -3106,44 +3105,44 @@ static void CloseLibretro(void) {
     }
 
     // Let the core know that the audio device has been deinitialized.
-    if (LibretroCore.audio_callback.set_state != NULL) {
-        LibretroCore.audio_callback.set_state(false);
-        memset(&LibretroCore.audio_callback, 0, sizeof(LibretroCore.audio_callback));
+    if (Libretro.core.audio_callback.set_state != NULL) {
+        Libretro.core.audio_callback.set_state(false);
+        memset(&Libretro.core.audio_callback, 0, sizeof(Libretro.core.audio_callback));
     }
 
     // Drop any callbacks the core registered into its own .text — dylib_close()
     // below invalidates those addresses, and a follow-up InitLibretro() with a
     // different core that doesn't re-register them would call freed memory.
-    LibretroCore.keyboard_event = NULL;
-    LibretroCore.options_update_display_callback = NULL;
-    memset(&LibretroCore.runloop_frame_time, 0, sizeof(LibretroCore.runloop_frame_time));
-    LibretroCore.runloop_frame_time_last = 0;
+    Libretro.core.keyboard_event = NULL;
+    Libretro.core.options_update_display_callback = NULL;
+    memset(&Libretro.core.runloop_frame_time, 0, sizeof(Libretro.core.runloop_frame_time));
+    Libretro.core.runloop_frame_time_last = 0;
 
     // Call retro_deinit() to deinitialize the core.
-    if (LibretroCore.retro_deinit != NULL) {
-        LibretroCore.retro_deinit();
-        LibretroCore.retro_deinit = NULL;
+    if (Libretro.core.retro_deinit != NULL) {
+        Libretro.core.retro_deinit();
+        Libretro.core.retro_deinit = NULL;
     }
 
     CloseLibretroAudio();
     CloseLibretroVideo();
 
-    if (LibretroCore.inputDescriptors != NULL) {
-        MemFree(LibretroCore.inputDescriptors);
-        LibretroCore.inputDescriptors = NULL;
-        LibretroCore.inputDescriptorCount = 0;
+    if (Libretro.core.inputDescriptors != NULL) {
+        MemFree(Libretro.core.inputDescriptors);
+        Libretro.core.inputDescriptors = NULL;
+        Libretro.core.inputDescriptorCount = 0;
     }
 
-    if (LibretroCore.controllerInfo != NULL) {
-        MemFree(LibretroCore.controllerInfo);
-        LibretroCore.controllerInfo = NULL;
-        LibretroCore.controllerPortCount = 0;
+    if (Libretro.core.controllerInfo != NULL) {
+        MemFree(Libretro.core.controllerInfo);
+        Libretro.core.controllerInfo = NULL;
+        Libretro.core.controllerPortCount = 0;
     }
 
     // Close the dynamically loaded handle.
-    if (LibretroCore.handle != NULL) {
-        dylib_close(LibretroCore.handle);
-        LibretroCore.handle = NULL;
+    if (Libretro.core.handle != NULL) {
+        dylib_close(Libretro.core.handle);
+        Libretro.core.handle = NULL;
     }
 
     ResetLibretroCoreState();
@@ -3595,11 +3594,11 @@ static void* GetLibretroSerializedData(unsigned int* size) {
         return NULL;
     }
 
-    if (LibretroCore.retro_serialize_size == NULL || LibretroCore.retro_serialize == NULL) {
+    if (Libretro.core.retro_serialize_size == NULL || Libretro.core.retro_serialize == NULL) {
         return NULL;
     }
 
-    size_t finalSize = LibretroCore.retro_serialize_size();
+    size_t finalSize = Libretro.core.retro_serialize_size();
     if (finalSize == 0) {
         return NULL;
     }
@@ -3612,7 +3611,7 @@ static void* GetLibretroSerializedData(unsigned int* size) {
         return NULL;
     }
 
-    if (LibretroCore.retro_serialize(saveData, finalSize)) {
+    if (Libretro.core.retro_serialize(saveData, finalSize)) {
         return saveData;
     }
     TraceLog(LOG_ERROR, "LIBRETRO: Failed to get retro_serialize");
@@ -3630,11 +3629,11 @@ static bool SetLibretroSerializedData(void* data, unsigned int size) {
         return false;
     }
 
-    if (LibretroCore.retro_unserialize == NULL) {
+    if (Libretro.core.retro_unserialize == NULL) {
         return false;
     }
 
-    return LibretroCore.retro_unserialize(data, (size_t)size);
+    return Libretro.core.retro_unserialize(data, (size_t)size);
 }
 
 #endif

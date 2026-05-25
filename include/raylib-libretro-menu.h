@@ -195,8 +195,8 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     SetActiveLibretroShader((LibretroShaderType)menu.shaderSelectedIndex);
     SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
     SetLibretroVolume(menu.volumeSelected);
-    if (LibretroCore.textureFilter != menu.textureFilterIndex) {
-        LibretroCore.textureFilter = menu.textureFilterIndex;
+    if (Libretro.textureFilter != menu.textureFilterIndex) {
+        Libretro.textureFilter = menu.textureFilterIndex;
         InitLibretroVideo();
     }
     SetExitKey(NuklearKeyToKeyboardKey(menu.keyQuit));
@@ -361,12 +361,12 @@ static void MenuCommitSettings(nk_console* widget, void* user_data) {
 static void ScanLibretroCoreDirectory(void);
 
 static void LibretroApplyDirectories(void) {
-    TextCopy(LibretroCore.coreDirectory,            menu.coreDirectory);
-    TextCopy(LibretroCore.saveDirectory,            menu.saveDirectory);
-    TextCopy(LibretroCore.coreAssetsDirectory,      menu.coreAssetsDirectory);
-    TextCopy(LibretroCore.systemDirectory,          menu.systemDirectory);
-    TextCopy(LibretroCore.playlistsDirectory,       menu.playlistsDirectory);
-    TextCopy(LibretroCore.fileBrowserStartDirectory, menu.fileBrowserStartDirectory);
+    TextCopy(Libretro.coreDirectory,            menu.coreDirectory);
+    TextCopy(Libretro.saveDirectory,            menu.saveDirectory);
+    TextCopy(Libretro.coreAssetsDirectory,      menu.coreAssetsDirectory);
+    TextCopy(Libretro.systemDirectory,          menu.systemDirectory);
+    TextCopy(Libretro.playlistsDirectory,       menu.playlistsDirectory);
+    TextCopy(Libretro.fileBrowserStartDirectory, menu.fileBrowserStartDirectory);
     if (menu.saveDirectory[0] != '\0' && !DirectoryExists(menu.saveDirectory)) {
         MakeDirectory(menu.saveDirectory);
     }
@@ -445,14 +445,14 @@ static void ScanLibretroCoreDirectory(void) {
     for (unsigned int i = 0; i < files.count; i++) {
         if (!IsLibretroCoreFile(files.paths[i])) continue;
         if (!InitLibretroEx(files.paths[i], true)) continue;
-        if (TextLength(LibretroCore.validExtensions) == 0) continue;
+        if (TextLength(Libretro.core.validExtensions) == 0) continue;
 
         char keyPath[64], keyExts[64];
         TextCopy(keyPath, TextFormat("core_%d_path", coreIndex));
         TextCopy(keyExts, TextFormat("core_%d_extensions", coreIndex));
         rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath, files.paths[i]);
-        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyExts, LibretroCore.validExtensions);
-        TraceLog(LOG_INFO, "LIBRETRO: Cached %s (%s)", LibretroCore.libraryName, LibretroCore.validExtensions);
+        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyExts, Libretro.core.validExtensions);
+        TraceLog(LOG_INFO, "LIBRETRO: Cached %s (%s)", Libretro.core.libraryName, Libretro.core.validExtensions);
         coreIndex++;
     }
     UnloadDirectoryFiles(files);
@@ -1026,11 +1026,11 @@ static void LibretroMenuOptionChanged(nk_console* widget, void* user_data) {
     (void)widget;
     unsigned i = (unsigned)(uintptr_t)user_data;
     char value[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
-    LibretroMenuGetNthToken(LibretroCore.variableValuesList[i],
+    LibretroMenuGetNthToken(Libretro.core.variableValuesList[i],
                             menu.optionSelectedIndices[i],
                             value, LIBRETRO_CORE_VARIABLE_VALUE_LEN);
     if (TextLength(value) > 0) {
-        SetLibretroCoreOption(LibretroCore.variableKeys[i], value);
+        SetLibretroCoreOption(Libretro.core.variableKeys[i], value);
     }
 }
 
@@ -1040,7 +1040,7 @@ static void LibretroMenuOptionCheckboxChanged(nk_console* widget, void* user_dat
     (void)widget;
     unsigned i = (unsigned)(uintptr_t)user_data;
     const char* value = menu.optionCheckboxValues[i] ? "enabled" : "disabled";
-    SetLibretroCoreOption(LibretroCore.variableKeys[i], value);
+    SetLibretroCoreOption(Libretro.core.variableKeys[i], value);
 }
 
 static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
@@ -1073,12 +1073,12 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
 
     // The menu now reflects the current option set; clear the dirty flag so
     // the lazy-rebuild trigger in UpdateLibretroMenu doesn't fire redundantly.
-    LibretroCore.variablesVisibilityDirty = false;
+    Libretro.core.variablesVisibilityDirty = false;
 
     // Clear any previously built option children and restore Back button
     nk_console_free_children(m->optionsMenu);
 
-    if (LibretroCore.variableCount == 0) {
+    if (Libretro.core.variableCount == 0) {
         m->optionsMenu->visible = nk_false;
         return;
     }
@@ -1087,8 +1087,8 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
     // (e.g. all hidden by options_update_display_callback), hide the button
     // rather than showing an empty submenu.
     int shownCount = 0;
-    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-        if (TextLength(LibretroCore.variableValuesList[i]) > 0 && LibretroCore.variableVisible[i]) {
+    for (unsigned i = 0; i < Libretro.core.variableCount; i++) {
+        if (TextLength(Libretro.core.variableValuesList[i]) > 0 && Libretro.core.variableVisible[i]) {
             shownCount++;
         }
     }
@@ -1103,29 +1103,29 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
         nk_console_button_onclick(m->optionsMenu, "Core Options", &nk_console_button_back),
         NK_SYMBOL_X);
 
-    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-        if (TextLength(LibretroCore.variableValuesList[i]) == 0) continue;
-        if (!LibretroCore.variableVisible[i]) continue;
+    for (unsigned i = 0; i < Libretro.core.variableCount; i++) {
+        if (TextLength(Libretro.core.variableValuesList[i]) == 0) continue;
+        if (!Libretro.core.variableVisible[i]) continue;
 
-        const char* label = TextLength(LibretroCore.variableLabels[i]) > 0
-            ? LibretroCore.variableLabels[i]
-            : LibretroCore.variableKeys[i];
+        const char* label = TextLength(Libretro.core.variableLabels[i]) > 0
+            ? Libretro.core.variableLabels[i]
+            : Libretro.core.variableKeys[i];
 
         nk_console* widget;
 
-        if (LibretroMenuIsEnabledDisabledOption(LibretroCore.variableValuesList[i])) {
-            m->optionCheckboxValues[i] = (nk_bool)TextIsEqual(LibretroCore.variableValues[i], "enabled");
+        if (LibretroMenuIsEnabledDisabledOption(Libretro.core.variableValuesList[i])) {
+            m->optionCheckboxValues[i] = (nk_bool)TextIsEqual(Libretro.core.variableValues[i], "enabled");
             widget = nk_console_checkbox(m->optionsMenu, label, &m->optionCheckboxValues[i]);
             nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
                                          LibretroMenuOptionCheckboxChanged,
                                          (void*)(uintptr_t)i, NULL);
         } else {
             m->optionSelectedIndices[i] = LibretroMenuFindTokenIndex(
-                LibretroCore.variableValuesList[i], LibretroCore.variableValues[i]);
+                Libretro.core.variableValuesList[i], Libretro.core.variableValues[i]);
 
-            const char* displayStr = TextLength(LibretroCore.variableDisplayList[i]) > 0
-                ? LibretroCore.variableDisplayList[i]
-                : LibretroCore.variableValuesList[i];
+            const char* displayStr = TextLength(Libretro.core.variableDisplayList[i]) > 0
+                ? Libretro.core.variableDisplayList[i]
+                : Libretro.core.variableValuesList[i];
 
             widget = nk_console_combobox(m->optionsMenu, label,
                                          displayStr, '|',
@@ -1135,8 +1135,8 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
                                          (void*)(uintptr_t)i, NULL);
         }
 
-        if (TextLength(LibretroCore.variableTooltips[i]) > 0) {
-            widget->tooltip = LibretroCore.variableTooltips[i];
+        if (TextLength(Libretro.core.variableTooltips[i]) > 0) {
+            widget->tooltip = Libretro.core.variableTooltips[i];
         }
     }
 }
@@ -1186,7 +1186,7 @@ static void LibretroMenuUpdateConfig(void) {
 
 static void LibretroMenuApplyKeyboardPlayer1(void) {
     for (int i = 0; i < 16; i++) {
-        LibretroCore.keyboardPlayer1[i] = (int)NuklearKeyToKeyboardKey(menu.keyboardP1[i]);
+        Libretro.keyboardPlayer1[i] = (int)NuklearKeyToKeyboardKey(menu.keyboardP1[i]);
     }
 }
 
@@ -1204,12 +1204,12 @@ static bool SaveLibretroMenuSettings(void) {
 
 static bool SaveLibretroCoreOptions(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
-    if (!menu.cfg || LibretroCore.variableCount == 0) return false;
-    const char *coreName = LibretroCore.libraryName;
+    if (!menu.cfg || Libretro.core.variableCount == 0) return false;
+    const char *coreName = Libretro.core.libraryName;
     if (!coreName || !coreName[0]) return false;
     rlconfig_clear_section(menu.cfg, coreName);
-    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-        rlconfig_set(menu.cfg, coreName, LibretroCore.variableKeys[i], LibretroCore.variableValues[i]);
+    for (unsigned i = 0; i < Libretro.core.variableCount; i++) {
+        rlconfig_set(menu.cfg, coreName, Libretro.core.variableKeys[i], Libretro.core.variableValues[i]);
     }
     bool ok = rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
     TraceLog(LOG_INFO, "LIBRETRO: Saved core options to %s", RAYLIB_LIBRETRO_CFG_FILE);
@@ -1222,12 +1222,12 @@ static bool SaveLibretroCoreOptions(void) {
 bool LoadLibretroCoreOptions(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return false;
-    const char *coreName = LibretroCore.libraryName;
+    const char *coreName = Libretro.core.libraryName;
     if (!coreName || !coreName[0]) return false;
     int loaded = 0;
-    for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-        const char *val = rlconfig_get(menu.cfg, coreName, LibretroCore.variableKeys[i]);
-        if (val && SetLibretroCoreOption(LibretroCore.variableKeys[i], val)) loaded++;
+    for (unsigned i = 0; i < Libretro.core.variableCount; i++) {
+        const char *val = rlconfig_get(menu.cfg, coreName, Libretro.core.variableKeys[i]);
+        if (val && SetLibretroCoreOption(Libretro.core.variableKeys[i], val)) loaded++;
     }
     TraceLog(LOG_INFO, "LIBRETRO: Loaded %d core option(s) from %s", loaded, RAYLIB_LIBRETRO_CFG_FILE);
     return loaded > 0;
@@ -1243,11 +1243,11 @@ bool SaveLibretroAllSettings(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return false;
     LibretroMenuUpdateConfig();
-    const char *coreName = LibretroCore.libraryName;
-    if (coreName && coreName[0] && LibretroCore.variableCount > 0) {
+    const char *coreName = Libretro.core.libraryName;
+    if (coreName && coreName[0] && Libretro.core.variableCount > 0) {
         rlconfig_clear_section(menu.cfg, coreName);
-        for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-            rlconfig_set(menu.cfg, coreName, LibretroCore.variableKeys[i], LibretroCore.variableValues[i]);
+        for (unsigned i = 0; i < Libretro.core.variableCount; i++) {
+            rlconfig_set(menu.cfg, coreName, Libretro.core.variableKeys[i], Libretro.core.variableValues[i]);
         }
     }
     bool ok = rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
@@ -1285,7 +1285,7 @@ static bool LoadLibretroMenuSettings(void) {
     menu.textureFilterIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "textureFilter", 0);
     if (menu.textureFilterIndex < 0 || menu.textureFilterIndex > TEXTURE_FILTER_ANISOTROPIC_16X)
         menu.textureFilterIndex = 0;
-    LibretroCore.textureFilter = menu.textureFilterIndex;
+    Libretro.textureFilter = menu.textureFilterIndex;
 
     menu.themeSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "theme", LIBRETRO_MENU_STYLE_DRACULA);
     if (menu.themeSelectedIndex < 0 || menu.themeSelectedIndex >= LIBRETRO_MENU_STYLE_COUNT)
@@ -1406,8 +1406,8 @@ static void UpdateLibretroMenuVisibility(void) {
     // options until visibility is resolved after the first retro_run frame).
     if (menu.optionsMenu && IsLibretroReady()) {
         int visibleOptions = 0;
-        for (unsigned i = 0; i < LibretroCore.variableCount; i++) {
-            if (TextLength(LibretroCore.variableValuesList[i]) > 0 && LibretroCore.variableVisible[i]) {
+        for (unsigned i = 0; i < Libretro.core.variableCount; i++) {
+            if (TextLength(Libretro.core.variableValuesList[i]) > 0 && Libretro.core.variableVisible[i]) {
                 visibleOptions++;
                 break;
             }
@@ -1462,24 +1462,24 @@ void UpdateLibretroMenu(void) {
     //   * library name changed (core swap; same count but different options)
     //   * the menu just transitioned from closed to open (fresh-state guard)
     static unsigned lastBuiltVariableCount = 0;
-    static char lastBuiltCoreName[sizeof(LibretroCore.libraryName)] = {0};
-    bool countChanged = (lastBuiltVariableCount != LibretroCore.variableCount);
-    bool coreChanged  = !TextIsEqual(lastBuiltCoreName, LibretroCore.libraryName);
+    static char lastBuiltCoreName[sizeof(Libretro.core.libraryName)] = {0};
+    bool countChanged = (lastBuiltVariableCount != Libretro.core.variableCount);
+    bool coreChanged  = !TextIsEqual(lastBuiltCoreName, Libretro.core.libraryName);
 
-    if (LibretroCore.variablesVisibilityDirty || countChanged || coreChanged || menuJustOpened) {
+    if (Libretro.core.variablesVisibilityDirty || countChanged || coreChanged || menuJustOpened) {
         // When the menu first opens and the game is running, invoke the display
         // callback to get the latest visibility state. Cores like PicoDrive call
         // SET_CORE_OPTIONS_DISPLAY during retro_load_game to set initial
         // visibility, but the callback may resolve it differently after the
         // first retro_run frame. Invoking it here ensures the menu always opens
         // with up-to-date option visibility even if no frames have run yet.
-        if (menuJustOpened && LibretroCore.options_update_display_callback && IsLibretroGameReady()) {
-            LibretroCore.options_update_display_callback();
+        if (menuJustOpened && Libretro.core.options_update_display_callback && IsLibretroGameReady()) {
+            Libretro.core.options_update_display_callback();
         }
         BuildLibretroMenuOptions(&menu);
-        LibretroCore.variablesVisibilityDirty = false;
-        lastBuiltVariableCount = LibretroCore.variableCount;
-        TextCopy(lastBuiltCoreName, LibretroCore.libraryName);
+        Libretro.core.variablesVisibilityDirty = false;
+        lastBuiltVariableCount = Libretro.core.variableCount;
+        TextCopy(lastBuiltCoreName, Libretro.core.libraryName);
     }
 
     UpdateLibretroMenuVisibility();

@@ -211,7 +211,7 @@ bool Update(void* userData) {
                 data->pendingMenuOpen = true;
             }
         } else {
-            memset(LibretroCore.virtualJoypadState, 0, sizeof(LibretroCore.virtualJoypadState));
+            memset(Libretro.core.virtualJoypadState, 0, sizeof(Libretro.core.virtualJoypadState));
         }
     }
 

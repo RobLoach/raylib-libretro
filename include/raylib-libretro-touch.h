@@ -7,7 +7,7 @@
 *       #include "raylib-libretro-touch.h"
 *
 *   Renders a virtual gamepad (D-pad, face buttons, Select/Start, Menu) and
-*   feeds presses into LibretroCore.virtualJoypadState. Sizing is derived
+*   feeds presses into Libretro.core.virtualJoypadState. Sizing is derived
 *   from the smaller screen dimension so buttons stay square and consistent
 *   regardless of aspect ratio or window size.
 *
@@ -151,7 +151,7 @@ static Rectangle GetLibretroTouchMenuRect(int w, int h) {
 static int LibretroTouchJoypadKeyboard(int buttonId) {
 #ifdef RAYLIB_LIBRETRO_MENU_H
     if (buttonId >= 0 && buttonId < 16) {
-        return LibretroCore.keyboardPlayer1[buttonId];
+        return Libretro.keyboardPlayer1[buttonId];
     }
     return KEY_NULL;
 #else
@@ -284,10 +284,10 @@ void UpdateLibretroTouchControls(void) {
     LibretroTouchEnsureLayout();
 
     bool prevState[16] = {0};
-    for (int i = 0; i < 16; i++) prevState[i] = LibretroCore.virtualJoypadState[i];
+    for (int i = 0; i < 16; i++) prevState[i] = Libretro.core.virtualJoypadState[i];
     bool prevMenuArmed = LibretroTouchMenuArmed;
 
-    memset(LibretroCore.virtualJoypadState, 0, sizeof(LibretroCore.virtualJoypadState));
+    memset(Libretro.core.virtualJoypadState, 0, sizeof(Libretro.core.virtualJoypadState));
 
     Vector2 points[10];
     int nPoints = 0;
@@ -344,14 +344,14 @@ void UpdateLibretroTouchControls(void) {
                 float ddx = pos.x - dc.x, ddy = pos.y - dc.y;
                 if (Vector2Length((Vector2){ddx, ddy}) > dr * 0.15f) {  // dead zone
                     float angle = atan2f(ddy, ddx);
-                    if      (angle >= -PI8   && angle <  PI8)    LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_RIGHT] = true;
-                    else if (angle >=  PI8   && angle <  3*PI8)  { LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_DOWN]  = true; LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_RIGHT] = true; }
-                    else if (angle >=  3*PI8 && angle <  5*PI8)  LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_DOWN]  = true;
-                    else if (angle >=  5*PI8 && angle <  7*PI8)  { LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_DOWN]  = true; LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_LEFT]  = true; }
-                    else if (angle >= -7*PI8 && angle < -5*PI8)  { LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_UP]   = true; LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_LEFT]  = true; }
-                    else if (angle >= -5*PI8 && angle < -3*PI8)  LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_UP]   = true;
-                    else if (angle >= -3*PI8 && angle < -PI8)    { LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_UP]   = true; LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_RIGHT] = true; }
-                    else                                          LibretroCore.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_LEFT]  = true;
+                    if      (angle >= -PI8   && angle <  PI8)    Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_RIGHT] = true;
+                    else if (angle >=  PI8   && angle <  3*PI8)  { Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_DOWN]  = true; Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_RIGHT] = true; }
+                    else if (angle >=  3*PI8 && angle <  5*PI8)  Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_DOWN]  = true;
+                    else if (angle >=  5*PI8 && angle <  7*PI8)  { Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_DOWN]  = true; Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_LEFT]  = true; }
+                    else if (angle >= -7*PI8 && angle < -5*PI8)  { Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_UP]   = true; Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_LEFT]  = true; }
+                    else if (angle >= -5*PI8 && angle < -3*PI8)  Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_UP]   = true;
+                    else if (angle >= -3*PI8 && angle < -PI8)    { Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_UP]   = true; Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_RIGHT] = true; }
+                    else                                          Libretro.core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_LEFT]  = true;
                 }
             }
         }
@@ -362,7 +362,7 @@ void UpdateLibretroTouchControls(void) {
         if (IsLibretroTouchDpadButton(LibretroTouchButtons[i].buttonId)) continue;
         for (int p = 0; p < nPoints; p++) {
             if (CheckCollisionPointRec(points[p], LibretroTouchButtons[i].rect)) {
-                LibretroCore.virtualJoypadState[LibretroTouchButtons[i].buttonId] = true;
+                Libretro.core.virtualJoypadState[LibretroTouchButtons[i].buttonId] = true;
                 break;
             }
         }
@@ -396,7 +396,7 @@ void UpdateLibretroTouchControls(void) {
         bool fired = false;
         for (int i = 0; i < LibretroTouchButtonsCount && !fired; i++) {
             int id = LibretroTouchButtons[i].buttonId;
-            if (LibretroCore.virtualJoypadState[id] && !prevState[id]) {
+            if (Libretro.core.virtualJoypadState[id] && !prevState[id]) {
                 LibretroTouchTriggerHaptic();
                 fired = true;
             }
@@ -410,7 +410,7 @@ void UpdateLibretroTouchControls(void) {
     bool anyTouchActive = LibretroTouchDpadLocked || LibretroTouchMenuArmed;
     if (!anyTouchActive) {
         for (int i = 0; i < 16; i++) {
-            if (LibretroCore.virtualJoypadState[i]) { anyTouchActive = true; break; }
+            if (Libretro.core.virtualJoypadState[i]) { anyTouchActive = true; break; }
         }
     }
     if (anyTouchActive) LibretroTouchLastActiveTime = GetTime();
@@ -461,8 +461,8 @@ void DrawLibretroTouchControls(void) {
         float arrowSize = dr * 0.22f;
 
         for (int d = 0; d < 8; d++) {
-            bool b1 = LibretroCore.virtualJoypadState[dirs[d].b1] || LibretroTouchIsPhysicalButtonDown(dirs[d].b1);
-            bool b2 = (dirs[d].b2 < 0) || LibretroCore.virtualJoypadState[dirs[d].b2] || LibretroTouchIsPhysicalButtonDown(dirs[d].b2);
+            bool b1 = Libretro.core.virtualJoypadState[dirs[d].b1] || LibretroTouchIsPhysicalButtonDown(dirs[d].b1);
+            bool b2 = (dirs[d].b2 < 0) || Libretro.core.virtualJoypadState[dirs[d].b2] || LibretroTouchIsPhysicalButtonDown(dirs[d].b2);
             Color arrowColor = LibretroTouchFadeColor(
                 (b1 && b2) ? (Color){ 255, 255, 255, 230 } : (Color){ 180, 180, 180, 100 }, alpha);
             float ca = cosf(dirs[d].angle), sa = sinf(dirs[d].angle);
@@ -494,7 +494,7 @@ void DrawLibretroTouchControls(void) {
         int id = btns[i].buttonId;
         if (IsLibretroTouchDpadButton(id)) continue;  // drawn separately as circular D-pad
         bool isMenuLike = (id == RETRO_DEVICE_ID_JOYPAD_SELECT || id == RETRO_DEVICE_ID_JOYPAD_START);
-        bool touchHeld    = LibretroCore.virtualJoypadState[id];
+        bool touchHeld    = Libretro.core.virtualJoypadState[id];
         bool physicalHeld = LibretroTouchIsPhysicalButtonDown(id);
         Color c = btns[i].color;
         unsigned char restA = isMenuLike ? 70 : 140;
