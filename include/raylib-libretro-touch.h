@@ -262,6 +262,9 @@ static Color LibretroTouchFadeColor(Color c, float a) {
     return c;
 }
 
+/**
+ * If available, will vibrate the device from using the on-screen controls.
+ */
 static void LibretroTouchTriggerHaptic(void) {
 #if defined(PLATFORM_WEB)
     EM_ASM({ if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(15); });

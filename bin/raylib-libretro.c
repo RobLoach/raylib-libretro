@@ -64,7 +64,7 @@ EMSCRIPTEN_KEEPALIVE
 bool LoadLibretroGameFromJS(const char* gameFile) {
     if (gameFile == NULL || gameFile[0] == '\0') return false;
     if (IsLibretroReady()) {
-        return LoadLibretroGamePhysFS(gameFile);
+        return LoadLibretroGameFromPhysFS(gameFile);
     }
     return MenuLoadGame(gameFile);
 }
@@ -181,7 +181,7 @@ bool Init(void** userData, int argc, char** argv) {
     }
 
     if (corePath) {
-        if (MenuInitCore(corePath) && LoadLibretroGamePhysFS(gameFile)) {
+        if (MenuInitCore(corePath) && LoadLibretroGameFromPhysFS(gameFile)) {
             BuildLibretroMenuOptions(data->menu);
             data->menu->active = false;
         }

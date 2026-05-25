@@ -7,6 +7,7 @@ A roadmap of some interesting features to consider.
 - [ ] Within raylib-libretro-touch.h, there is a LibretroTouchJoypadGamepad() function. Isn't there a function like this directly withing raylib-libretro.h we could use instead? Would save some function definitions.
 - [ ] Within raylib-libretro-touch.h, there's a LibretroTouchFadeColor() function. Isn't there a raylib function we could use for this instead?
 - [ ] Is there a way to have the Emscripten Fullscreen capabilities be handled through the Settings>Graphics>Fullscreen toggle widget?
+- [ ] Anything that should be persistent across LibretroCore loading, move to a Libretro structure instead. This would mean we have two different structures (LibretroCore and Libretro). coreDirectory is an example of a value that should persist across LibretroCore loads. This will make reseting the LibretroCore contents a lot easier since it should be able to just do a memset(0) on the object. The structure names should be "rLibretro", and "rLibretroCore". The objects should be named "Libretro", and "LibretroCore".
 
 ## Project & Documentation
 

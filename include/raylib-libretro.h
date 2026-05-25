@@ -3017,6 +3017,7 @@ static void UnloadLibretroGame(void) {
  * with a clean slate. Must be called after the dylib is closed.
  */
 static void ResetLibretroCoreState(void) {
+    // Core Variables
     memset(LibretroCore.variableKeys,        0, sizeof(LibretroCore.variableKeys));
     memset(LibretroCore.variableValues,      0, sizeof(LibretroCore.variableValues));
     memset(LibretroCore.variableLabels,      0, sizeof(LibretroCore.variableLabels));
@@ -3029,6 +3030,7 @@ static void ResetLibretroCoreState(void) {
     LibretroCore.variablesDirty         = false;
     LibretroCore.variablesVisibilityDirty = false;
 
+    // Audio & Video
     LibretroCore.rotation    = 0;
     LibretroCore.width       = 0;
     LibretroCore.height      = 0;
@@ -3038,8 +3040,10 @@ static void ResetLibretroCoreState(void) {
     LibretroCore.minimumAudioLatencyMs = 0;
     memset(&LibretroCore.audio_buffer_status_callback, 0, sizeof(LibretroCore.audio_buffer_status_callback));
 
+    // VFS
     memset(&LibretroCore.vfs_interface, 0, sizeof(LibretroCore.vfs_interface));
 
+    // Content Information
     memset(LibretroCore.contentInfoOverrideExts,        0, sizeof(LibretroCore.contentInfoOverrideExts));
     memset(LibretroCore.contentInfoOverrideNeedFullpath, 0, sizeof(LibretroCore.contentInfoOverrideNeedFullpath));
     memset(LibretroCore.contentInfoOverridePersistent,   0, sizeof(LibretroCore.contentInfoOverridePersistent));
@@ -3059,12 +3063,9 @@ static void ResetLibretroCoreState(void) {
     LibretroCore.loaded   = false;
     LibretroCore.shutdown = false;
 
-    // perf_counter_last points into the now-closed dylib's .data; null it so a
-    // subsequent perf callback can't dereference a freed page.
+    // Performance Counter
     LibretroCore.perf_counter_last = NULL;
 
-    // Playback speed and rumble state belong to the previous core; reset so a
-    // new core starts at 1.0x with motors off rather than inheriting state.
     LibretroCore.speed = 1.0f;
     memset(LibretroCore.rumbleStrong, 0, sizeof(LibretroCore.rumbleStrong));
     memset(LibretroCore.rumbleWeak,   0, sizeof(LibretroCore.rumbleWeak));
@@ -3074,9 +3075,11 @@ static void ResetLibretroCoreState(void) {
     LibretroCore.singleSampleCount = 0;
     LibretroCore.audioDropWarnCount = 0;
 
+    // On-Screen Message
     memset(LibretroCore.osdMessage, 0, sizeof(LibretroCore.osdMessage));
     LibretroCore.osdEndTime = 0.0;
 
+    // Dynamic Rate Control
     LibretroCore.drcAdjustment = 1.0f;
     LibretroCore.drcEnabled = true;
 
