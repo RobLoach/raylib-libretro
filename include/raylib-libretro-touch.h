@@ -145,11 +145,16 @@ static Rectangle GetLibretroTouchMenuRect(int w, int h) {
     return r;
 }
 
-// Returns the raylib keyboard key mapped to a joypad button for port 0.
+/**
+ * Returns the raylib keyboard key mapped to the given Joypad button for port 0.
+ */
 static int LibretroTouchJoypadKeyboard(int buttonId) {
 #ifdef RAYLIB_LIBRETRO_MENU_H
-    if (buttonId >= 0 && buttonId < 16) return LibretroCore.keyboardPlayer1[buttonId];
-#endif
+    if (buttonId >= 0 && buttonId < 16) {
+        return LibretroCore.keyboardPlayer1[buttonId];
+    }
+    return KEY_NULL;
+#else
     switch (buttonId) {
         case RETRO_DEVICE_ID_JOYPAD_UP:     return KEY_UP;
         case RETRO_DEVICE_ID_JOYPAD_DOWN:   return KEY_DOWN;
@@ -169,6 +174,7 @@ static int LibretroTouchJoypadKeyboard(int buttonId) {
         case RETRO_DEVICE_ID_JOYPAD_R3:     return KEY_F;
         default: return KEY_NULL;
     }
+#endif
 }
 
 // Returns the raylib GamepadButton mapped to a joypad button for port 0.
