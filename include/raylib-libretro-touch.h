@@ -266,10 +266,6 @@ static Vector2 LibretroTouchDpadLockedPos = {0};
 static double LibretroTouchLastActiveTime = -1.0;  // -1 = never touched
 static float  LibretroTouchAlpha = 1.0f;
 
-static Color LibretroTouchFadeColor(Color c, float a) {
-    c.a = (unsigned char)(c.a * a);
-    return c;
-}
 
 /**
  * If available, will vibrate the device from using the on-screen controls.
@@ -455,7 +451,7 @@ void DrawLibretroTouchControls(void) {
         Vector2 dc; float dr;
         LibretroTouchDpadInfo(&dc, &dr);
 
-        DrawCircleV(dc, dr, LibretroTouchFadeColor((Color){ 40, 40, 40, 160 }, alpha));
+        DrawCircleV(dc, dr, ColorAlpha((Color){ 40, 40, 40, 255 }, 0.63f * alpha));
 
         float arrowDist = dr * 0.60f;
         float arrowSize = dr * 0.22f;
@@ -463,8 +459,9 @@ void DrawLibretroTouchControls(void) {
         for (int d = 0; d < 8; d++) {
             bool b1 = Libretro.core.virtualJoypadState[dirs[d].b1] || LibretroTouchIsPhysicalButtonDown(dirs[d].b1);
             bool b2 = (dirs[d].b2 < 0) || Libretro.core.virtualJoypadState[dirs[d].b2] || LibretroTouchIsPhysicalButtonDown(dirs[d].b2);
-            Color arrowColor = LibretroTouchFadeColor(
-                (b1 && b2) ? (Color){ 255, 255, 255, 230 } : (Color){ 180, 180, 180, 100 }, alpha);
+            Color arrowColor = (b1 && b2)
+                ? ColorAlpha((Color){ 255, 255, 255, 255 }, 0.90f * alpha)
+                : ColorAlpha((Color){ 180, 180, 180, 255 }, 0.39f * alpha);
             float ca = cosf(dirs[d].angle), sa = sinf(dirs[d].angle);
             Vector2 tip = { dc.x + ca*(arrowDist + arrowSize), dc.y + sa*(arrowDist + arrowSize) };
             Vector2 rb  = { dc.x + ca*arrowDist + sa*arrowSize, dc.y + sa*arrowDist - ca*arrowSize };
@@ -472,7 +469,7 @@ void DrawLibretroTouchControls(void) {
             DrawTriangle(tip, rb, lb, arrowColor);
         }
 
-        DrawCircleV(dc, dr * 0.18f, LibretroTouchFadeColor((Color){ 60, 60, 60, 200 }, alpha));
+        DrawCircleV(dc, dr * 0.18f, ColorAlpha((Color){ 60, 60, 60, 255 }, 0.78f * alpha));
 
         // Direction indicator: a dot on the inner edge showing where the locked
         // press is pointing. Hidden when in the dead zone or not locked.
@@ -484,7 +481,7 @@ void DrawLibretroTouchControls(void) {
                 Vector2 dir = { ddx / dist, ddy / dist };
                 Vector2 indicatorPos = { dc.x + dir.x * dr * 0.82f, dc.y + dir.y * dr * 0.82f };
                 DrawCircleV(indicatorPos, dr * 0.12f,
-                    LibretroTouchFadeColor((Color){ 255, 255, 255, 220 }, alpha));
+                    ColorAlpha(WHITE, 0.86f * alpha));
             }
         }
     }
@@ -507,7 +504,7 @@ void DrawLibretroTouchControls(void) {
         } else {
             DrawRectangleRounded(btns[i].rect, 0.5f, 6, c);
         }
-        Color textColor = LibretroTouchFadeColor(WHITE, alpha);
+        Color textColor = ColorAlpha(WHITE, alpha);
         if (isMenuLike) textColor.a = (unsigned char)(180 * alpha);
         Font font = GetLibretroTouchFont();
         float fs = btns[i].rect.height * 0.4f;
@@ -527,8 +524,8 @@ void DrawLibretroTouchControls(void) {
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), guide)) {
         hovered = true;
     }
-    Color gc = hovered ? LibretroTouchFadeColor(GRAY, alpha)
-                       : LibretroTouchFadeColor((Color){80, 80, 80, 160}, alpha);
+    Color gc = hovered ? ColorAlpha(GRAY, alpha)
+                       : ColorAlpha((Color){80, 80, 80, 255}, 0.63f * alpha);
     DrawRectangleRounded(guide, 0.3f, 4, gc);
 
     float barW = guide.width  * 0.50f;
@@ -539,7 +536,7 @@ void DrawLibretroTouchControls(void) {
     float bx   = gcx - barW * 0.5f;
     for (int row = -1; row <= 1; row++) {
         Rectangle bar = { bx, gcy + row * gap - barH * 0.5f, barW, barH };
-        DrawRectangleRounded(bar, 1.0f, 4, LibretroTouchFadeColor(WHITE, alpha));
+        DrawRectangleRounded(bar, 1.0f, 4, ColorAlpha(WHITE, alpha));
     }
 }
 
