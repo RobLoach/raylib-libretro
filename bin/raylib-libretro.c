@@ -314,8 +314,10 @@ bool Update(void* userData) {
         return false;
     }
 
-    // Fullscreen — handled in JS on Emscripten (requestFullscreen requires a
-    // direct user-gesture event handler, not the rAF-driven main loop).
+    // F11 fullscreen toggle is skipped on Emscripten — browsers intercept F11
+    // at the OS level so it never reaches the web page as a key event.
+    // The Settings > Audio & Video > Fullscreen checkbox uses
+    // emscripten_request_fullscreen with deferUntilInEventHandler instead.
 #ifndef __EMSCRIPTEN__
     if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyFullscreen))) {
         LibretroMenuFullscreenChanged(menu.console, NULL);
