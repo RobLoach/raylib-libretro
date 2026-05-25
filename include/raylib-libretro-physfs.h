@@ -14,7 +14,7 @@
 *
 *       Then at runtime:
 *           InitLibretroPhysFS();              // once, after InitLibretro()
-*           LoadLibretroGamePhysFS(gameFile);  // instead of LoadLibretroGame()
+*           LoadLibretroGameFromPhysFS(gameFile);  // instead of LoadLibretroGame()
 *           ...
 *           CloseLibretroPhysFS();             // once, before CloseLibretro()
 *
@@ -35,7 +35,7 @@ extern "C" {
 
 static bool InitLibretroPhysFS(void);                       // Start PhysFS. Safe to call repeatedly.
 static void CloseLibretroPhysFS(void);                      // Tear down PhysFS and any active /game mount.
-static bool LoadLibretroGamePhysFS(const char* gameFile);   // Zip-aware replacement for LoadLibretroGame.
+static bool LoadLibretroGameFromPhysFS(const char* gameFile);   // Zip-aware replacement for LoadLibretroGame.
 
 #if defined(__cplusplus)
 }
@@ -69,7 +69,7 @@ static void LibretroPhysFSClearMount(void) {
 }
 
 /**
- * Initialize PhysFS so LoadLibretroGamePhysFS() can mount archives.
+ * Initialize PhysFS so LoadLibretroGameFromPhysFS() can mount archives.
  *
  * @return \c true on success, \c false if PhysFS initialization failed.
  */
@@ -132,7 +132,7 @@ static bool LibretroPhysFSPickFileInZip(const char* zipFile, char* outPath) {
     const char* exts = GetLibretroValidExtensions();
     if (!found && exts != NULL && exts[0] != '\0') {
         char pattern[256];
-        LibretroBuildExtPattern(exts, pattern, sizeof(pattern));
+        GetLibretroFileExtensionPattern(exts, pattern, sizeof(pattern));
         for (unsigned int i = 0; i < entries.count; i++) {
             const char* name = GetFileName(entries.paths[i]);
             if (IsFileExtension(name, pattern)) {
@@ -154,7 +154,7 @@ static bool LibretroPhysFSPickFileInZip(const char* zipFile, char* outPath) {
  *                 content-less core load.
  * @return \c true on success, \c false on failure.
  */
-static bool LoadLibretroGamePhysFS(const char* gameFile) {
+static bool LoadLibretroGameFromPhysFS(const char* gameFile) {
     if (gameFile == NULL) {
         return LoadLibretroGame(NULL);
     }

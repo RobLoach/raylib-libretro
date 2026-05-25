@@ -230,7 +230,7 @@ There are **no unit tests** — CI validates compilation only. When adding code,
 
 - **Language:** C (not C++), compatible with C99
 - **Naming:** Public API uses `PascalCase` verbs — `InitLibretro`, `DrawLibretro`, `GetLibretroTexture`
-- **Internal helpers:** Prefixed with `Libretro` — `LibretroLogger`, `LibretroPerfRegister`, `LibretroMapRetroPixelFormatToPixelFormat`
+- **Internal helpers:** Prefixed with `Libretro` — `LibretroLogger`, `SetLibretroPerformanceCounter`, `LibretroRetroPixelFormatToPixelFormat`
 - **Static functions:** All functions in headers are declared `static` (single-header pattern)
 - **Error handling:** Functions return `bool` for success/failure; errors go to `TraceLog(LOG_ERROR, ...)`
 - **Memory:** Use raylib's `MemAlloc` / `MemFree` (not raw `malloc`/`free`)
@@ -260,7 +260,7 @@ The core may report one of three pixel formats via the environment callback:
 - `RETRO_PIXEL_FORMAT_XRGB8888` — converted to RGBA8888 before upload
 - `RETRO_PIXEL_FORMAT_RGB565` — used directly
 
-Conversion functions: `LibretroMapPixelFormatARGB1555ToRGB565`, `LibretroMapPixelFormatARGB8888ToRGBA8888`.
+Conversion functions: `LibretroPixelFormatARGB1555ToRGB565`, `LibretroMapPixelFormatARGB8888ToRGBA8888`.
 
 ## Audio
 
