@@ -18,23 +18,7 @@
         overscroll-behavior: none;
         box-sizing: border-box; /* Ensure padding/border doesn't affect size */
       }
-      #fullscreen-btn {
-        position: fixed;
-        top: 8px;
-        left: 8px;
-        z-index: 10;
-        background: rgba(0,0,0,0.5);
-        color: white;
-        border: 1px solid rgba(255,255,255,0.3);
-        border-radius: 4px;
-        padding: 6px 12px;
-        cursor: pointer;
-        font-size: 24px;
-        opacity: 0.3;
-        transition: opacity 0.2s;
-      }
-      #fullscreen-btn:hover { opacity: 1; }
-      canvas.emscripten {
+canvas.emscripten {
         display: block;
         width: 100%;
         height: 100%;
@@ -52,18 +36,9 @@
     </style>
   </head>
   <body>
-    <button id="fullscreen-btn" title="Fullscreen">&#x26F6;</button>
-    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+<canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
     <script>
-      document.getElementById('fullscreen-btn').addEventListener('click', function () {
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen();
-        } else {
-          document.exitFullscreen();
-        }
-      });
-
-      // Prevent the browser from intercepting drag-and-drop so the dropped
+// Prevent the browser from intercepting drag-and-drop so the dropped
       // file reaches the canvas listener installed by emscripten/GLFW.
       ['dragenter', 'dragover', 'drop'].forEach(function (type) {
         window.addEventListener(type, function (e) { e.preventDefault(); }, false);

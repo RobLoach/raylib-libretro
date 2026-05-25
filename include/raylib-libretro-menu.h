@@ -132,6 +132,7 @@ static Font GetLibretroMenuFont(void);
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/html5.h>
 
 // Push MEMFS -> IDBFS so any writes under /userdata survive a page reload.
 // Called at every commit point (settings save, save state, etc.) because
@@ -275,8 +276,20 @@ static void SetLibretroMenuStyle(LibretroMenuStyle style) {
 static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
+#ifdef __EMSCRIPTEN__
+    // requestFullscreen() must originate from a user-gesture event handler.
+    // Raylib buffers input between frames, so by the time this callback fires
+    // we are inside requestAnimationFrame — the gesture context is gone.
+    // deferUntilInEventHandler=1 queues the request until the next user input.
+    if (menu.fullscreen) {
+        emscripten_request_fullscreen("#canvas", 1);
+    } else {
+        emscripten_exit_fullscreen();
+    }
+#else
     ToggleFullscreen();
     menu.fullscreen = IsWindowFullscreen();
+#endif
 }
 
 static void LibretroMenuQuitClicked(nk_console* widget, void* user_data) {
@@ -827,9 +840,6 @@ LibretroMenu* InitLibretroMenu(void) {
 
             nk_console* fullscreenCheckbox = nk_console_checkbox(graphicsMenu, "Fullscreen", &menu.fullscreen);
             nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
-            #ifdef __EMSCRIPTEN__
-            fullscreenCheckbox->visible = nk_false;
-            #endif
 
             static char shaderNames[256] = {0};
             if (shaderNames[0] == '\0') {
@@ -1255,12 +1265,16 @@ static bool LoadLibretroMenuSettings(void) {
     if (!menu.cfg) return false;
 
     nk_bool savedFullscreen = (nk_bool)rlconfig_get_int(menu.cfg, "raylib-libretro", "fullscreen", (int)menu.fullscreen);
-    // On Emscripten, requestFullscreen() requires a direct user-gesture event
-    // handler — calling it from startup or the rAF main loop is always denied.
-#ifndef __EMSCRIPTEN__
+    menu.fullscreen = savedFullscreen;
+#ifdef __EMSCRIPTEN__
+    // Queue a deferred fullscreen request so the saved preference is applied on
+    // the first user interaction after page load (the only timing browsers allow).
+    if (savedFullscreen) {
+        emscripten_request_fullscreen("#canvas", 1);
+    }
+#else
     if (savedFullscreen != (nk_bool)IsWindowFullscreen()) ToggleFullscreen();
 #endif
-    menu.fullscreen = savedFullscreen;
 
     menu.shaderSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "shader", LIBRETRO_SHADER_NONE);
     if (menu.shaderSelectedIndex < 0 || menu.shaderSelectedIndex >= LIBRETRO_SHADER_TYPE_COUNT) {
@@ -1377,7 +1391,11 @@ void CloseLibretroMenu(void) {
 static void UpdateLibretroMenuVisibility(void) {
 
     // Keep fullscreen checkbox in sync with the actual window state (e.g. F11 presses).
+    // On Emscripten, fullscreen is deferred so IsWindowFullscreen() lags behind the
+    // intended state — skip the sync and let menu.fullscreen drive the checkbox.
+#ifndef __EMSCRIPTEN__
     menu.fullscreen = (nk_bool)IsWindowFullscreen();
+#endif
 
     // Disable game-dependent items when no game is loaded.
     nk_bool gameReady = (nk_bool)IsLibretroGameReady();
