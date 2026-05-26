@@ -67,7 +67,7 @@ Other files include the headers without the `_IMPLEMENTATION` define.
 The library holds all state in a single static global:
 
 ```c
-static rLibretro LibretroCore = {0};
+static LibretroData LIBRETRO = {0};
 ```
 
 There is no explicit context object passed around — all functions operate on this global. This matches raylib's own design pattern.
@@ -77,7 +77,7 @@ There is no explicit context object passed around — all functions operate on t
 Cores (emulators) are shared libraries (`.so`/`.dll`/`.dylib`) loaded at runtime using `dylib.h` from libretro-common. The macro pattern for loading symbols is:
 
 ```c
-#define LoadLibretroMethod(S) LoadLibretroMethodHandle(LibretroCore.S, S)
+#define LoadLibretroMethod(S) LoadLibretroMethodHandle(LIBRETRO.core.S, S)
 ```
 
 ## Core API Lifecycle
