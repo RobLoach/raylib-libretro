@@ -51,7 +51,6 @@ extern "C" {
 //------------------------------------------------------------------------------------
 
 static bool InitLibretro(const char* core);
-static bool InitLibretroEx(const char* core);
 static bool PeekLibretroCoreInfo(const char* core);
 static bool LoadLibretroGame(const char* gameFile);
 static bool IsLibretroReady(void);
@@ -2633,11 +2632,12 @@ static bool PeekLibretroCoreInfo(const char* core) {
 }
 
 /**
- * Load a libretro core and fully initialize it for playback.
- * @param core Path to the core shared library.
- * @return true on success.
+ * Load a libretro core shared library and initialize it.
+ * @param core Path to the core .so/.dll/.dylib file.
+ * @return true on success, false if the library could not be loaded or initialized.
+ * @note Call InitAudioDevice() and InitWindow() before this function.
  */
-static bool InitLibretroEx(const char* core) {
+static bool InitLibretro(const char* core) {
     if (!PeekLibretroCoreInfo(core)) {
         return false;
     }
@@ -2680,16 +2680,6 @@ static bool InitLibretroEx(const char* core) {
     // Initialize the core.
     LIBRETRO.core.retro_init();
     return true;
-}
-
-/**
- * Load a libretro core shared library and initialize it.
- * @param core Path to the core .so/.dll/.dylib file.
- * @return true on success, false if the library could not be loaded or initialized.
- * @note Call InitAudioDevice() and InitWindow() before this function.
- */
-static bool InitLibretro(const char* core) {
-    return InitLibretroEx(core);
 }
 
 /**
