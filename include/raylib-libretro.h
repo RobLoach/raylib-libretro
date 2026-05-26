@@ -74,6 +74,8 @@ static unsigned GetLibretroRotation(void);
 static Texture2D GetLibretroTexture(void);
 static bool IsLibretroGameRequired(void);
 static bool ResetLibretro(void);
+static bool SetLibretroCheat(unsigned index, bool enabled, const char* code);
+static bool ResetLibretroCheats(void);
 static void UnloadLibretroGame(void);
 static void CloseLibretro(void);
 static void SetLibretroVolume(float volume);
@@ -2955,6 +2957,34 @@ static bool IsLibretroGameReady(void) {
 static bool ResetLibretro(void) {
     if (IsLibretroReady() && LIBRETRO.core.symbols.retro_reset) {
         LIBRETRO.core.symbols.retro_reset();
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Enable or disable a cheat code on the loaded core.
+ *
+ * @param index The index of the cheat to act upon.
+ * @param enabled Whether to enable or disable the cheat.
+ * @param code The cheat code string (format is core-specific).
+ * @return true if the cheat was passed to the core.
+ */
+static bool SetLibretroCheat(unsigned index, bool enabled, const char* code) {
+    if (IsLibretroGameReady() && LIBRETRO.core.symbols.retro_cheat_set && code != NULL && code[0] != '\0') {
+        LIBRETRO.core.symbols.retro_cheat_set(index, enabled, code);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Reset all active cheats on the loaded core to their default disabled state.
+ * @return true if the core's cheat reset callback was called.
+ */
+static bool ResetLibretroCheats(void) {
+    if (IsLibretroGameReady() && LIBRETRO.core.symbols.retro_cheat_reset) {
+        LIBRETRO.core.symbols.retro_cheat_reset();
         return true;
     }
     return false;
