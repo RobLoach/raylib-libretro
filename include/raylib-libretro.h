@@ -2990,9 +2990,32 @@ static void UnloadLibretroGame(void) {
     }
     LIBRETRO.core.retro_run = NULL;
     LIBRETRO.core.loaded = false;
+    LIBRETRO.core.shutdown = false;
     LIBRETRO.core.contentPath[0] = '\0';
+    LIBRETRO.core.contentDir[0]  = '\0';
+    LIBRETRO.core.contentName[0] = '\0';
+    LIBRETRO.core.contentExt[0]  = '\0';
     LIBRETRO.core.gameInfoExtValid = false;
     memset(&LIBRETRO.core.gameInfoExt, 0, sizeof(LIBRETRO.core.gameInfoExt));
+
+    // Per-game runtime state that must not leak into the next game.
+    LIBRETRO.core.rotation         = 0;
+    LIBRETRO.core.gameTimeNSEC     = 0;
+    LIBRETRO.core.osdMessage[0]    = '\0';
+    LIBRETRO.core.osdEndTime       = 0.0;
+    LIBRETRO.core.singleSampleCount = 0;
+    LIBRETRO.core.audioDropWarnCount = 0;
+
+    // Stop any in-flight controller rumble before clearing the stored state —
+    // SetLibretroRumbleState pushed long-duration values to the hardware that
+    // would otherwise keep buzzing after the game is gone.
+    for (unsigned p = 0; p < RAYLIB_LIBRETRO_RUMBLE_PORTS; p++) {
+        if (LIBRETRO.core.rumbleStrong[p] > 0.0f || LIBRETRO.core.rumbleWeak[p] > 0.0f) {
+            SetGamepadVibration((int)p, 0.0f, 0.0f, 0.0f);
+        }
+    }
+    memset(LIBRETRO.core.rumbleStrong, 0, sizeof(LIBRETRO.core.rumbleStrong));
+    memset(LIBRETRO.core.rumbleWeak,   0, sizeof(LIBRETRO.core.rumbleWeak));
 
     // Release the persistent ROM buffer kept alive for persistent_data=true.
     if (LIBRETRO.core.persistentGameData != NULL) {
