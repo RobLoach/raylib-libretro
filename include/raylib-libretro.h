@@ -171,9 +171,11 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 } while (0)
 #define LoadLibretroMethod(S) LoadLibretroMethodHandle(LIBRETRO.core.S, S)
 
+/**
+ * Dynamic library symbols for a libretro core.
+ */
 typedef struct LibretroCoreData {
-    // Dynamic library symbols.
-    void *handle;
+    void *handle; /** The dynamic linked library handle. */
     void (*retro_init)(void);
     void (*retro_deinit)(void);
     unsigned (*retro_api_version)(void);
@@ -201,7 +203,7 @@ typedef struct LibretroCoreData {
     size_t (*retro_get_memory_size)(unsigned);
 
     // System Information.
-    bool shutdown;
+    bool shutdown; /** Indicates whether or not the core requested to shutdown. */
     unsigned width, height, fps;
     double sampleRate;
     float aspectRatio;
@@ -3023,10 +3025,11 @@ static void ResetLibretroCoreState(void) {
  * Deinitialize and unload the libretro core.
  */
 static void CloseLibretro(void) {
-    // Make sure the game is unloaded prior to unloading the core.
-    if (IsLibretroGameReady()) {
-        UnloadLibretroGame();
-    }
+    // Free game-scoped resources before tearing down the core. Called
+    // unconditionally because a partial load (retro_load_game succeeded but
+    // InitLibretroAudioVideo failed) leaves persistentGameData allocated
+    // with loaded=false, and IsLibretroGameReady() would skip the cleanup.
+    UnloadLibretroGame();
 
     // Let the core know that the audio device has been deinitialized. The
     // function pointer lives in the dylib we're about to close.
