@@ -4,6 +4,21 @@
 
 ![Screenshot of raylib-libretro](docs/screenshot.png)
 
+## Features
+
+- Multi-Emulator for NES, SNES, GBA, Genesis, etc
+- Shipped Cores: fceumm, snes9x, gambatte, mgba, picodrive
+- Gamepad, Keyboard, On-Screen Controls
+- Shaders
+- Menu Themes
+- Audio
+- Fast Forward
+- Slow Motion
+- Rewind
+- Save Slots and SRAM
+- Core Options
+- Zip Files
+
 ## Usage
 
 ``` sh
@@ -19,32 +34,6 @@ raylib-libretro -L ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
 raylib-libretro -L ~/.config/retroarch/cores/fceumm_libretro.so smb.zip
 raylib-libretro smb.nes
 ```
-
-## Controls
-
-| Control            | Keyboard    |
-| ---                | ---         |
-| D-Pad              | Arrow Keys  |
-| Buttons            | ZX AS QW    |
-| Start              | Enter       |
-| Select             | Right Shift |
-| Rewind             | R           |
-| Toggle Menu        | F1          |
-| Save State         | F2          |
-| Load State         | F4          |
-| Screenshot         | F8          |
-| Previous Shader    | F9          |
-| Next Shader        | F10         |
-| Fullscreen         | F11         |
-
-## Core Support
-
-The following cores have been tested with raylib-libretro:
-
-- fceumm
-- snes9x
-- picodrive
-- scummvm
 
 ## Compile
 
@@ -121,7 +110,7 @@ bool SetLibretroCoreOption(const char* key, const char* value);
 const char* GetLibretroCoreOption(const char* key);
 void* GetLibretroSerializedData(unsigned int* size);
 bool SetLibretroSerializedData(void* data, unsigned int size);
-void ShowLibretroMessage(const char* msg, float duration);
+void SetLibretroMessage(const char* msg, float duration);
 bool DrawLibretroMessage();
 const char* GetLibretroDirectory(int directory);
 ```
