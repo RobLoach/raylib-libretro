@@ -11,7 +11,7 @@
 *
 *   LICENSE: zlib/libpng
 *
-*   rLibretro is licensed under an unmodified zlib/libpng license, which is an OSI-certified,
+*   LibretroData is licensed under an unmodified zlib/libpng license, which is an OSI-certified,
 *   BSD-like license that allows static linking with closed source software:
 *
 *   Copyright (c) 2020 Rob Loach (@RobLoach)
