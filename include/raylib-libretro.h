@@ -2654,7 +2654,6 @@ static bool InitLibretroEx(const char* core, bool peek) {
     LoadLibretroMethod(retro_get_memory_data);
     LoadLibretroMethod(retro_get_memory_size);
 
-    // Initialize the core.
     TextCopy(Libretro.core.corePath, core);
 
     // Set up the callbacks.
