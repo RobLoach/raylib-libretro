@@ -252,7 +252,7 @@ bool Update(void* userData) {
                 if (GetLibretroSpeed() <= 1.0f) {
                     data->savedVolume = GetLibretroVolume();
                     SetLibretroSpeed(data->menu->fastForwardSpeed);
-                    SetLibretroVolume(0.0f);
+                    SetLibretroVolume(data->savedVolume * 0.5f);
                     SetLibretroMessage(TextFormat("Fast Forward %dx", data->menu->fastForwardSpeed), 1.0f);
                 }
             } else if (smDown) {
