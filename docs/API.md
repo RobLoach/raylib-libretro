@@ -188,3 +188,5 @@ Returns the core's controller port info and sets `*count` to the number of ports
 
 #### `const char* GetLibretroDirectory(int directory)`
 Returns the path for the requested directory type. `directory` maps to `RETRO_ENVIRONMENT_GET_*_DIRECTORY` values from `libretro.h`.
+
+If the requested directory has not been configured (e.g. when integrating `raylib-libretro.h` without the menu/config layer, leaving the directory fields zero-initialized), the value of `GetApplicationDirectory()` is returned as a fallback. The libretro env-callback handlers for `GET_SYSTEM_DIRECTORY`, `GET_SAVE_DIRECTORY`, `GET_CORE_ASSETS_DIRECTORY`, `GET_PLAYLIST_DIRECTORY`, and `GET_FILE_BROWSER_START_DIRECTORY` all route through this function, so cores never receive an empty string from the frontend. Returns `NULL` only for unknown `directory` keys.
