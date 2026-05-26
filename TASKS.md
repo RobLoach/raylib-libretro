@@ -113,7 +113,7 @@ A roadmap of some interesting features to consider.
 
 ## Cheats
 
-- [ ] Cheat code support via libretro cheat interface
+- [x] Cheat code support via libretro cheat interface
 - [ ] `.cht` file load / save (RetroArch compatible)
 - [ ] Built-in cheat search (8/16/32-bit, signed/unsigned, BE/LE)
 - [ ] Game Genie / GameShark / Action Replay code parsers
