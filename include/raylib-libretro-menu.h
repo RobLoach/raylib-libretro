@@ -569,7 +569,6 @@ static bool MenuInitCore(const char* corePath) {
     LibretroApplyDirectories();
     if (!InitLibretro(corePath)) return false;
     LoadLibretroCoreOptions();
-    SetLibretroVolume(menu.volumeSelected);
     return true;
 }
 
