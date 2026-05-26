@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25.0)
+cmake_minimum_required(VERSION 3.22.1)
 project(raylib-libretro-android C)
 
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
