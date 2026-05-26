@@ -1861,7 +1861,6 @@ static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *
 static void LibretroVideoRefresh(const void *data, unsigned width, unsigned height, size_t pitch) {
     // Only act when there is usable pixel data.
     if (!data) {
-        TraceLog(LOG_WARNING, "LIBRETRO: VideoRefresh provided no pixel data");
         return;
     }
 
