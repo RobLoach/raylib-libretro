@@ -51,7 +51,7 @@ extern "C" {
 //------------------------------------------------------------------------------------
 
 static bool InitLibretro(const char* core);
-static bool InitLibretroEx(const char* core, bool peek);
+static bool PeekLibretroCoreInfo(const char* core);
 static bool LoadLibretroGame(const char* gameFile);
 static bool IsLibretroReady(void);
 static bool IsLibretroGameReady(void);
@@ -2589,12 +2589,17 @@ static bool IsLibretroGameRequired(void) {
 }
 
 /**
- * Load a libretro core, optionally in peek mode (metadata only, no full init).
+ * Load a libretro core's dylib and populate its identity fields
+ * (libraryName, libraryVersion, validExtensions, needFullpath, blockExtract)
+ * via retro_get_system_info, without performing a full init.
+ *
+ * The dylib is left open so the caller can read identity fields off
+ * LIBRETRO.core. The caller is responsible for calling CloseLibretro().
+ *
  * @param core Path to the core shared library.
- * @param peek When true, only system info is queried; the core is not fully initialized.
  * @return true on success.
  */
-static bool InitLibretroEx(const char* core, bool peek) {
+static bool PeekLibretroCoreInfo(const char* core) {
     // Avoid initializing twice.
     if (IsLibretroReady()) {
         TraceLog(LOG_INFO, "LIBRETRO: Core already loaded, use CloseLibretro()");
@@ -2639,11 +2644,18 @@ static bool InitLibretroEx(const char* core, bool peek) {
     if (TextLength(LIBRETRO.core.validExtensions) > 0) {
         TraceLog(LOG_INFO, "    > Extensions:   %s", LIBRETRO.core.validExtensions);
     }
+    return true;
+}
 
-    if (peek) {
-        // Leave the dylib open so the caller can read identity fields off
-        // LIBRETRO.core. The caller is responsible for CloseLibretro().
-        return true;
+/**
+ * Load a libretro core shared library and initialize it.
+ * @param core Path to the core .so/.dll/.dylib file.
+ * @return true on success, false if the library could not be loaded or initialized.
+ * @note Call InitAudioDevice() and InitWindow() before this function.
+ */
+static bool InitLibretro(const char* core) {
+    if (!PeekLibretroCoreInfo(core)) {
+        return false;
     }
 
     // Load all other libretro methods.
@@ -2684,16 +2696,6 @@ static bool InitLibretroEx(const char* core, bool peek) {
     // Initialize the core.
     LIBRETRO.core.symbols.retro_init();
     return true;
-}
-
-/**
- * Load a libretro core shared library and initialize it.
- * @param core Path to the core .so/.dll/.dylib file.
- * @return true on success, false if the library could not be loaded or initialized.
- * @note Call InitAudioDevice() and InitWindow() before this function.
- */
-static bool InitLibretro(const char* core) {
-    return InitLibretroEx(core, false);
 }
 
 /**

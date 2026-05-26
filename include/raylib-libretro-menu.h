@@ -444,7 +444,7 @@ static void ScanLibretroCoreDirectory(void) {
     int coreIndex = 0;
     for (unsigned int i = 0; i < files.count; i++) {
         if (!IsLibretroCoreFile(files.paths[i])) continue;
-        if (!InitLibretroEx(files.paths[i], true)) continue;
+        if (!PeekLibretroCoreInfo(files.paths[i])) continue;
         if (TextLength(LIBRETRO.core.validExtensions) == 0) {
             CloseLibretro();
             continue;
