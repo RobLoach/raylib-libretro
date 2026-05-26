@@ -343,8 +343,16 @@ typedef struct LibretroData {
     char playlistsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char fileBrowserStartDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 
+    /**
+     * The username for the libretro cores.
+     *
+     * @see RETRO_ENVIRONMENT_GET_USERNAME
+     */
+    char username[128];
+
     // Per-core state (reset with memset(0) on core unload).
     LibretroCoreData core;
+
 } LibretroData;
 
 #if defined(__cplusplus)
@@ -359,6 +367,7 @@ extern "C" {
 static LibretroData LIBRETRO = {
     .volume = 1.0f,
     .speed = 1.0f,
+    .username = "raylib"
 };
 
 static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
@@ -1148,7 +1157,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             const char** name = (const char**)data;
-            *name = "raylib";
+            *name = LIBRETRO.username;
             return true;
         }
 

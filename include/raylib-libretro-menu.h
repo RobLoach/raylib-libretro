@@ -882,20 +882,17 @@ LibretroMenu* InitLibretroMenu(void) {
                 nk_console_button_onclick(gameplayMenu, "Gameplay", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
 
-            nk_console* ffSpeed = nk_console_slider_int(gameplayMenu, "Fast Forward Speed", 2, &menu.fastForwardSpeed, 10, 1);
-            (void)ffSpeed;
-            nk_console* smSpeed = nk_console_slider_float(gameplayMenu, "Slow Motion Speed", 0.1f, &menu.slowMotionSpeed, 0.9f, 0.1f);
-            (void)smSpeed;
+            nk_console_slider_int(gameplayMenu, "Fast Forward Speed", 2, &menu.fastForwardSpeed, 10, 1);
+            nk_console_slider_float(gameplayMenu, "Slow Motion Speed", 0.1f, &menu.slowMotionSpeed, 0.9f, 0.1f);
             nk_console_checkbox(gameplayMenu, "Touch Controls", &menu.touchControls);
             #if defined(PLATFORM_WEB)
             nk_console_checkbox(gameplayMenu, "Touch Haptics", &menu.touchHapticsEnabled);
             #endif
-            nk_console* rewind = nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
-            (void)rewind;
-            nk_console* slotCombo = nk_console_combobox(gameplayMenu, "Save Slot",
+            nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
+            nk_console_combobox(gameplayMenu, "Save Slot",
                 "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
                 '|', &menu.saveSlotIndex);
-            (void)slotCombo;
+            nk_console_textedit(gameplayMenu, "Username", LIBRETRO.username, 128);
         }
 
         // Keys
@@ -905,28 +902,28 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_button_set_symbol(
                 nk_console_button_onclick(keysMenu, "Keys", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
-            nk_console* w;
-            w = nk_console_key(keysMenu, "Screenshot", &menu.keyScreenshot);
-            w = nk_console_key(keysMenu, "Rewind", &menu.keyRewind);
-            w = nk_console_key(keysMenu, "Menu", &menu.keyMenu);
-            w = nk_console_key(keysMenu, "Save State", &menu.keySaveState);
-            w = nk_console_key(keysMenu, "Load State", &menu.keyLoadState);
-            w = nk_console_key(keysMenu, "Prev Slot", &menu.keyPrevSlot);
-            w = nk_console_key(keysMenu, "Next Slot", &menu.keyNextSlot);
-            w = nk_console_key(keysMenu, "Fullscreen", &menu.keyFullscreen);
+            nk_console_key(keysMenu, "Screenshot", &menu.keyScreenshot);
+            nk_console_key(keysMenu, "Rewind", &menu.keyRewind);
+            nk_console_key(keysMenu, "Menu", &menu.keyMenu);
+            nk_console_key(keysMenu, "Save State", &menu.keySaveState);
+            nk_console_key(keysMenu, "Load State", &menu.keyLoadState);
+            nk_console_key(keysMenu, "Prev Slot", &menu.keyPrevSlot);
+            nk_console_key(keysMenu, "Next Slot", &menu.keyNextSlot);
+            nk_console_key(keysMenu, "Fullscreen", &menu.keyFullscreen)
             #ifdef __EMSCRIPTEN__
-            w->visible = nk_false;
+                ->visible = nk_false;
+            #else
+                ;
             #endif
-            w = nk_console_key(keysMenu, "Previous Shader", &menu.keyPrevShader);
-            w = nk_console_key(keysMenu, "Next Shader", &menu.keyNextShader);
-            w = nk_console_key(keysMenu, "Reset", &menu.keyReset);
-            w = nk_console_key(keysMenu, "Quit", &menu.keyQuit);
-            w = nk_console_key(keysMenu, "Volume Up", &menu.keyVolumeUp);
-            w = nk_console_key(keysMenu, "Volume Down", &menu.keyVolumeDown);
-            w = nk_console_key(keysMenu, "Mute", &menu.keyMute);
-            w = nk_console_key(keysMenu, "Fast Forward", &menu.keyFastForward);
-            w = nk_console_key(keysMenu, "Slow Motion", &menu.keySlowMotion);
-            (void)w;
+            nk_console_key(keysMenu, "Previous Shader", &menu.keyPrevShader);
+            nk_console_key(keysMenu, "Next Shader", &menu.keyNextShader);
+            nk_console_key(keysMenu, "Reset", &menu.keyReset);
+            nk_console_key(keysMenu, "Quit", &menu.keyQuit);
+            nk_console_key(keysMenu, "Volume Up", &menu.keyVolumeUp);
+            nk_console_key(keysMenu, "Volume Down", &menu.keyVolumeDown);
+            nk_console_key(keysMenu, "Mute", &menu.keyMute);
+            nk_console_key(keysMenu, "Fast Forward", &menu.keyFastForward);
+            nk_console_key(keysMenu, "Slow Motion", &menu.keySlowMotion);
         }
 
         // Keyboard Controls (Player 1)
@@ -936,24 +933,22 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_button_set_symbol(
                 nk_console_button_onclick(kbMenu, "Keyboard Controls", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
-            nk_console* w;
-            w = nk_console_key(kbMenu, "B",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]);
-            w = nk_console_key(kbMenu, "Y",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]);
-            w = nk_console_key(kbMenu, "Select", &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT]);
-            w = nk_console_key(kbMenu, "Start",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]);
-            w = nk_console_key(kbMenu, "Up",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]);
-            w = nk_console_key(kbMenu, "Down",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]);
-            w = nk_console_key(kbMenu, "Left",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]);
-            w = nk_console_key(kbMenu, "Right",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]);
-            w = nk_console_key(kbMenu, "A",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]);
-            w = nk_console_key(kbMenu, "X",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]);
-            w = nk_console_key(kbMenu, "L",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]);
-            w = nk_console_key(kbMenu, "R",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]);
-            w = nk_console_key(kbMenu, "L2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]);
-            w = nk_console_key(kbMenu, "R2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]);
-            w = nk_console_key(kbMenu, "L3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]);
-            w = nk_console_key(kbMenu, "R3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]);
-            (void)w;
+            nk_console_key(kbMenu, "B",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]);
+            nk_console_key(kbMenu, "Y",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]);
+            nk_console_key(kbMenu, "Select", &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT]);
+            nk_console_key(kbMenu, "Start",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]);
+            nk_console_key(kbMenu, "Up",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]);
+            nk_console_key(kbMenu, "Down",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]);
+            nk_console_key(kbMenu, "Left",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]);
+            nk_console_key(kbMenu, "Right",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]);
+            nk_console_key(kbMenu, "A",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]);
+            nk_console_key(kbMenu, "X",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]);
+            nk_console_key(kbMenu, "L",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]);
+            nk_console_key(kbMenu, "R",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]);
+            nk_console_key(kbMenu, "L2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]);
+            nk_console_key(kbMenu, "R2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]);
+            nk_console_key(kbMenu, "L3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]);
+            nk_console_key(kbMenu, "R3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]);
         }
 
         // Directories
@@ -1163,7 +1158,8 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyLoadState", (int)menu.keyLoadState);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyPrevSlot",  (int)menu.keyPrevSlot);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyNextSlot",  (int)menu.keyNextSlot);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "saveSlot",     menu.saveSlotIndex);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "saveSlot", menu.saveSlotIndex);
+    rlconfig_set(menu.cfg, "raylib-libretro", "username", LIBRETRO.username);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyFullscreen", (int)menu.keyFullscreen);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
@@ -1319,6 +1315,8 @@ static bool LoadLibretroMenuSettings(void) {
     menu.keyNextSlot   = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextSlot",   (int)menu.keyNextSlot);
     menu.saveSlotIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "saveSlot", 0);
     if (menu.saveSlotIndex < 0 || menu.saveSlotIndex > 9) menu.saveSlotIndex = 0;
+    const char* username = rlconfig_get(menu.cfg, "raylib-libretro", "username");
+    if (username) TextCopy(LIBRETRO.username, username);
     menu.keyFullscreen = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFullscreen", (int)menu.keyFullscreen);
     menu.keyPrevShader = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
     menu.keyNextShader  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
