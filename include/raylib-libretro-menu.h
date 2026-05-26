@@ -341,10 +341,10 @@ static void LibretroMenuCheatChanged(nk_console* widget, void* user_data) {
     NK_UNUSED(user_data);
     if (menu.cheatBuffer[0] == '\0') return;
     if (SetLibretroCheat(menu.cheatIndex, true, menu.cheatBuffer)) {
-        size_t len = strlen(menu.cheatList);
-        size_t remaining = sizeof(menu.cheatList) - len;
-        if (remaining > 1) {
-            snprintf(menu.cheatList + len, remaining, "%u. %s\n", menu.cheatIndex + 1, menu.cheatBuffer);
+        int len = TextLength(menu.cheatList);
+        const char* line = TextFormat("%u. %s\n", menu.cheatIndex + 1, menu.cheatBuffer);
+        if (len + TextLength(line) < (int)sizeof(menu.cheatList)) {
+            TextAppend(menu.cheatList, line, &len);
         }
         SetLibretroMessage(TextFormat("Cheat %u applied", menu.cheatIndex + 1), 2.0f);
         menu.cheatIndex++;
