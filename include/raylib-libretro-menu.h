@@ -445,7 +445,10 @@ static void ScanLibretroCoreDirectory(void) {
     for (unsigned int i = 0; i < files.count; i++) {
         if (!IsLibretroCoreFile(files.paths[i])) continue;
         if (!InitLibretroEx(files.paths[i], true)) continue;
-        if (TextLength(Libretro.core.validExtensions) == 0) continue;
+        if (TextLength(Libretro.core.validExtensions) == 0) {
+            CloseLibretro();
+            continue;
+        }
 
         char keyPath[64], keyExts[64];
         TextCopy(keyPath, TextFormat("core_%d_path", coreIndex));
@@ -453,6 +456,7 @@ static void ScanLibretroCoreDirectory(void) {
         rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath, files.paths[i]);
         rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyExts, Libretro.core.validExtensions);
         TraceLog(LOG_INFO, "LIBRETRO: Cached %s (%s)", Libretro.core.libraryName, Libretro.core.validExtensions);
+        CloseLibretro();
         coreIndex++;
     }
     UnloadDirectoryFiles(files);

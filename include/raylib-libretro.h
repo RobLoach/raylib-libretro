@@ -2587,23 +2587,6 @@ static bool InitLibretroEx(const char* core, bool peek) {
         return false;
     }
 
-    // Freshen identity / capability fields before touching the new core, so
-    // a partially-failed load (e.g. dylib_load succeeds but retro_get_system_info
-    // never runs) can't leave the previous core's identity visible. These
-    // fields are intentionally not reset in ResetLibretroCoreState so that
-    // the peek path can populate them and CloseLibretro doesn't wipe them
-    // before ScanLibretroCoreDirectory reads them.
-    Libretro.core.corePath[0]        = '\0';
-    Libretro.core.libraryName[0]     = '\0';
-    Libretro.core.libraryVersion[0]  = '\0';
-    Libretro.core.validExtensions[0] = '\0';
-    Libretro.core.needFullpath       = false;
-    Libretro.core.blockExtract       = false;
-    Libretro.core.supportNoGame      = false;
-    Libretro.core.apiVersion         = 0;
-    Libretro.core.performanceLevel   = 0;
-    Libretro.core.pixelFormat        = RETRO_PIXEL_FORMAT_0RGB1555;
-
     // Open the dynamic library.
     Libretro.core.handle = dylib_load(core);
     if (!Libretro.core.handle) {
@@ -2638,7 +2621,8 @@ static bool InitLibretroEx(const char* core, bool peek) {
     }
 
     if (peek) {
-        CloseLibretro();
+        // Leave the dylib open so the caller can read identity fields off
+        // Libretro.core. The caller is responsible for CloseLibretro().
         return true;
     }
 
@@ -3026,73 +3010,16 @@ static void UnloadLibretroGame(void) {
  * with a clean slate. Must be called after the dylib is closed.
  */
 static void ResetLibretroCoreState(void) {
-    // Core Variables
-    memset(Libretro.core.variableKeys,        0, sizeof(Libretro.core.variableKeys));
-    memset(Libretro.core.variableValues,      0, sizeof(Libretro.core.variableValues));
-    memset(Libretro.core.variableLabels,      0, sizeof(Libretro.core.variableLabels));
-    memset(Libretro.core.variableValuesList,  0, sizeof(Libretro.core.variableValuesList));
-    memset(Libretro.core.variableDisplayList, 0, sizeof(Libretro.core.variableDisplayList));
-    memset(Libretro.core.variableTooltips,    0, sizeof(Libretro.core.variableTooltips));
-    memset(Libretro.core.variableVisible,     0, sizeof(Libretro.core.variableVisible));
-    Libretro.core.variableCount          = 0;
-    Libretro.core.variableOptionsVersion = 0;
-    Libretro.core.variablesDirty         = false;
-    Libretro.core.variablesVisibilityDirty = false;
+    // Release owned pointers before the memset wipes them.
+    UnloadLibretroMemoryMaps();
 
-    // Audio & Video
-    Libretro.core.rotation    = 0;
-    Libretro.core.width       = 0;
-    Libretro.core.height      = 0;
-    Libretro.core.fps         = 0;
-    Libretro.core.sampleRate  = 0.0;
-    Libretro.core.aspectRatio = 0.0f;
-    Libretro.core.minimumAudioLatencyMs = 0;
-    memset(&Libretro.core.audio_buffer_status_callback, 0, sizeof(Libretro.core.audio_buffer_status_callback));
+    memset(&Libretro.core, 0, sizeof(Libretro.core));
 
-    // VFS
-    memset(&Libretro.core.vfs_interface, 0, sizeof(Libretro.core.vfs_interface));
-
-    // Content Information
-    memset(Libretro.core.contentInfoOverrideExts,        0, sizeof(Libretro.core.contentInfoOverrideExts));
-    memset(Libretro.core.contentInfoOverrideNeedFullpath, 0, sizeof(Libretro.core.contentInfoOverrideNeedFullpath));
-    memset(Libretro.core.contentInfoOverridePersistent,   0, sizeof(Libretro.core.contentInfoOverridePersistent));
-    Libretro.core.contentInfoOverrideCount = 0;
-
-    // Runtime flags that should not survive a core close. shutdown is the
-    // RETRO_ENVIRONMENT_SHUTDOWN request from the previous core; loaded is
-    // set by retro_load_game and should be implied false once we've closed.
-    //
-    // NOTE: identity fields (corePath, libraryName, libraryVersion,
-    // validExtensions, needFullpath, blockExtract, supportNoGame, apiVersion,
-    // performanceLevel, pixelFormat) are intentionally NOT reset here. The
-    // peek path in InitLibretroEx populates these via retro_get_system_info
-    // and then calls CloseLibretro() before returning; the caller
-    // (ScanLibretroCoreDirectory) reads them off the global afterwards. They
-    // get re-freshened at the start of the next InitLibretroEx.
-    Libretro.core.loaded   = false;
-    Libretro.core.shutdown = false;
-
-    // Performance Counter
-    Libretro.core.perf_counter_last = NULL;
-
-    Libretro.speed = 1.0f;
-    memset(Libretro.core.rumbleStrong, 0, sizeof(Libretro.core.rumbleStrong));
-    memset(Libretro.core.rumbleWeak,   0, sizeof(Libretro.core.rumbleWeak));
-
-    // Per-session counters / accumulators.
-    Libretro.core.gameTimeNSEC      = 0;
-    Libretro.core.singleSampleCount = 0;
-    Libretro.core.audioDropWarnCount = 0;
-
-    // On-Screen Message
-    memset(Libretro.core.osdMessage, 0, sizeof(Libretro.core.osdMessage));
-    Libretro.core.osdEndTime = 0.0;
-
-    // Dynamic Rate Control
+    // Non-zero defaults.
     Libretro.core.drcAdjustment = 1.0f;
     Libretro.core.drcEnabled = true;
 
-    UnloadLibretroMemoryMaps();
+    Libretro.speed = 1.0f;
 }
 
 /**
