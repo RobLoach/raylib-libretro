@@ -72,8 +72,11 @@ int main(int argc, char* argv[]) {
 #### `bool InitLibretro(const char* core)`
 Load a libretro core from the given shared library path (`.so`, `.dll`, or `.dylib`). Returns `true` on success. Must be called before any other API function.
 
-#### `bool InitLibretroEx(const char* core, bool peek)`
-Like `InitLibretro()`, but when `peek` is `true` the core is inspected for metadata without fully initialising it.
+#### `bool InitLibretroEx(const char* core)`
+Same as `InitLibretro()`. Exposed separately so future variants can extend initialization without breaking the simpler entry point.
+
+#### `bool PeekLibretroCoreInfo(const char* core)`
+Open the core's dylib and populate identity fields (`libraryName`, `libraryVersion`, `validExtensions`, `needFullpath`, `blockExtract`) via `retro_get_system_info`, without performing a full init. The dylib is left open so the caller can read fields off `LIBRETRO.core`; the caller is responsible for calling `CloseLibretro()` to release it.
 
 #### `bool LoadLibretroGame(const char* gameFile)`
 Load content (ROM, disk image, etc.) from `gameFile`. Pass `NULL` for cores that do not require content. Returns `true` on success.
