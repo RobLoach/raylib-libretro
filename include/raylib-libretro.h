@@ -162,19 +162,19 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 
 // Dynamic loading methods.
 #define LoadLibretroMethodHandle(V, S) do {\
-    function_t func = dylib_proc(LIBRETRO.core.handle, #S); \
+    function_t func = dylib_proc(LIBRETRO.core.symbols.handle, #S); \
     memcpy(&V, &func, sizeof(func)); \
     if (!func) { \
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load symbol '" #S "' ", dylib_error()); \
         return false; \
     }\
 } while (0)
-#define LoadLibretroMethod(S) LoadLibretroMethodHandle(LIBRETRO.core.S, S)
+#define LoadLibretroMethod(S) LoadLibretroMethodHandle(LIBRETRO.core.symbols.S, S)
 
 /**
- * Dynamic library symbols for a libretro core.
+ * Dynamic library handle plus the function pointers resolved from it.
  */
-typedef struct LibretroCoreData {
+typedef struct LibretroCoreSymbols {
     void *handle; /** The dynamic linked library handle. */
     void (*retro_init)(void);
     void (*retro_deinit)(void);
@@ -201,6 +201,13 @@ typedef struct LibretroCoreData {
     unsigned (*retro_get_region)(void);
     void* (*retro_get_memory_data)(unsigned);
     size_t (*retro_get_memory_size)(unsigned);
+} LibretroCoreSymbols;
+
+/**
+ * Dynamic library symbols for a libretro core.
+ */
+typedef struct LibretroCoreData {
+    LibretroCoreSymbols symbols;
 
     // System Information.
     bool shutdown; /** Indicates whether or not the core requested to shutdown. */
@@ -1668,12 +1675,12 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
  * Retrieve the audio/video information for the core.
  */
 static bool LibretroGetAudioVideo(void) {
-    if (LIBRETRO.core.retro_get_system_av_info == NULL) {
+    if (LIBRETRO.core.symbols.retro_get_system_av_info == NULL) {
         return false;
     }
 
     struct retro_system_av_info av = {0};
-    LIBRETRO.core.retro_get_system_av_info(&av);
+    LIBRETRO.core.symbols.retro_get_system_av_info(&av);
     LIBRETRO.core.width = av.geometry.base_width;
     LIBRETRO.core.height = av.geometry.base_height;
     LIBRETRO.core.fps = (unsigned int)av.timing.fps;
@@ -1776,7 +1783,7 @@ static void UpdateLibretro(void) {
             LIBRETRO.core.audio_buffer_status_callback.callback(true, occupancy, underrun_likely);
         }
 
-        LIBRETRO.core.retro_run();
+        LIBRETRO.core.symbols.retro_run();
 
         // Flush any single-sample accumulator left over from retro_run so
         // samples arrive in the ring buffer within the same frame.
@@ -1801,9 +1808,9 @@ static void UpdateLibretro(void) {
         // the first retro_run, so retro_get_system_av_info called pre-run
         // returns sample_rate=0. Once we have a frame, re-query AV info and
         // reinit audio if a valid sample rate has appeared.
-        if (LIBRETRO.core.sampleRate <= 0.0 && LIBRETRO.core.retro_get_system_av_info) {
+        if (LIBRETRO.core.sampleRate <= 0.0 && LIBRETRO.core.symbols.retro_get_system_av_info) {
             struct retro_system_av_info av = {0};
-            LIBRETRO.core.retro_get_system_av_info(&av);
+            LIBRETRO.core.symbols.retro_get_system_av_info(&av);
             if (av.timing.sample_rate > 0.0) {
                 LIBRETRO.core.sampleRate = av.timing.sample_rate;
                 TraceLog(LOG_INFO, "LIBRETRO: Sample rate now %.2f Hz (post-retro_run); reinitializing audio", LIBRETRO.core.sampleRate);
@@ -1823,7 +1830,7 @@ static void UpdateLibretro(void) {
  * Check whether a core has been successfully initialized.
  * @return true if a core is loaded and ready. */
 static bool IsLibretroReady(void) {
-    return LIBRETRO.core.handle != NULL;
+    return LIBRETRO.core.symbols.handle != NULL;
 }
 
 /**
@@ -2322,7 +2329,7 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
     info.size = (size_t)dataSize;
     info.meta = "";
     SetLibretroGameInfoExt(fileData, (size_t)dataSize);
-    if (!LIBRETRO.core.retro_load_game(&info)) {
+    if (!LIBRETRO.core.symbols.retro_load_game(&info)) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with retro_load_game()");
         LIBRETRO.core.loaded = false;
         return false;
@@ -2424,7 +2431,7 @@ static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize, 
     info.size = (size_t)dataSize;
     info.meta = "";
     SetLibretroGameInfoExt(fileData, (size_t)dataSize);
-    if (!LIBRETRO.core.retro_load_game(&info)) {
+    if (!LIBRETRO.core.symbols.retro_load_game(&info)) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load game data with retro_load_game()");
         LIBRETRO.core.loaded = false;
         return false;
@@ -2485,7 +2492,7 @@ static bool LoadLibretroGame(const char* gameFile) {
         info.meta = "";
         LIBRETRO.core.contentPath[0] = '\0';
         SetLibretroGameInfoExt(NULL, 0);
-        if (LIBRETRO.core.retro_load_game(&info)) {
+        if (LIBRETRO.core.symbols.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded without content");
             LIBRETRO.core.loaded = true;
             return InitLibretroAudioVideo();
@@ -2510,7 +2517,7 @@ static bool LoadLibretroGame(const char* gameFile) {
         info.meta = "";
         TextCopy(LIBRETRO.core.contentPath, gameFile);
         SetLibretroGameInfoExt(NULL, 0);
-        if (LIBRETRO.core.retro_load_game(&info)) {
+        if (LIBRETRO.core.symbols.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded content with full path: %s", gameFile);
             LIBRETRO.core.loaded = true;
             return InitLibretroAudioVideo();
@@ -2592,15 +2599,15 @@ static bool InitLibretroEx(const char* core, bool peek) {
     }
 
     // Open the dynamic library.
-    LIBRETRO.core.handle = dylib_load(core);
-    if (!LIBRETRO.core.handle) {
+    LIBRETRO.core.symbols.handle = dylib_load(core);
+    if (!LIBRETRO.core.symbols.handle) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load provided library");
         return false;
     }
 
     // Find the libretro API version.
     LoadLibretroMethod(retro_api_version);
-    LIBRETRO.core.apiVersion = LIBRETRO.core.retro_api_version();
+    LIBRETRO.core.apiVersion = LIBRETRO.core.symbols.retro_api_version();
     TraceLog(LOG_INFO, "LIBRETRO: API version: %i", LIBRETRO.core.apiVersion);
     if (LIBRETRO.core.apiVersion != 1) {
         CloseLibretro();
@@ -2611,7 +2618,7 @@ static bool InitLibretroEx(const char* core, bool peek) {
     // Retrieve the libretro core system information.
     LoadLibretroMethod(retro_get_system_info);
     struct retro_system_info systemInfo;
-    LIBRETRO.core.retro_get_system_info(&systemInfo);
+    LIBRETRO.core.symbols.retro_get_system_info(&systemInfo);
     TextCopy(LIBRETRO.core.libraryName, systemInfo.library_name);
     TextCopy(LIBRETRO.core.libraryVersion, systemInfo.library_version);
     TextCopy(LIBRETRO.core.validExtensions, systemInfo.valid_extensions);
@@ -2658,15 +2665,15 @@ static bool InitLibretroEx(const char* core, bool peek) {
     TextCopy(LIBRETRO.core.corePath, core);
 
     // Set up the callbacks.
-    LIBRETRO.core.retro_set_video_refresh(LibretroVideoRefresh);
-    LIBRETRO.core.retro_set_input_poll(LibretroInputPoll);
-    LIBRETRO.core.retro_set_input_state(LibretroInputState);
-    LIBRETRO.core.retro_set_audio_sample(UpdateLibretroAudioSample);
-    LIBRETRO.core.retro_set_audio_sample_batch(UpdateLibretroAudioSampleBatch);
-    LIBRETRO.core.retro_set_environment(CallLibretroEnvironment);
+    LIBRETRO.core.symbols.retro_set_video_refresh(LibretroVideoRefresh);
+    LIBRETRO.core.symbols.retro_set_input_poll(LibretroInputPoll);
+    LIBRETRO.core.symbols.retro_set_input_state(LibretroInputState);
+    LIBRETRO.core.symbols.retro_set_audio_sample(UpdateLibretroAudioSample);
+    LIBRETRO.core.symbols.retro_set_audio_sample_batch(UpdateLibretroAudioSampleBatch);
+    LIBRETRO.core.symbols.retro_set_environment(CallLibretroEnvironment);
 
     // Initialize the core.
-    LIBRETRO.core.retro_init();
+    LIBRETRO.core.symbols.retro_init();
     return true;
 }
 
@@ -2926,7 +2933,7 @@ static Texture2D GetLibretroTexture(void) {
  * @return true if a game/content is currently loaded.
  */
 static bool IsLibretroGameReady(void) {
-    return LIBRETRO.core.loaded && LIBRETRO.core.retro_run != NULL;
+    return LIBRETRO.core.loaded && LIBRETRO.core.symbols.retro_run != NULL;
 }
 
 /**
@@ -2935,8 +2942,8 @@ static bool IsLibretroGameReady(void) {
  * @return true if the core reset callback was called.
  */
 static bool ResetLibretro(void) {
-    if (IsLibretroReady() && LIBRETRO.core.retro_reset) {
-        LIBRETRO.core.retro_reset();
+    if (IsLibretroReady() && LIBRETRO.core.symbols.retro_reset) {
+        LIBRETRO.core.symbols.retro_reset();
         return true;
     }
     return false;
@@ -2949,12 +2956,12 @@ static bool ResetLibretro(void) {
  */
 static void* GetLibretroSRAMData(size_t* size) {
     if (!IsLibretroGameReady()) return NULL;
-    if (LIBRETRO.core.retro_get_memory_data == NULL || LIBRETRO.core.retro_get_memory_size == NULL) return NULL;
+    if (LIBRETRO.core.symbols.retro_get_memory_data == NULL || LIBRETRO.core.symbols.retro_get_memory_size == NULL) return NULL;
 
-    size_t sramSize = LIBRETRO.core.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+    size_t sramSize = LIBRETRO.core.symbols.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
     if (sramSize == 0) return NULL;
 
-    void* data = LIBRETRO.core.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+    void* data = LIBRETRO.core.symbols.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
     if (data == NULL) return NULL;
 
     if (size != NULL) *size = sramSize;
@@ -2983,11 +2990,11 @@ static bool SetLibretroSRAMData(const void* data, size_t size) {
  * Unload the currently loaded content without closing the core.
  */
 static void UnloadLibretroGame(void) {
-    if (LIBRETRO.core.retro_unload_game != NULL) {
-        LIBRETRO.core.retro_unload_game();
-        LIBRETRO.core.retro_unload_game = NULL;
+    if (LIBRETRO.core.symbols.retro_unload_game != NULL) {
+        LIBRETRO.core.symbols.retro_unload_game();
+        LIBRETRO.core.symbols.retro_unload_game = NULL;
     }
-    LIBRETRO.core.retro_run = NULL;
+    LIBRETRO.core.symbols.retro_run = NULL;
     LIBRETRO.core.loaded = false;
     LIBRETRO.core.shutdown = false;
     LIBRETRO.core.contentPath[0] = '\0';
@@ -3060,8 +3067,8 @@ static void CloseLibretro(void) {
     }
 
     // Call retro_deinit() to deinitialize the core.
-    if (LIBRETRO.core.retro_deinit != NULL) {
-        LIBRETRO.core.retro_deinit();
+    if (LIBRETRO.core.symbols.retro_deinit != NULL) {
+        LIBRETRO.core.symbols.retro_deinit();
     }
 
     CloseLibretroAudio();
@@ -3076,8 +3083,8 @@ static void CloseLibretro(void) {
     }
 
     // Close the dynamically loaded handle.
-    if (LIBRETRO.core.handle != NULL) {
-        dylib_close(LIBRETRO.core.handle);
+    if (LIBRETRO.core.symbols.handle != NULL) {
+        dylib_close(LIBRETRO.core.symbols.handle);
     }
 
     // ResetLibretroCoreState() memsets LIBRETRO.core, which zeroes every
@@ -3532,11 +3539,11 @@ static void* GetLibretroSerializedData(unsigned int* size) {
         return NULL;
     }
 
-    if (LIBRETRO.core.retro_serialize_size == NULL || LIBRETRO.core.retro_serialize == NULL) {
+    if (LIBRETRO.core.symbols.retro_serialize_size == NULL || LIBRETRO.core.symbols.retro_serialize == NULL) {
         return NULL;
     }
 
-    size_t finalSize = LIBRETRO.core.retro_serialize_size();
+    size_t finalSize = LIBRETRO.core.symbols.retro_serialize_size();
     if (finalSize == 0) {
         return NULL;
     }
@@ -3549,7 +3556,7 @@ static void* GetLibretroSerializedData(unsigned int* size) {
         return NULL;
     }
 
-    if (LIBRETRO.core.retro_serialize(saveData, finalSize)) {
+    if (LIBRETRO.core.symbols.retro_serialize(saveData, finalSize)) {
         return saveData;
     }
     TraceLog(LOG_ERROR, "LIBRETRO: Failed to get retro_serialize");
@@ -3567,11 +3574,11 @@ static bool SetLibretroSerializedData(void* data, unsigned int size) {
         return false;
     }
 
-    if (LIBRETRO.core.retro_unserialize == NULL) {
+    if (LIBRETRO.core.symbols.retro_unserialize == NULL) {
         return false;
     }
 
-    return LIBRETRO.core.retro_unserialize(data, (size_t)size);
+    return LIBRETRO.core.symbols.retro_unserialize(data, (size_t)size);
 }
 
 #endif
