@@ -347,7 +347,10 @@ extern "C" {
  *
  * TODO: Figure out a way to have Libretro not be a static global?
  */
-static rLibretro Libretro = {0};
+static rLibretro Libretro = {
+    .volume = 1.0f,
+    .speed = 1.0f,
+};
 
 static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
     const char *label, const char *valuesList, const char *displayList, const char *tooltip) {
@@ -2653,9 +2656,6 @@ static bool InitLibretroEx(const char* core, bool peek) {
 
     // Initialize the core.
     TextCopy(Libretro.core.corePath, core);
-    Libretro.core.shutdown = false;
-    Libretro.volume = 1.0f;
-    Libretro.speed = 1.0f;
 
     // Set up the callbacks.
     Libretro.core.retro_set_video_refresh(LibretroVideoRefresh);
@@ -3018,8 +3018,6 @@ static void ResetLibretroCoreState(void) {
     // Non-zero defaults.
     Libretro.core.drcAdjustment = 1.0f;
     Libretro.core.drcEnabled = true;
-
-    Libretro.speed = 1.0f;
 }
 
 /**
@@ -3031,24 +3029,15 @@ static void CloseLibretro(void) {
         UnloadLibretroGame();
     }
 
-    // Let the core know that the audio device has been deinitialized.
+    // Let the core know that the audio device has been deinitialized. The
+    // function pointer lives in the dylib we're about to close.
     if (Libretro.core.audio_callback.set_state != NULL) {
         Libretro.core.audio_callback.set_state(false);
-        memset(&Libretro.core.audio_callback, 0, sizeof(Libretro.core.audio_callback));
     }
-
-    // Drop any callbacks the core registered into its own .text — dylib_close()
-    // below invalidates those addresses, and a follow-up InitLibretro() with a
-    // different core that doesn't re-register them would call freed memory.
-    Libretro.core.keyboard_event = NULL;
-    Libretro.core.options_update_display_callback = NULL;
-    memset(&Libretro.core.runloop_frame_time, 0, sizeof(Libretro.core.runloop_frame_time));
-    Libretro.core.runloop_frame_time_last = 0;
 
     // Call retro_deinit() to deinitialize the core.
     if (Libretro.core.retro_deinit != NULL) {
         Libretro.core.retro_deinit();
-        Libretro.core.retro_deinit = NULL;
     }
 
     CloseLibretroAudio();
@@ -3056,22 +3045,20 @@ static void CloseLibretro(void) {
 
     if (Libretro.core.inputDescriptors != NULL) {
         MemFree(Libretro.core.inputDescriptors);
-        Libretro.core.inputDescriptors = NULL;
-        Libretro.core.inputDescriptorCount = 0;
     }
 
     if (Libretro.core.controllerInfo != NULL) {
         MemFree(Libretro.core.controllerInfo);
-        Libretro.core.controllerInfo = NULL;
-        Libretro.core.controllerPortCount = 0;
     }
 
     // Close the dynamically loaded handle.
     if (Libretro.core.handle != NULL) {
         dylib_close(Libretro.core.handle);
-        Libretro.core.handle = NULL;
     }
 
+    // ResetLibretroCoreState() memsets Libretro.core, which zeroes every
+    // field above — function pointers into the now-closed dylib, descriptor
+    // pointers and counts, audio/keyboard callbacks, etc.
     ResetLibretroCoreState();
 }
 
