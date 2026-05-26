@@ -223,6 +223,10 @@ bool Update(void* userData) {
 
         if (data->menu->rewindEnabled && IsLibretroGameReady()) {
             if (IsKeyDown(NuklearKeyToKeyboardKey(data->menu->keyRewind))) {
+                if (IsKeyPressed(NuklearKeyToKeyboardKey(data->menu->keyRewind))) {
+                    data->savedVolume = GetLibretroVolume();
+                    SetLibretroVolume(data->savedVolume * 0.5f);
+                }
                 void* stateData = NULL;
                 unsigned int stateSize = 0;
                 if (RewindBufferPop(&data->rewind, &stateData, &stateSize)) {
@@ -232,6 +236,9 @@ bool Update(void* userData) {
                     SetLibretroMessage("Rewind limit reached", 1.0f);
                 }
             } else {
+                if (IsKeyReleased(NuklearKeyToKeyboardKey(data->menu->keyRewind))) {
+                    SetLibretroVolume(data->savedVolume);
+                }
                 unsigned int size = 0;
                 void* state = GetLibretroSerializedData(&size);
                 if (state != NULL) {
@@ -252,7 +259,7 @@ bool Update(void* userData) {
                 if (GetLibretroSpeed() <= 1.0f) {
                     data->savedVolume = GetLibretroVolume();
                     SetLibretroSpeed(data->menu->fastForwardSpeed);
-                    SetLibretroVolume(0.0f);
+                    SetLibretroVolume(data->savedVolume * 0.5f);
                     SetLibretroMessage(TextFormat("Fast Forward %dx", data->menu->fastForwardSpeed), 1.0f);
                 }
             } else if (smDown) {
