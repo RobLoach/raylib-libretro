@@ -101,6 +101,9 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
+    char cheatBuffer[256];
+    char cheatList[1024];
+    unsigned cheatIndex;
     nk_rune keyboardP1[16]; // Indexed by RETRO_DEVICE_ID_JOYPAD_*
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
@@ -331,6 +334,35 @@ static void MenuResetGameClicked(nk_console* widget, void* user_data) {
     if (!IsLibretroGameReady()) return;
     ResetLibretro();
     menu.active = false;
+}
+
+static void LibretroMenuCheatChanged(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    if (menu.cheatBuffer[0] == '\0') return;
+    if (SetLibretroCheat(menu.cheatIndex, true, menu.cheatBuffer)) {
+        int len = TextLength(menu.cheatList);
+        const char* line = TextFormat("%u. %s\n", menu.cheatIndex + 1, menu.cheatBuffer);
+        if (len + TextLength(line) < (int)sizeof(menu.cheatList)) {
+            TextAppend(menu.cheatList, line, &len);
+        }
+        SetLibretroMessage(TextFormat("Cheat %u applied", menu.cheatIndex + 1), 2.0f);
+        menu.cheatIndex++;
+    } else {
+        SetLibretroMessage("Cheat failed", 2.0f);
+    }
+    menu.cheatBuffer[0] = '\0';
+}
+
+static void LibretroMenuResetCheatsClicked(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    if (ResetLibretroCheats()) {
+        menu.cheatIndex = 0;
+        menu.cheatBuffer[0] = '\0';
+        menu.cheatList[0] = '\0';
+        SetLibretroMessage("Cheats reset", 2.0f);
+    }
 }
 
 // Fired when the user navigates back from Settings or Core Options. This is
@@ -570,6 +602,9 @@ static bool MenuInitCore(const char* corePath) {
     if (!InitLibretro(corePath)) return false;
     LoadLibretroCoreOptions();
     SetLibretroVolume(menu.volumeSelected);
+    menu.cheatIndex = 0;
+    menu.cheatBuffer[0] = '\0';
+    menu.cheatList[0] = '\0';
     return true;
 }
 
@@ -814,6 +849,27 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.resetGameButton = nk_console_button_onclick(menu.console, "Reset Game", &MenuResetGameClicked);
     nk_console_button_set_symbol(menu.resetGameButton, NK_SYMBOL_CIRCLE_SOLID);
 
+    // Cheats
+    {
+        nk_console* cheatsMenu = nk_console_button(menu.console, "Cheats");
+        nk_console_button_set_symbol(
+            nk_console_button_onclick(cheatsMenu, "Cheats", &nk_console_button_back),
+            NK_SYMBOL_TRIANGLE_UP);
+
+        // Add Cheat Code
+        nk_console* cheatEntry = nk_console_textedit_action(cheatsMenu, "Add Cheat Code",
+            menu.cheatBuffer, sizeof(menu.cheatBuffer));
+        nk_console_add_event(cheatEntry, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuCheatChanged);
+
+        // Reset Cheats
+        nk_console* resetCheatsButton = nk_console_button_onclick(cheatsMenu, "Reset Cheats",
+            &LibretroMenuResetCheatsClicked);
+        nk_console_button_set_symbol(resetCheatsButton, NK_SYMBOL_X);
+
+        // The list of active cheats.
+        nk_console_label(cheatsMenu, menu.cheatList);
+    }
+
     // Load Game
     menu.loadGameWidget = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
     nk_console_add_event_handler(menu.loadGameWidget, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
@@ -909,12 +965,7 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_key(keysMenu, "Load State", &menu.keyLoadState);
             nk_console_key(keysMenu, "Prev Slot", &menu.keyPrevSlot);
             nk_console_key(keysMenu, "Next Slot", &menu.keyNextSlot);
-            nk_console_key(keysMenu, "Fullscreen", &menu.keyFullscreen)
-            #ifdef __EMSCRIPTEN__
-                ->visible = nk_false;
-            #else
-                ;
-            #endif
+            nk_console_key(keysMenu, "Fullscreen", &menu.keyFullscreen);
             nk_console_key(keysMenu, "Previous Shader", &menu.keyPrevShader);
             nk_console_key(keysMenu, "Next Shader", &menu.keyNextShader);
             nk_console_key(keysMenu, "Reset", &menu.keyReset);
