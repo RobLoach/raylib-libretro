@@ -1,267 +1,60 @@
 # CLAUDE.md — raylib-libretro
 
-This file provides guidance for AI assistants working with this codebase.
-
-## Project Overview
-
-**raylib-libretro** is a [libretro](https://www.libretro.com/) frontend built with [raylib](https://www.raylib.com). It provides:
-
-1. `raylib-libretro.h` — a single-header C library that integrates the libretro API into any raylib application
-2. `bin/raylib-libretro.c` — a full frontend executable with shaders, save states, and a menu UI
-3. Supporting headers for shaders, VFS, and menus
-
-The project is in early development. License: zlib/libpng
-
----
-
-## Repository Structure
-
-```
-raylib-libretro/
-├── .github/workflows/Tests.yml   # CI: Linux + Windows build validation
-├── bin/
-│   ├── CMakeLists.txt
-│   └── raylib-libretro.c         # Full frontend executable (entry point)
-├── example/
-│   ├── CMakeLists.txt
-│   └── raylib-libretro-basic.c   # Minimal integration example (~85 lines)
-├── include/
-│   ├── CMakeLists.txt
-│   ├── raylib-libretro.h         # Core libretro↔raylib integration (~2400 lines)
-│   ├── raylib-libretro-menu.h    # Nuklear-based menu UI
-│   ├── raylib-libretro-shaders.h # Post-process shader system
-│   ├── raylib-libretro-vfs.h     # Virtual file system
-│   └── raylib-libretro-shaders/  # 28 GLSL shader source files (100/120/330)
-├── lib/
-│   ├── CMakeLists.txt
-│   └── raylib-libretro-static.c  # Thin wrapper for static library target
-├── vendor/                        # Git submodules (see Dependencies)
-├── CMakeLists.txt                 # Root build config
-├── LICENSE
-├── README.md
-└── TASKS.md                       # Planned features / roadmap
-```
+A [libretro](https://www.libretro.com/) frontend built with [raylib](https://www.raylib.com). Provides a single-header C library (`include/raylib-libretro.h`) and a full frontend executable (`bin/raylib-libretro.c`). License: zlib/libpng.
 
 ## Architecture
 
 ### Single-Header Library Pattern
 
-All headers in `include/` follow the stb-style single-header pattern. The implementation is compiled by defining a macro **once** in exactly one translation unit:
+Headers in `include/` follow the stb-style pattern. Define the implementation macro **once** in exactly one translation unit:
 
 ```c
-// In one .c file only:
 #define RAYLIB_LIBRETRO_IMPLEMENTATION
 #include "raylib-libretro.h"
-
-#define RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
-#include "raylib-libretro-shaders.h"
-
-#define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
-#include "raylib-libretro-menu.h"
 ```
 
-Other files include the headers without the `_IMPLEMENTATION` define.
+Same for `RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION` and `RAYLIB_LIBRETRO_MENU_IMPLEMENTATION`.
 
 ### Global State
 
-The library holds all state in a single static global:
-
-```c
-static LibretroData LIBRETRO = {0};
-```
-
-There is no explicit context object passed around — all functions operate on this global. This matches raylib's own design pattern.
+All state lives in a single static global `LibretroData LIBRETRO = {0};`. No context object is passed around — functions operate on the global, matching raylib's design.
 
 ### Libretro Core Loading
 
-Cores (emulators) are shared libraries (`.so`/`.dll`/`.dylib`) loaded at runtime using `dylib.h` from libretro-common. The macro pattern for loading symbols is:
+Cores are shared libraries (`.so`/`.dll`/`.dylib`) loaded at runtime via `dylib.h` from libretro-common, using the `LoadLibretroMethod(S)` macro.
 
-```c
-#define LoadLibretroMethod(S) LoadLibretroMethodHandle(LIBRETRO.core.S, S)
-```
-
-## Core API Lifecycle
-
-The minimal usage sequence (see `example/raylib-libretro-basic.c`):
-
-```c
-InitWindow(...);
-InitAudioDevice();
-
-InitLibretro(core_path);         // Dynamically load the core .so/.dll
-LoadLibretroGame(game_path);     // Load ROM (NULL for content-less cores)
-
-while (!WindowShouldClose() && !LibretroShouldClose()) {
-    UpdateLibretro();            // Run one emulation frame
-    BeginDrawing();
-        DrawLibretro();          // Render core framebuffer to screen
-    EndDrawing();
-}
-
-UnloadLibretroGame();
-CloseLibretro();
-CloseAudioDevice();
-CloseWindow();
-```
-
-### Full API Reference (raylib-libretro.h)
-
-**Lifecycle:**
-- `InitLibretro(core)` / `CloseLibretro()`
-- `LoadLibretroGame(file)` / `UnloadLibretroGame()`
-- `ResetLibretro()`
-
-**Per-frame:**
-- `UpdateLibretro()` — run one core frame
-- `LibretroShouldClose()` — core requested shutdown
-
-**Drawing (multiple overloads):**
-- `DrawLibretro()` — centered
-- `DrawLibretroTint(color)`
-- `DrawLibretroEx(pos, rotation, scale, tint)`
-- `DrawLibretroV(pos, tint)`
-- `DrawLibretroTexture(x, y, tint)`
-- `DrawLibretroPro(destRect, tint)`
-
-**State queries:**
-- `GetLibretroName()` / `GetLibretroVersion()`
-- `GetLibretroWidth()` / `GetLibretroHeight()` / `GetLibretroRotation()`
-- `GetLibretroTexture()` — raw `Texture2D` for custom rendering
-- `IsLibretroReady()` / `IsLibretroGameReady()`
-- `IsLibretroGameRequired()`
-
-**Audio:**
-- `SetLibretroVolume(float)` / `GetLibretroVolume()`
-
-**Core options (key-value):**
-- `SetLibretroCoreOption(key, value)` → `bool` (false if key unknown)
-- `GetLibretroCoreOption(key)` → `const char*` (NULL if not found)
-
-**Serialization / save states:**
-- `GetLibretroSerializedData(&size)` → `void*` (caller must `MemFree()`)
-- `SetLibretroSerializedData(data, size)` → `bool`
-
-## Build System
-
-### Prerequisites
-
-- CMake 3.11+
-- C compiler (GCC, Clang, or MSVC)
-- On Linux: `xorg-dev`, `libglu1-mesa-dev`
-- Git submodules initialized
-
-### Build Steps
+## Build
 
 ```sh
-git clone https://github.com/robloach/raylib-libretro.git
-cd raylib-libretro
 git submodule update --init
-mkdir build && cd build
-cmake ..
-cmake --build .
+mkdir build && cd build && cmake .. && cmake --build .
 ```
 
-The binary is at `build/bin/raylib-libretro`.
+Linux deps: `xorg-dev`, `libglu1-mesa-dev`. CMake 3.11+. CMake first tries `find_package(raylib QUIET)`, then falls back to `vendor/raylib`.
 
-### CMake Options
+CMake options: `BUILD_RAYLIB_LIBRETRO_EXAMPLE` (ON), `BUILD_RAYLIB_LIBRETRO` (ON).
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `BUILD_RAYLIB_LIBRETRO_EXAMPLE` | ON | Build `example/` |
-| `BUILD_RAYLIB_LIBRETRO` | ON | Build `bin/` executable |
+Targets: `raylib-libretro-interface` (headers), `raylib-libretro-static` (static lib), `raylib-libretro` (exe), `raylib-libretro-basic` (example).
 
-### raylib Discovery
+## CI
 
-CMake first calls `find_package(raylib QUIET)`. If not found on the system, it falls back to `vendor/raylib` (the submodule). No explicit flag needed.
-
-### CMake Targets
-
-- `raylib-libretro-interface` — interface/header-only target (`include/`)
-- `raylib-libretro-static` — static library (`lib/`), links raylib + dylib
-- `raylib-libretro` — full executable (`bin/`)
-- `raylib-libretro-basic` — example executable
-
-## Running the Frontend
-
-```sh
-# General usage
-raylib-libretro [-L <core>] [game]
-
-# Linux example
-bin/raylib-libretro -L ~/.config/retroarch/cores/fceumm_libretro.so smb.nes
-
-# macOS example
-bin/raylib-libretro -L ~/Library/Application\ Support/RetroArch/cores/fceumm_libretro.dylib smb.nes
-```
-
-## Dependencies
-
-All dependencies are git submodules in `vendor/`:
-
-| Submodule | Purpose |
-|-----------|---------|
-| `raylib` | Graphics, audio, input, windowing |
-| `libretro-common` | `dylib.h` (dynamic loading), `libretro.h`, CPU features |
-| `raylib-nuklear` | Nuklear GUI integration for raylib |
-| `nuklear_console` | Terminal-style console UI widget |
-| `nuklear_gamepad` | Gamepad input for Nuklear |
-| `c-vector` | Dynamic array / vector utility |
-| `raylib-app` | App framework wrapper (Init/UpdateDrawFrame/Cleanup lifecycle) |
-| `hashmap` | Type-safe string-keyed hash map backing `raylib-libretro-config.h` |
-| `raylib-physfs` | Raylib-style API over PhysFS; ships `physfs_platform_raylib.c` so PhysFS uses raylib's file I/O |
-| `physfs` | Virtual filesystem; mounts ROM `.zip` archives and parent directories at `/game` for libretro |
-
-Always run `git submodule update --init` after cloning or switching branches.
-
----
-
-## CI / Tests
-
-GitHub Actions (`.github/workflows/Tests.yml`) runs on push/PR to `master`:
-
-- **build-linux**: Ubuntu, installs `xorg-dev libglu1-mesa-dev`, CMake Debug build
-- **build-windows**: Windows latest, MSVC, CMake Debug build
-
-There are **no unit tests** — CI validates compilation only. When adding code, ensure it compiles cleanly on both platforms.
-
----
+`.github/workflows/Tests.yml` runs CMake Debug builds on Ubuntu (GCC) and Windows (MSVC). **No unit tests** — CI validates compilation only. Ensure changes compile on both platforms.
 
 ## Coding Conventions
 
-- **Language:** C (not C++), compatible with C99
-- **Naming:** Public API uses `PascalCase` verbs — `InitLibretro`, `DrawLibretro`, `GetLibretroTexture`
-- **Internal helpers:** Prefixed with `Libretro` — `LibretroLogger`, `SetLibretroPerformanceCounter`, `LibretroRetroPixelFormatToPixelFormat`
-- **Static functions:** All functions in headers are declared `static` (single-header pattern)
-- **Error handling:** Functions return `bool` for success/failure; errors go to `TraceLog(LOG_ERROR, ...)`
-- **Memory:** Use raylib's `MemAlloc` / `MemFree` (not raw `malloc`/`free`)
-- **Include guards:** `#ifndef RAYLIB_LIBRETRO_*_H` / `#define RAYLIB_LIBRETRO_*_H`
-- **Implementation guards:** `#ifdef RAYLIB_LIBRETRO_*_IMPLEMENTATION` / `#ifndef RAYLIB_LIBRETRO_*_IMPLEMENTATION_ONCE`
-- **Comments:** File headers use the raylib-style `/**** ... ****/` banner format
-- **Pixel formats:** libretro uses `RGB565`, `XRGB8888`, `0RGB1555`; mapping functions convert to raylib equivalents
+- **Language:** C99 (not C++)
+- **Public API:** `PascalCase` verbs — `InitLibretro`, `DrawLibretro`, `GetLibretroTexture`
+- **Internal helpers:** `Libretro`-prefixed — `LibretroLogger`, etc.
+- **Static functions:** all functions in headers are `static`
+- **Error handling:** return `bool`; log errors with `TraceLog(LOG_ERROR, ...)`
+- **Memory:** use raylib's `MemAlloc` / `MemFree`, never raw `malloc`/`free`
+- **Include guards:** `RAYLIB_LIBRETRO_*_H`
+- **Implementation guards:** `RAYLIB_LIBRETRO_*_IMPLEMENTATION` / `..._IMPLEMENTATION_ONCE`
+- **File headers:** raylib-style `/**** ... ****/` banners
 
-## Key Files for AI Assistants
+## Key Files
 
-When making changes, these are the most important files to understand:
-
-| File | Why It Matters |
-|------|---------------|
-| `include/raylib-libretro.h` | The entire library implementation — all callbacks, mappings, audio ring buffer |
-| `include/raylib-libretro-shaders.h` | Shader types, GLSL sources, parameter structs, cycling logic |
-| `bin/raylib-libretro.c` | Full app using `raylib-app` lifecycle callbacks |
-| `example/raylib-libretro-basic.c` | Canonical minimal usage — good reference for the expected API flow |
-| `CMakeLists.txt` | Dependency resolution and build options |
-| `TASKS.md` | Planned features — check here before implementing something to see if it's already scoped |
-
-## Pixel Format Handling
-
-The core may report one of three pixel formats via the environment callback:
-
-- `RETRO_PIXEL_FORMAT_0RGB1555` — converted to RGB565 before upload
-- `RETRO_PIXEL_FORMAT_XRGB8888` — converted to RGBA8888 before upload
-- `RETRO_PIXEL_FORMAT_RGB565` — used directly
-
-Conversion functions: `LibretroPixelFormatARGB1555ToRGB565`, `LibretroMapPixelFormatARGB8888ToRGBA8888`.
-
-## Audio
-
-Audio uses a pre-allocated ring buffer of 8192 stereo frames to avoid per-frame allocation. The libretro audio callbacks accumulate samples into this buffer, which is drained by raylib's audio stream. Volume is applied at drain time via `SetLibretroVolume`.
+- `include/raylib-libretro.h` — the entire library (callbacks, pixel format mapping, audio ring buffer)
+- `example/raylib-libretro-basic.c` — canonical minimal usage; reference for the expected API flow
+- `bin/raylib-libretro.c` — full app using `raylib-app` lifecycle callbacks
+- `TASKS.md` — planned features; check here before implementing new work
