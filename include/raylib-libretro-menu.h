@@ -1470,13 +1470,10 @@ static void UpdateLibretroMenuVisibility(void) {
         menu.optionsMenu->visible = nk_false;
     }
     if (menu.saveStateButton) {
-        //menu.saveStateButton->visible = gameReady;
         menu.saveStateButton->parent->visible = gameReady;
     }
-    //if (menu.loadStateButton) menu.loadStateButton->visible = gameReady;
     if (menu.resumeButton) menu.resumeButton->visible = gameReady;
     if (menu.resetGameButton) menu.resetGameButton->visible = gameReady;
-    //if (menu.closeGameButton) menu.closeGameButton->visible = gameReady;
 }
 
 void UpdateLibretroMenu(void) {
@@ -1484,12 +1481,16 @@ void UpdateLibretroMenu(void) {
         return;
     }
 
-    // Toggle the menu via gamepad or via the menu key when inactive.
-    // When the menu is active, nk_console handles the menu key internally:
-    // back-navigation in submenus, and MenuCloseOnBack at root level.
-    if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) || IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE)) {
+    // Menu Guide Button
+    if (IsGamepadButtonReleased(0, GAMEPAD_BUTTON_MIDDLE) ||
+            IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) ||
+            IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) ||
+            IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE)) {
         menu.active = !menu.active;
-    } else if (!menu.active && IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyMenu))) {
+    }
+
+    // Menu Key
+    if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyMenu)) && !menu.active) {
         menu.active = true;
     }
 

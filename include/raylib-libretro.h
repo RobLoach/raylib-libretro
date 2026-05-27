@@ -2827,8 +2827,14 @@ static void DrawLibretro(void) {
  * @param msg      Message text to display.
  * @param duration How long to show the message, in seconds. */
 static void SetLibretroMessage(const char* msg, float duration) {
-    TextCopy(LIBRETRO.core.osdMessage, msg);
-    LIBRETRO.core.osdEndTime = GetTime() + (double)duration;
+    if (msg == NULL) {
+        LIBRETRO.core.osdMessage[0] = '\0';
+        LIBRETRO.core.osdEndTime = 0;
+    }
+    else {
+        TextCopy(LIBRETRO.core.osdMessage, msg);
+        LIBRETRO.core.osdEndTime = GetTime() + (double)duration;
+    }
 }
 
 /**
