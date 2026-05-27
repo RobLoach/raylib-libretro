@@ -2862,6 +2862,10 @@ static void SetLibretroSpeed(float speed) {
     } else {
         SetTargetFPS((int)(LIBRETRO.core.fps * speed));
     }
+    if (IsAudioStreamValid(LIBRETRO.core.audioStream)) {
+        float streamVolume = (speed == 1.0f) ? LIBRETRO.volume : 0.0f;
+        SetAudioStreamVolume(LIBRETRO.core.audioStream, streamVolume);
+    }
 }
 
 /**
