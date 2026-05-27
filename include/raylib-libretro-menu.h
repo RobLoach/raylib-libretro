@@ -1296,7 +1296,7 @@ LibretroMenu* InitLibretroMenu(void) {
         }
     }
 
-    // Quit (hidden on Emscripten — the browser handles tab/window closing)
+    // Quit
 #ifndef __EMSCRIPTEN__
     nk_console* quitButton = nk_console_button(menu.console, "Quit");
     nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuQuitClicked);
