@@ -68,6 +68,7 @@ typedef struct LibretroMenu {
     nk_console* loadStateButton;
     nk_console* resumeButton;
     nk_console* resetGameButton;
+    nk_console* cheatsMenuButton;
     //nk_console* closeGameButton;
     int shaderSelectedIndex;
     int textureFilterIndex;
@@ -1107,6 +1108,7 @@ LibretroMenu* InitLibretroMenu(void) {
     // Cheats
     {
         nk_console* cheatsMenu = nk_console_button(menu.console, "Cheats");
+        menu.cheatsMenuButton = cheatsMenu;
         nk_console_button_set_symbol(
             nk_console_button_onclick(cheatsMenu, "Cheats", &nk_console_button_back),
             NK_SYMBOL_TRIANGLE_UP);
@@ -1294,10 +1296,12 @@ LibretroMenu* InitLibretroMenu(void) {
         }
     }
 
-    // Quit
+    // Quit (hidden on Emscripten — the browser handles tab/window closing)
+#ifndef __EMSCRIPTEN__
     nk_console* quitButton = nk_console_button(menu.console, "Quit");
     nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuQuitClicked);
     nk_console_button_set_symbol(quitButton, NK_SYMBOL_X);
+#endif
 
     menu.active = true;
     return &menu;
@@ -1729,6 +1733,7 @@ static void UpdateLibretroMenuVisibility(void) {
     }
     if (menu.resumeButton) menu.resumeButton->visible = gameReady;
     if (menu.resetGameButton) menu.resetGameButton->visible = gameReady;
+    if (menu.cheatsMenuButton) menu.cheatsMenuButton->visible = gameReady;
 }
 
 void UpdateLibretroMenu(void) {
