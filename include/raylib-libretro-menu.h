@@ -1406,7 +1406,7 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
 
     nk_console_button_set_symbol(
         nk_console_button_onclick(m->optionsMenu, "Core Options", &nk_console_button_back),
-        NK_SYMBOL_X);
+        NK_SYMBOL_TRIANGLE_UP);
 
     for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
         if (TextLength(LIBRETRO.core.variableValuesList[i]) == 0) continue;
