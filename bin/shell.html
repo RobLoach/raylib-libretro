@@ -5,7 +5,18 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>raylib-libretro</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+
+    <!-- Progressive Web App: installable + standalone "Add to Home Screen" -->
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#000000">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="shortcut icon" href="https://www.raylib.com/favicon.ico">
+    <!-- iOS standalone web app -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="libretro">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <style>
       html, body {
         margin: 0;
@@ -226,7 +237,17 @@ canvas.emscripten {
         }]
       };
 
-
+      // Register the service worker so the app is installable and works
+      // offline. Registered relative to this page so it works under any
+      // deploy path (e.g. GitHub Pages project subpath). Failures are
+      // non-fatal — the app runs fine without it.
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('sw.js').catch(function (err) {
+            console.warn('Service worker registration failed:', err);
+          });
+        });
+      }
     </script>
     {{{ SCRIPT }}}
   </body>

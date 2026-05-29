@@ -35,6 +35,9 @@ foreach(URL IN ITEMS
     endif()
 endforeach()
 
+# Build raylib for Android (uses EGL/native window instead of GLFW+X11)
+set(PLATFORM       Android CACHE STRING "" FORCE)
+
 # Disable raylib extras
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_GAMES    OFF CACHE BOOL "" FORCE)

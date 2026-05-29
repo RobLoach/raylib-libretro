@@ -293,4 +293,13 @@ if ("${PLATFORM}" STREQUAL "Web")
         "${CMAKE_CURRENT_BINARY_DIR}/index.wasm"
         DESTINATION .
     )
+    # PWA assets: manifest, service worker and icons (referenced by shell.html)
+    install(FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/manifest.webmanifest"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sw.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/icon-192.png"
+        "${CMAKE_CURRENT_SOURCE_DIR}/icon-512.png"
+        "${CMAKE_CURRENT_SOURCE_DIR}/apple-touch-icon.png"
+        DESTINATION .
+    )
 endif()

@@ -53,6 +53,9 @@
 #define RAYLIB_LIBRETRO_TOUCH_IMPLEMENTATION
 #include "../include/raylib-libretro-touch.h"
 
+#define RAYLIB_LIBRETRO_LOGO_IMPLEMENTATION
+#include "../include/raylib-libretro-logo.h"
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten/html5.h>
 
@@ -128,6 +131,10 @@ typedef struct {
 } AppData;
 
 bool Init(void** userData, int argc, char** argv) {
+    Image logo = GetLibretroLogo();
+    SetWindowIcon(logo);
+    UnloadImage(logo);
+
     SetWindowMinSize(400, 300);
     SetExitKey(KEY_NULL);
 
