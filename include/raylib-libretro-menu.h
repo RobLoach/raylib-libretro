@@ -62,6 +62,8 @@ typedef struct LibretroMenu {
     bool active;
     bool shouldQuit;
     nk_bool fullscreen;
+    nk_bool vsync;
+    int fpsIndex;                         // index into the "FPS" combobox (Auto/30/60/120/144/240/Unlimited)
     nk_console* optionsMenu;              // "Core Options" submenu node
     nk_console* loadGameWidget;
     nk_console* saveStateButton;
@@ -92,7 +94,7 @@ typedef struct LibretroMenu {
     nk_rune keyVolumeDown;
     nk_rune keyMute;
     nk_rune keyFastForward;
-    int fastForwardSpeed;
+    float fastForwardSpeed;
     nk_rune keySlowMotion;
     float slowMotionSpeed;
     int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
@@ -179,6 +181,14 @@ static void LibretroFlushPersistentStorage(void) {
 #ifndef RAYLIB_LIBRETRO_CFG_FILE
 #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
 #endif
+
+// Number of increments a float settings slider divides its range into.
+#ifndef RAYLIB_LIBRETRO_MENU_SLIDER_STEPS
+#define RAYLIB_LIBRETRO_MENU_SLIDER_STEPS 20.0f
+#endif
+
+// Step size that divides [min, max] into RAYLIB_LIBRETRO_MENU_SLIDER_STEPS steps.
+#define RAYLIB_LIBRETRO_MENU_SLIDER_STEP(min, max) (((max) - (min)) / RAYLIB_LIBRETRO_MENU_SLIDER_STEPS)
 
 #if defined(__cplusplus)
 extern "C" {
@@ -530,6 +540,43 @@ static void SetLibretroMenuStyle(LibretroMenuStyle style) {
             break;
         }
     }
+}
+
+// Map the "FPS" combobox index to a SetTargetFPS() value. "Auto" follows the
+// monitor refresh rate; "Unlimited" returns 0 (no cap).
+static int LibretroMenuResolveTargetFps(void) {
+    switch (menu.fpsIndex) {
+        case 1: return 30;
+        case 2: return 60;
+        case 3: return 120;
+        case 4: return 144;
+        case 5: return 240;
+        case 6: return 0; // Unlimited
+        case 0:
+        default: {
+            int refreshRate = GetMonitorRefreshRate(GetCurrentMonitor());
+            return refreshRate > 0 ? refreshRate : 60;
+        }
+    }
+}
+
+// Apply the current VSYNC + FPS selection to the window. Emulation speed is
+// driven by the time accumulator in UpdateLibretro(), so these only govern how
+// often the frontend renders/polls; "Auto" doubles as a busy-loop safety cap
+// when a compositor or driver ignores the vsync hint.
+static void LibretroMenuApplyVideoSettings(void) {
+    if (menu.vsync) {
+        SetWindowState(FLAG_VSYNC_HINT);
+    } else {
+        ClearWindowState(FLAG_VSYNC_HINT);
+    }
+    SetTargetFPS(LibretroMenuResolveTargetFps());
+}
+
+static void LibretroMenuVideoChanged(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    LibretroMenuApplyVideoSettings();
 }
 
 static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
@@ -988,6 +1035,9 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     if (saveData != NULL) {
         SetLibretroSerializedData(saveData, (unsigned int)dataSize);
         MemFree(saveData);
+        // A save-state load is a one-shot wall-clock discontinuity; drop the
+        // accumulator backlog so the next frame doesn't burst to catch up.
+        ResetLibretroTiming();
         SetLibretroMessage(TextFormat("Slot %d Loaded", menu.saveSlotIndex + 1), 2.0f);
         menu.active = false;
     }
@@ -1003,6 +1053,8 @@ LibretroMenu* InitLibretroMenu(void) {
     menu = (LibretroMenu){0};
     menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA;
     menu.volumeSelected = 1.0f;
+    menu.vsync = nk_true;
+    menu.fpsIndex = 0; // Auto
     menu.keyScreenshot  = (nk_rune)NK_KEY_F8;
     menu.keyRewind      = (nk_rune)'R';
     menu.keyMenu        = (nk_rune)NK_KEY_TEXT_RESET_MODE;
@@ -1020,7 +1072,7 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.keyVolumeDown  = (nk_rune)'-';
     menu.keyMute        = (nk_rune)'M';
     menu.keyFastForward = (nk_rune)'F';
-    menu.fastForwardSpeed = 3;
+    menu.fastForwardSpeed = 3.0f;
     menu.keySlowMotion = (nk_rune)'G';
     menu.slowMotionSpeed = 0.5f;
     menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]      = (nk_rune)'Z';
@@ -1081,6 +1133,10 @@ LibretroMenu* InitLibretroMenu(void) {
     LoadLibretroMenuSettings();
     LibretroApplyDirectories();
     ScanLibretroCoreDirectory();
+
+    // Apply VSYNC/FPS even when no config was loaded, so the frame cap is always
+    // in place (defends against a vsync hint the driver/compositor ignores).
+    LibretroMenuApplyVideoSettings();
 
     // Build the Menu
     menu.resumeButton = nk_console_button_onclick(menu.console, "Resume", &MenuResumeClicked);
@@ -1158,6 +1214,12 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* fullscreenCheckbox = nk_console_checkbox(graphicsMenu, "Fullscreen", &menu.fullscreen);
             nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
 
+            nk_console* vsyncCheckbox = nk_console_checkbox(graphicsMenu, "VSYNC", &menu.vsync);
+            nk_console_add_event(vsyncCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuVideoChanged);
+
+            nk_console* fpsCombo = nk_console_combobox(graphicsMenu, "FPS", "Auto|30|60|120|144|240|Unlimited", '|', &menu.fpsIndex);
+            nk_console_add_event_handler(fpsCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuVideoChanged, NULL, NULL);
+
             static char shaderNames[256] = {0};
             if (shaderNames[0] == '\0') {
                 int offset = 0;
@@ -1183,7 +1245,7 @@ LibretroMenu* InitLibretroMenu(void) {
             SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
 
             // Volume
-            nk_console* volume = nk_console_slider_float(graphicsMenu, "Volume", 0.0f, &menu.volumeSelected, 1.0f, 0.1f);
+            nk_console* volume = nk_console_slider_float(graphicsMenu, "Volume", 0.0f, &menu.volumeSelected, 1.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.0f, 1.0f));
             nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
         }
 
@@ -1195,8 +1257,8 @@ LibretroMenu* InitLibretroMenu(void) {
                 nk_console_button_onclick(gameplayMenu, "Gameplay", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
 
-            nk_console_slider_int(gameplayMenu, "Fast Forward Speed", 2, &menu.fastForwardSpeed, 10, 1);
-            nk_console_slider_float(gameplayMenu, "Slow Motion Speed", 0.1f, &menu.slowMotionSpeed, 0.9f, 0.1f);
+            nk_console_slider_float(gameplayMenu, "Fast Forward Speed", 1.1f, &menu.fastForwardSpeed, 10.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(1.1f, 10.0f));
+            nk_console_slider_float(gameplayMenu, "Slow Motion Speed", 0.1f, &menu.slowMotionSpeed, 0.9f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.1f, 0.9f));
             nk_console_checkbox(gameplayMenu, "Touch Controls", &menu.touchControls);
             #if defined(PLATFORM_WEB)
             nk_console_checkbox(gameplayMenu, "Touch Haptics", &menu.touchHapticsEnabled);
@@ -1454,10 +1516,12 @@ static void LibretroMenuUpdateConfig(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return;
     rlconfig_set_int(menu.cfg, "raylib-libretro", "fullscreen", (int)menu.fullscreen);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "vsync", (int)menu.vsync);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "fps", menu.fpsIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "shader", menu.shaderSelectedIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "textureFilter", menu.textureFilterIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "volume", (int)(menu.volumeSelected * 100.0f));
+    rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", menu.volumeSelected);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchHaptics", menu.touchHapticsEnabled ? 1 : 0);
@@ -1479,9 +1543,9 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyMute",        (int)menu.keyMute);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
+    rlconfig_set_float(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "slowMotionSpeed", (int)(menu.slowMotionSpeed * 10.0f));
+    rlconfig_set_float(menu.cfg, "raylib-libretro", "slowMotionSpeed", menu.slowMotionSpeed);
     rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(menu.coreDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(menu.saveDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(menu.coreAssetsDirectory));
@@ -1586,6 +1650,11 @@ static bool LoadLibretroMenuSettings(void) {
     if (savedFullscreen != (nk_bool)IsWindowFullscreen()) ToggleFullscreen();
 #endif
 
+    menu.vsync = (nk_bool)rlconfig_get_int(menu.cfg, "raylib-libretro", "vsync", (int)menu.vsync);
+    menu.fpsIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "fps", menu.fpsIndex);
+    if (menu.fpsIndex < 0 || menu.fpsIndex > 6) menu.fpsIndex = 0;
+    LibretroMenuApplyVideoSettings();
+
     menu.shaderSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "shader", LIBRETRO_SHADER_NONE);
     if (menu.shaderSelectedIndex < 0 || menu.shaderSelectedIndex >= LIBRETRO_SHADER_TYPE_COUNT) {
         menu.shaderSelectedIndex = LIBRETRO_SHADER_NONE;
@@ -1602,10 +1671,11 @@ static bool LoadLibretroMenuSettings(void) {
         menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
     SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
 
-    int volumeInt = (float)rlconfig_get_int(menu.cfg, "raylib-libretro", "volume", 100);
-    if (volumeInt < 0) volumeInt = 0;
-    if (volumeInt > 100) volumeInt = 100;
-    menu.volumeSelected = (float)volumeInt / 100.0f;
+    menu.volumeSelected = rlconfig_get_float(menu.cfg, "raylib-libretro", "volume", menu.volumeSelected);
+    // Migrate the legacy 0..100 integer storage to the 0.0..1.0 float scale.
+    if (menu.volumeSelected > 1.0f) menu.volumeSelected /= 100.0f;
+    if (menu.volumeSelected < 0.0f) menu.volumeSelected = 0.0f;
+    if (menu.volumeSelected > 1.0f) menu.volumeSelected = 1.0f;
     SetLibretroVolume(menu.volumeSelected);
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
@@ -1637,12 +1707,13 @@ static bool LoadLibretroMenuSettings(void) {
     menu.keyVolumeDown  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
     menu.keyMute        = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyMute",        (int)menu.keyMute);
     menu.keyFastForward = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
-    menu.fastForwardSpeed = rlconfig_get_int(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
-    if (menu.fastForwardSpeed < 2) menu.fastForwardSpeed = 2;
-    if (menu.fastForwardSpeed > 10) menu.fastForwardSpeed = 10;
+    menu.fastForwardSpeed = rlconfig_get_float(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
+    if (menu.fastForwardSpeed < 1.1f) menu.fastForwardSpeed = 1.1f;
+    if (menu.fastForwardSpeed > 10.0f) menu.fastForwardSpeed = 10.0f;
     menu.keySlowMotion = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
-    int smSpeedInt = rlconfig_get_int(menu.cfg, "raylib-libretro", "slowMotionSpeed", (int)(menu.slowMotionSpeed * 10.0f));
-    menu.slowMotionSpeed = (float)smSpeedInt / 10.0f;
+    menu.slowMotionSpeed = rlconfig_get_float(menu.cfg, "raylib-libretro", "slowMotionSpeed", menu.slowMotionSpeed);
+    // Migrate the legacy x10 integer storage (1..9) to the 0.1..0.9 float scale.
+    if (menu.slowMotionSpeed > 0.95f) menu.slowMotionSpeed /= 10.0f;
     if (menu.slowMotionSpeed < 0.1f) menu.slowMotionSpeed = 0.1f;
     if (menu.slowMotionSpeed > 0.9f) menu.slowMotionSpeed = 0.9f;
 

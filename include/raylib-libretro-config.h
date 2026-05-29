@@ -70,6 +70,12 @@ static void rlconfig_set(RLibretroConfig *cfg, const char *section, const char *
 /* Set integer value (formatted as decimal string). */
 static void rlconfig_set_int(RLibretroConfig *cfg, const char *section, const char *key, int value);
 
+/* Get float value for section+key. Returns fallback if not found or non-numeric. */
+static float rlconfig_get_float(RLibretroConfig *cfg, const char *section, const char *key, float fallback);
+
+/* Set float value (formatted as a decimal string). */
+static void rlconfig_set_float(RLibretroConfig *cfg, const char *section, const char *key, float value);
+
 /* Remove a single key. Returns true if the key existed. */
 static bool rlconfig_delete(RLibretroConfig *cfg, const char *section, const char *key);
 
@@ -194,6 +200,22 @@ static int rlconfig_get_int(RLibretroConfig *cfg, const char *section,
     if (!v || !v[0]) return fallback;
     int result = fallback;
     sscanf(v, "%d", &result);
+    return result;
+}
+
+static void rlconfig_set_float(RLibretroConfig *cfg, const char *section,
+                                const char *key, float value) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%g", value);
+    rlconfig_set(cfg, section, key, buf);
+}
+
+static float rlconfig_get_float(RLibretroConfig *cfg, const char *section,
+                                 const char *key, float fallback) {
+    const char *v = rlconfig_get(cfg, section, key);
+    if (!v || !v[0]) return fallback;
+    float result = fallback;
+    sscanf(v, "%f", &result);
     return result;
 }
 

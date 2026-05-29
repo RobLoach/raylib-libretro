@@ -38,8 +38,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Create the window and audio.
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "raylib-libretro - basic window");
     InitAudioDevice();
 
@@ -61,8 +60,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Match the window's refresh rate to the core's target FPS.
-    SetTargetFPS((int)GetLibretroFPS());
     TraceLog(LOG_INFO, "LIBRETRO: Core FPS=%.2f AspectRatio=%.4f", GetLibretroFPS(), (double)GetLibretroAspectRatio());
 
     while (!WindowShouldClose() && !LibretroShouldClose()) {

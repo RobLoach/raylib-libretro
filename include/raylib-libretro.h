@@ -56,6 +56,7 @@ static bool LoadLibretroGame(const char* gameFile);
 static bool IsLibretroReady(void);
 static bool IsLibretroGameReady(void);
 static void UpdateLibretro(void);
+static void StepLibretro(void);
 static bool LibretroShouldClose(void);
 static void DrawLibretro(void);
 static void DrawLibretroTint(Color tint);
@@ -85,6 +86,7 @@ static float GetLibretroSpeed(void);
 static bool SetLibretroCoreOption(const char* key, const char* value);
 static const char* GetLibretroCoreOption(const char* key);
 static void* GetLibretroSerializedData(unsigned int* size);
+static unsigned int GetLibretroSerializedSize(void);
 static bool SetLibretroSerializedData(void* data, unsigned int size);
 static void* GetLibretroSRAMData(size_t* size);
 static bool SetLibretroSRAMData(const void* data, size_t size);
@@ -214,7 +216,8 @@ typedef struct LibretroCoreData {
 
     // System Information.
     bool shutdown; /** Indicates whether or not the core requested to shutdown. */
-    unsigned width, height, fps;
+    unsigned width, height;
+    double fps; /** Core's target frame rate from retro_system_timing (e.g. 59.94), kept fractional for accurate pacing. */
     double sampleRate;
     float aspectRatio;
     char corePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -341,6 +344,7 @@ typedef struct LibretroData {
     // Persistent settings that survive core loads.
     float volume;
     float speed;
+    double speedAccumulator;
     int textureFilter; // TextureFilter
     int keyboardPlayer1[16];
     char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -772,7 +776,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             }
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE: %s (%i frames)", message->msg, message->frames);
             TextCopy(LIBRETRO.core.osdMessage, message->msg);
-            LIBRETRO.core.osdEndTime = GetTime() + message->frames / (LIBRETRO.core.fps > 0 ? (double)LIBRETRO.core.fps : 60.0);
+            LIBRETRO.core.osdEndTime = GetTime() + message->frames / (LIBRETRO.core.fps > 0 ? LIBRETRO.core.fps : 60.0);
             return true;
         }
 
@@ -1079,10 +1083,10 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             bool dimsChanged = (av.geometry.base_width != LIBRETRO.core.width || av.geometry.base_height != LIBRETRO.core.height);
             LIBRETRO.core.width = av.geometry.base_width;
             LIBRETRO.core.height = av.geometry.base_height;
-            LIBRETRO.core.fps = (unsigned int)av.timing.fps;
+            LIBRETRO.core.fps = av.timing.fps;
             LIBRETRO.core.sampleRate = av.timing.sample_rate;
             LIBRETRO.core.aspectRatio = av.geometry.aspect_ratio;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO %i x %i @ %i FPS",
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO %i x %i @ %.3f FPS",
                 LIBRETRO.core.width,
                 LIBRETRO.core.height,
                 LIBRETRO.core.fps
@@ -1093,7 +1097,6 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (sampleRateChanged) {
                 InitLibretroAudio();
             }
-            SetTargetFPS((int)(LIBRETRO.core.fps * LIBRETRO.speed));
             return true;
         }
 
@@ -1727,14 +1730,65 @@ static bool LibretroGetAudioVideo(void) {
     LIBRETRO.core.symbols.retro_get_system_av_info(&av);
     LIBRETRO.core.width = av.geometry.base_width;
     LIBRETRO.core.height = av.geometry.base_height;
-    LIBRETRO.core.fps = (unsigned int)av.timing.fps;
+    LIBRETRO.core.fps = av.timing.fps;
     LIBRETRO.core.sampleRate = av.timing.sample_rate;
     LIBRETRO.core.aspectRatio = av.geometry.aspect_ratio;
     TraceLog(LOG_INFO, "LIBRETRO: Video and Audio information");
     TraceLog(LOG_INFO, "    > Display size: %i x %i", LIBRETRO.core.width, LIBRETRO.core.height);
-    TraceLog(LOG_INFO, "    > Target FPS:   %i", LIBRETRO.core.fps);
+    TraceLog(LOG_INFO, "    > Target FPS:   %.3f", LIBRETRO.core.fps);
     TraceLog(LOG_INFO, "    > Sample rate:  %.2f Hz", LIBRETRO.core.sampleRate);
     return true;
+}
+
+/**
+ * Discard any pending time-accumulator backlog so the next UpdateLibretro()
+ * starts timing from a clean slate. Call this after any wall-clock discontinuity
+ * that is not real emulation time — game load, save-state load, rewind — so the
+ * accumulator doesn't spend the gap as a burst of catch-up frames.
+ */
+static void ResetLibretroTiming(void) {
+    LIBRETRO.speedAccumulator = 0.0;
+    LIBRETRO.core.runloop_frame_time_last = 0;
+}
+
+/**
+ * Run a single emulation tick: report audio buffer occupancy to the core, call
+ * retro_run(), then flush any single-sample audio left over from the frame.
+ */
+static void LibretroTick(void) {
+    // Report audio buffer occupancy to the core just before retro_run, so
+    // it can decide whether to frameskip to avoid under-runs.
+    if (LIBRETRO.core.audio_buffer_status_callback.callback && LIBRETRO.core.audioRingBufferSize > 0) {
+        unsigned occupancy = (unsigned)((LIBRETRO.core.audioRingAvailable * 100) / LIBRETRO.core.audioRingBufferSize);
+        if (occupancy > 100) occupancy = 100;
+        bool underrun_likely = occupancy < 25;
+        LIBRETRO.core.audio_buffer_status_callback.callback(true, occupancy, underrun_likely);
+    }
+
+    LIBRETRO.core.symbols.retro_run();
+
+    // Flush any single-sample accumulator left over from retro_run so
+    // samples arrive in the ring buffer within the same frame.
+    if (LIBRETRO.core.singleSampleCount > 0) {
+        UpdateLibretroAudioSampleBatch(LIBRETRO.core.singleSampleBuffer, LIBRETRO.core.singleSampleCount);
+        LIBRETRO.core.singleSampleCount = 0;
+    }
+}
+
+/**
+ * Run exactly one emulation frame immediately, bypassing the time accumulator.
+ * Useful for frame-stepping and rewind, where the frontend decides when to
+ * advance the core rather than pacing ticks to wall-clock. Renders the frame
+ * via retro_run()'s video callback, so the display updates on return.
+ */
+static void StepLibretro(void) {
+    if (!IsLibretroGameReady()) {
+        return;
+    }
+    if (LIBRETRO.core.textureRebuild) {
+        InitLibretroVideo();
+    }
+    LibretroTick();
 }
 
 /**
@@ -1746,6 +1800,9 @@ static void UpdateLibretro(void) {
     }
 
     if (IsLibretroGameReady()) {
+        // Real wall-clock time for RETRO_ENVIRONMENT_GET_PERF_INTERFACE. This is
+        // intentionally NOT scaled by LIBRETRO.speed: the perf counter reports
+        // actual elapsed time, independent of fast-forward / slow-motion.
         LIBRETRO.core.gameTimeNSEC += (retro_perf_tick_t)((double)GetFrameTime() * 1000000000.0);
     }
 
@@ -1818,34 +1875,60 @@ static void UpdateLibretro(void) {
     }
 
     if (IsLibretroGameReady()) {
-        // Report audio buffer occupancy to the core just before retro_run, so
-        // it can decide whether to frameskip to avoid under-runs.
-        if (LIBRETRO.core.audio_buffer_status_callback.callback && LIBRETRO.core.audioRingBufferSize > 0) {
-            unsigned occupancy = (unsigned)((LIBRETRO.core.audioRingAvailable * 100) / LIBRETRO.core.audioRingBufferSize);
-            if (occupancy > 100) occupancy = 100;
-            bool underrun_likely = occupancy < 25;
-            LIBRETRO.core.audio_buffer_status_callback.callback(true, occupancy, underrun_likely);
+        double framePeriod = (LIBRETRO.core.fps > 0.0) ? (1.0 / LIBRETRO.core.fps) : (1.0 / 60.0);
+        double frameTime = (double)GetFrameTime();
+
+        // When at normal speed and the loop is already being presented at very
+        // close to the core's frame rate (e.g. a vsync'd 60 Hz display with a
+        // ~60 fps core), lock to exactly one tick per displayed frame. This
+        // avoids the beat-frequency judder you get when the accumulator
+        // occasionally emits 0 or 2 ticks in a frame; Dynamic Rate Control below
+        // resamples the small audio-rate difference. Gating on the *measured*
+        // frame time (not the monitor refresh) keeps this from running the core
+        // unbounded when vsync is off / FPS is uncapped.
+        double cadence = (framePeriod > 0.0) ? (frameTime / framePeriod) : 0.0;
+        bool lockToFrame = (LIBRETRO.speed == 1.0f && cadence > 0.9 && cadence < 1.1);
+
+        if (lockToFrame) {
+            LIBRETRO.speedAccumulator = 0.0;
+            LibretroTick();
+        } else {
+            LIBRETRO.speedAccumulator += frameTime * (double)LIBRETRO.speed;
+
+            // Cap iterations to avoid spiral of death on slow hardware.
+            int maxTicks = (int)(LIBRETRO.speed + 1.0f);
+            if (maxTicks < 1) maxTicks = 1;
+
+            // Clamp the accumulator so a GetFrameTime() spike (game load, window
+            // drag, menu pause) can't leave a backlog that runs the core fast for
+            // the following frames.
+            double maxAccumulator = framePeriod * (double)maxTicks;
+            if (LIBRETRO.speedAccumulator > maxAccumulator) {
+                LIBRETRO.speedAccumulator = maxAccumulator;
+            }
+
+            while (LIBRETRO.speedAccumulator >= framePeriod && maxTicks-- > 0) {
+                LIBRETRO.speedAccumulator -= framePeriod;
+                LibretroTick();
+            }
         }
 
-        LIBRETRO.core.symbols.retro_run();
-
-        // Flush any single-sample accumulator left over from retro_run so
-        // samples arrive in the ring buffer within the same frame.
-        if (LIBRETRO.core.singleSampleCount > 0) {
-            UpdateLibretroAudioSampleBatch(LIBRETRO.core.singleSampleBuffer, LIBRETRO.core.singleSampleCount);
-            LIBRETRO.core.singleSampleCount = 0;
-        }
-
-        // Dynamic Rate Control: nudge audio pitch to steer ring-buffer occupancy
-        // toward 50% so the audio stays in sync.
-        if (LIBRETRO.core.drcEnabled && LIBRETRO.core.audioRingBufferSize > 0 && IsAudioStreamValid(LIBRETRO.core.audioStream)) {
-            // Positive drift when buffer is full (consume faster).
-            // Negative drift when buffer is empty (consume slower).
-            float drift = ((float)LIBRETRO.core.audioRingAvailable / (float)LIBRETRO.core.audioRingBufferSize) - 0.5f;
-            LIBRETRO.core.drcAdjustment += drift * 0.001f;
-            if (LIBRETRO.core.drcAdjustment < 0.995f) LIBRETRO.core.drcAdjustment = 0.995f;
-            if (LIBRETRO.core.drcAdjustment > 1.005f) LIBRETRO.core.drcAdjustment = 1.005f;
-            SetAudioStreamPitch(LIBRETRO.core.audioStream, LIBRETRO.core.drcAdjustment);
+        // Audio playback rate. The stream pitch tracks LIBRETRO.speed so the
+        // device consumes the ring buffer at the same rate the core fills it:
+        // at slow-motion the audio stretches out (lower pitch) instead of
+        // underrunning into choppy gaps, and at fast-forward it consumes faster
+        // instead of overrunning. Dynamic Rate Control rides on top as a small
+        // multiplier that nudges ring-buffer occupancy toward 50% to stay in sync.
+        if (LIBRETRO.core.audioRingBufferSize > 0 && IsAudioStreamValid(LIBRETRO.core.audioStream)) {
+            if (LIBRETRO.core.drcEnabled) {
+                // Positive drift when buffer is full (consume faster).
+                // Negative drift when buffer is empty (consume slower).
+                float drift = ((float)LIBRETRO.core.audioRingAvailable / (float)LIBRETRO.core.audioRingBufferSize) - 0.5f;
+                LIBRETRO.core.drcAdjustment += drift * 0.001f;
+                if (LIBRETRO.core.drcAdjustment < 0.995f) LIBRETRO.core.drcAdjustment = 0.995f;
+                if (LIBRETRO.core.drcAdjustment > 1.005f) LIBRETRO.core.drcAdjustment = 1.005f;
+            }
+            SetAudioStreamPitch(LIBRETRO.core.audioStream, LIBRETRO.speed * LIBRETRO.core.drcAdjustment);
         }
 
         // Some cores (notably mgba GB/GBC) defer the actual core reset until
@@ -2304,7 +2387,9 @@ static bool InitLibretroAudioVideo(void) {
     InitLibretroVideo();
     InitLibretroAudio();
 
-    SetTargetFPS((int)(LIBRETRO.core.fps * LIBRETRO.speed));
+    // A fresh game load is a wall-clock discontinuity (disk I/O, core init);
+    // start the time accumulator clean so the first frame doesn't burst.
+    ResetLibretroTiming();
 
     return true;
 }
@@ -2896,11 +2981,6 @@ static float GetLibretroVolume(void) {
 static void SetLibretroSpeed(float speed) {
     if (speed <= 0.0f) speed = 0.1f;
     LIBRETRO.speed = speed;
-    if (speed > 1.0f) {
-        SetTargetFPS(0);
-    } else {
-        SetTargetFPS((int)(LIBRETRO.core.fps * speed));
-    }
 }
 
 /**
@@ -2965,7 +3045,7 @@ static unsigned GetLibretroHeight(void) {
 }
 
 static double GetLibretroFPS(void) {
-    return LIBRETRO.core.fps > 0 ? (double)LIBRETRO.core.fps : 60.0;
+    return LIBRETRO.core.fps > 0 ? LIBRETRO.core.fps : 60.0;
 }
 
 static float GetLibretroAspectRatio(void) {
@@ -3116,21 +3196,6 @@ static void UnloadLibretroGame(void) {
 }
 
 /**
- * Reset all per-core data fields so that a subsequent InitLibretro() starts
- * with a clean slate. Must be called after the dylib is closed.
- */
-static void ResetLibretroCoreState(void) {
-    // Release owned pointers before the memset wipes them.
-    UnloadLibretroMemoryMaps();
-
-    memset(&LIBRETRO.core, 0, sizeof(LIBRETRO.core));
-
-    // Non-zero defaults.
-    LIBRETRO.core.drcAdjustment = 1.0f;
-    LIBRETRO.core.drcEnabled = true;
-}
-
-/**
  * Deinitialize and unload the libretro core.
  */
 static void CloseLibretro(void) {
@@ -3173,10 +3238,15 @@ static void CloseLibretro(void) {
         dylib_close(LIBRETRO.core.symbols.handle);
     }
 
-    // ResetLibretroCoreState() memsets LIBRETRO.core, which zeroes every
-    // field above — function pointers into the now-closed dylib, descriptor
-    // pointers and counts, audio/keyboard callbacks, etc.
-    ResetLibretroCoreState();
+    // Release owned pointers before the memset wipes them.
+    UnloadLibretroMemoryMaps();
+
+    // Clear the data.
+    memset(&LIBRETRO.core, 0, sizeof(LIBRETRO.core));
+
+    // Non-zero defaults.
+    LIBRETRO.core.drcAdjustment = 1.0f;
+    LIBRETRO.core.drcEnabled = true;
 }
 
 /**
@@ -3620,6 +3690,18 @@ static void LibretroPixelFormatARGB1555ToRGB565(void *output_, const void *input
  * @param size Output parameter filled with the size of the returned buffer in bytes.
  * @return Newly allocated buffer containing the serialized state, or NULL on failure.
  * @note The caller is responsible for freeing the returned buffer with MemFree(). */
+/**
+ * Size in bytes of the loaded core's serialized state, or 0 if no game is
+ * ready. Useful for validating that a buffered state (e.g. a rewind snapshot)
+ * still matches the currently loaded content before restoring it.
+ */
+static unsigned int GetLibretroSerializedSize(void) {
+    if (!IsLibretroGameReady() || LIBRETRO.core.symbols.retro_serialize_size == NULL) {
+        return 0;
+    }
+    return (unsigned int)LIBRETRO.core.symbols.retro_serialize_size();
+}
+
 static void* GetLibretroSerializedData(unsigned int* size) {
     if (!IsLibretroGameReady()) {
         return NULL;
@@ -3664,6 +3746,10 @@ static bool SetLibretroSerializedData(void* data, unsigned int size) {
         return false;
     }
 
+    // NOTE: callers that restore state every frame (rewind) must NOT reset the
+    // time accumulator here — doing so would zero it each frame and starve
+    // retro_run() of ticks. One-shot loaders (save-state) call
+    // ResetLibretroTiming() themselves.
     return LIBRETRO.core.symbols.retro_unserialize(data, (size_t)size);
 }
 
