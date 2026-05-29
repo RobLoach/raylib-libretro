@@ -71,7 +71,9 @@ bool LoadLibretroGameFromJS(const char* gameFile) {
 
 #endif
 
-#define REWIND_BUFFER_FRAMES 600  // ~10 seconds at 60fps
+#define REWIND_CAPTURES_PER_SECOND 30
+#define REWIND_CAPTURE_INTERVAL (1.0f / REWIND_CAPTURES_PER_SECOND)  // seconds between snapshots
+#define REWIND_BUFFER_FRAMES 600  // REWIND_BUFFER_FRAMES / REWIND_CAPTURES_PER_SECOND seconds of rewind
 
 typedef struct {
     void* data;
@@ -120,6 +122,7 @@ static void RewindBufferFree(RewindBuffer* rb) {
 typedef struct {
     LibretroMenu* menu;
     RewindBuffer rewind;
+    float rewindTimer;  // seconds accumulated toward the next rewind capture/step
     bool muted;
     bool pendingMenuOpen;
 } AppData;
@@ -215,78 +218,104 @@ bool Update(void* userData) {
 
     // Run a frame of the core.
     if (!data->menu->active) {
-        // Update the shaders, then show OSD if a shader key was pressed.
-        LibretroShaderType shaderTypeBefore = GetActiveLibretroShaderType();
         UpdateLibretroShaders(GetFrameTime());
 
+        // While rewinding we step back one snapshot per capture interval and
+        // render only on that step (via StepLibretro), so the picture holds
+        // between steps instead of running the core forward.
+        bool rewinding = false;
+
         if (IsLibretroGameReady()) {
-            // Rewind
-            KeyboardKey key = NuklearKeyToKeyboardKey(data->menu->keyRewind);
+            KeyboardKey rewindKey = NuklearKeyToKeyboardKey(data->menu->keyRewind);
+            rewinding = data->menu->rewindEnabled && IsKeyDown(rewindKey);
+
+            // Capture and playback both run at REWIND_CAPTURES_PER_SECOND.
             if (data->menu->rewindEnabled) {
-                if (IsKeyDown(key)) {
-                    if (IsKeyPressed(key)) {
-                        SetLibretroVolume(0.0f);
-                    }
+                data->rewindTimer += GetFrameTime();
+            }
+
+            if (rewinding) {
+                if (data->rewindTimer >= REWIND_CAPTURE_INTERVAL) {
+                    data->rewindTimer = 0.0f;
                     void* stateData = NULL;
                     unsigned int stateSize = 0;
                     if (RewindBufferPop(&data->rewind, &stateData, &stateSize)) {
-                        SetLibretroSerializedData(stateData, stateSize);
-                        MemFree(stateData);
+                        if (stateSize != GetLibretroSerializedSize()) {
+                            // Snapshots belong to a different game/core (a new
+                            // game was loaded). Drop the stale buffer instead of
+                            // feeding the core a mismatched state.
+                            MemFree(stateData);
+                            RewindBufferFree(&data->rewind);
+                        } else {
+                            SetLibretroSerializedData(stateData, stateSize);
+                            MemFree(stateData);
+                            SetLibretroMessage("Rewind", 1.0f);
+                            // Render the restored snapshot. Bypasses the time
+                            // accumulator, which would run zero ticks when called
+                            // this sparsely and leave the display frozen.
+                            StepLibretro();
+                        }
                     } else {
                         SetLibretroMessage("Rewind limit reached", 1.0f);
                     }
-                } else {
-                    if (IsKeyReleased(key)) {
-                        SetLibretroVolume(data->menu->volumeSelected);
+                }
+            } else {
+                // Capture a snapshot at the interval while playing forward.
+                if (data->menu->rewindEnabled) {
+                    if (data->rewindTimer >= REWIND_CAPTURE_INTERVAL) {
+                        data->rewindTimer = 0.0f;
+                        unsigned int size = 0;
+                        void* state = GetLibretroSerializedData(&size);
+                        if (state != NULL) {
+                            RewindBufferPush(&data->rewind, state, size);
+                        }
                     }
-                    unsigned int size = 0;
-                    void* state = GetLibretroSerializedData(&size);
-                    if (state != NULL) {
-                        RewindBufferPush(&data->rewind, state, size);
+                    if (IsKeyReleased(rewindKey)) {
+                        SetLibretroMessage(NULL, 0.0f);
+                    }
+                } else if (data->rewind.count > 0) {
+                    RewindBufferFree(&data->rewind);
+                }
+
+                // Fast Forward
+                KeyboardKey key = NuklearKeyToKeyboardKey(data->menu->keyFastForward);
+                KeyboardKey slowMotionKey = NuklearKeyToKeyboardKey(data->menu->keySlowMotion);
+                if (IsKeyDown(key)) {
+                    if (IsKeyPressed(key)) {
+                        // Halve the volume during fast-forward to soften the
+                        // sped-up audio and ring-buffer overrun crackle.
+                        SetLibretroVolume(data->menu->volumeSelected * 0.5f);
+                        SetLibretroSpeed(data->menu->fastForwardSpeed);
+                        SetLibretroMessage("Fast Forward", 1.0f);
+                    }
+                    // The time accumulator in UpdateLibretro() scales by LIBRETRO.speed,
+                    // so the single UpdateLibretro() call below runs the extra ticks.
+                }
+                else if (IsKeyReleased(key)) {
+                    SetLibretroVolume(data->menu->volumeSelected);
+                    SetLibretroSpeed(1.0f);
+                    SetLibretroMessage(NULL, 0.0f);
+                }
+
+                // Slow Motion
+                else if (IsKeyDown(slowMotionKey)) {
+                    if (IsKeyPressed(slowMotionKey)) {
+                        SetLibretroSpeed(data->menu->slowMotionSpeed);
+                        SetLibretroMessage("Slow Motion", 1.0f);
                     }
                 }
-            } else if (data->rewind.count > 0) {
-                RewindBufferFree(&data->rewind);
-            }
-
-            // Fast Forward
-            key = NuklearKeyToKeyboardKey(data->menu->keyFastForward);
-            KeyboardKey slowMotionKey = NuklearKeyToKeyboardKey(data->menu->keySlowMotion);
-            if (IsKeyDown(key)) {
-                if (IsKeyPressed(key)) {
-                    SetLibretroVolume(0.0f);
-                    SetLibretroSpeed(data->menu->fastForwardSpeed);
-                    SetLibretroMessage(TextFormat("Fast Forward %dx", data->menu->fastForwardSpeed), 1.0f);
+                else if (IsKeyReleased(slowMotionKey)) {
+                    SetLibretroSpeed(1.0f);
+                    SetLibretroMessage(NULL, 0.0f);
                 }
-
-                // Run the extra frames manually.
-                int steps = (int)GetLibretroSpeed();
-                if (steps < 1) steps = 1;
-                for (int i = 1; i < steps; i++) UpdateLibretro();
-            }
-            else if (IsKeyReleased(key)) {
-                SetLibretroVolume(data->menu->volumeSelected);
-                SetLibretroSpeed(1.0f);
-                SetLibretroMessage(NULL, 0.0f);
-            }
-
-            // Slow Motion
-            else if (IsKeyDown(slowMotionKey)) {
-                if (IsKeyPressed(slowMotionKey)) {
-                    SetLibretroVolume(0.0f);
-                    SetLibretroSpeed(data->menu->slowMotionSpeed);
-                    SetLibretroMessage(TextFormat("Slow Motion %.0f%%", data->menu->slowMotionSpeed * 100.0f), 1.0f);
-                }
-            }
-            else if (IsKeyReleased(slowMotionKey)) {
-                SetLibretroVolume(data->menu->volumeSelected);
-                SetLibretroSpeed(1.0f);
-                SetLibretroMessage(NULL, 0.0f);
             }
         }
 
-        // Run a frame.
-        UpdateLibretro();
+        // Run a paced frame while playing forward. During rewind the core is
+        // advanced by StepLibretro() above, so skip the accumulator here.
+        if (!rewinding) {
+            UpdateLibretro();
+        }
     }
 
     UpdateLibretroMenu();
@@ -298,6 +327,8 @@ bool Update(void* userData) {
             const char* droppedPath = dropped.paths[0];
             SaveLibretroAllSettings();
             CloseLibretro();
+            // The previous game's rewind snapshots are now meaningless.
+            RewindBufferFree(&data->rewind);
             if (IsLibretroCoreFile(droppedPath)) {
                 if (MenuInitCore(droppedPath)) {
                     BuildLibretroMenuOptions(data->menu);
