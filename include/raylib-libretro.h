@@ -1084,7 +1084,6 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (sampleRateChanged) {
                 InitLibretroAudio();
             }
-            SetTargetFPS((int)(LIBRETRO.core.fps));
             return true;
         }
 
@@ -2282,8 +2281,6 @@ static bool InitLibretroAudioVideo(void) {
     LibretroGetAudioVideo();
     InitLibretroVideo();
     InitLibretroAudio();
-
-    SetTargetFPS((int)(LIBRETRO.core.fps));
 
     return true;
 }
