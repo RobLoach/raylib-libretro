@@ -93,6 +93,7 @@ static bool DrawLibretroMessage(void);
 static const char* GetLibretroDirectory(int directory);
 static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count);
 static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count);
+static const struct retro_subsystem_info* GetLibretroSubsystemInfo(unsigned *count);
 static bool SetLibretroMemoryMaps(const struct retro_memory_map *map);
 static void UnloadLibretroMemoryMaps(void);
 static const struct retro_memory_descriptor* GetLibretroMemoryMaps(unsigned *count);
@@ -269,6 +270,10 @@ typedef struct LibretroCoreData {
     // Controller info (RETRO_ENVIRONMENT_SET_CONTROLLER_INFO)
     struct retro_controller_info *controllerInfo;
     unsigned controllerPortCount;
+
+    // Subsystem info (RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO)
+    struct retro_subsystem_info *subsystemInfo;
+    unsigned subsystemCount;
 
     // Core variables/options
     // TODO: Switch these to MemAlloc'ed strings.
@@ -490,6 +495,11 @@ static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned
 static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count) {
     if (count != NULL) *count = LIBRETRO.core.controllerPortCount;
     return LIBRETRO.core.controllerInfo;
+}
+
+static const struct retro_subsystem_info* GetLibretroSubsystemInfo(unsigned *count) {
+    if (count != NULL) *count = LIBRETRO.core.subsystemCount;
+    return LIBRETRO.core.subsystemInfo;
 }
 
 /**
@@ -1093,8 +1103,31 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO not implemented");
-            return false;
+            if (data == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO no data provided");
+                return false;
+            }
+            const struct retro_subsystem_info *info = (const struct retro_subsystem_info *)data;
+            if (LIBRETRO.core.subsystemInfo != NULL) {
+                MemFree(LIBRETRO.core.subsystemInfo);
+                LIBRETRO.core.subsystemInfo = NULL;
+                LIBRETRO.core.subsystemCount = 0;
+            }
+            unsigned count = 0;
+            for (unsigned i = 0; info[i].ident != NULL; i++) {
+                count++;
+            }
+            if (count > 0) {
+                LIBRETRO.core.subsystemInfo = (struct retro_subsystem_info *)MemAlloc(count * sizeof(struct retro_subsystem_info));
+                if (LIBRETRO.core.subsystemInfo != NULL) {
+                    for (unsigned i = 0; i < count; i++) {
+                        LIBRETRO.core.subsystemInfo[i] = info[i];
+                        TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO [%u] %s (%s)", i, info[i].desc, info[i].ident);
+                    }
+                    LIBRETRO.core.subsystemCount = count;
+                }
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: {
@@ -3127,6 +3160,12 @@ static void CloseLibretro(void) {
 
     if (LIBRETRO.core.controllerInfo != NULL) {
         MemFree(LIBRETRO.core.controllerInfo);
+    }
+
+    if (LIBRETRO.core.subsystemInfo != NULL) {
+        MemFree(LIBRETRO.core.subsystemInfo);
+        LIBRETRO.core.subsystemInfo = NULL;
+        LIBRETRO.core.subsystemCount = 0;
     }
 
     // Close the dynamically loaded handle.
