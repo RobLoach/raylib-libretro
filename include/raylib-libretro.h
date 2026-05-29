@@ -93,6 +93,7 @@ static bool DrawLibretroMessage(void);
 static const char* GetLibretroDirectory(int directory);
 static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count);
 static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count);
+static const struct retro_subsystem_info* GetLibretroSubsystemInfo(unsigned *count);
 static bool SetLibretroMemoryMaps(const struct retro_memory_map *map);
 static void UnloadLibretroMemoryMaps(void);
 static const struct retro_memory_descriptor* GetLibretroMemoryMaps(unsigned *count);
@@ -494,6 +495,11 @@ static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned
 static const struct retro_controller_info* GetLibretroControllerInfo(unsigned *count) {
     if (count != NULL) *count = LIBRETRO.core.controllerPortCount;
     return LIBRETRO.core.controllerInfo;
+}
+
+static const struct retro_subsystem_info* GetLibretroSubsystemInfo(unsigned *count) {
+    if (count != NULL) *count = LIBRETRO.core.subsystemCount;
+    return LIBRETRO.core.subsystemInfo;
 }
 
 /**
@@ -3158,6 +3164,8 @@ static void CloseLibretro(void) {
 
     if (LIBRETRO.core.subsystemInfo != NULL) {
         MemFree(LIBRETRO.core.subsystemInfo);
+        LIBRETRO.core.subsystemInfo = NULL;
+        LIBRETRO.core.subsystemCount = 0;
     }
 
     // Close the dynamically loaded handle.
