@@ -9,15 +9,13 @@
 - Multi-Emulator for NES, SNES, GBA, Genesis, etc
 - Shipped Cores: fceumm, snes9x, gambatte, mgba, picodrive
 - Gamepad, Keyboard, On-Screen Controls
+- Audio
+- Fast Forward, Slow Motion, Rewind
+- Save Slots and SRAM
 - Shaders
 - Menu Themes
-- Audio
-- Fast Forward
-- Slow Motion
-- Rewind
-- Save Slots and SRAM
 - Core Options
-- Zip Files
+- Zip File Support
 
 ## Usage
 
