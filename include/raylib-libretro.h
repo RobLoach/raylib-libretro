@@ -270,6 +270,10 @@ typedef struct LibretroCoreData {
     struct retro_controller_info *controllerInfo;
     unsigned controllerPortCount;
 
+    // Subsystem info (RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO)
+    struct retro_subsystem_info *subsystemInfo;
+    unsigned subsystemCount;
+
     // Core variables/options
     // TODO: Switch these to MemAlloc'ed strings.
     char variableKeys[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_KEY_LEN];
@@ -1093,8 +1097,31 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO not implemented");
-            return false;
+            if (data == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO no data provided");
+                return false;
+            }
+            const struct retro_subsystem_info *info = (const struct retro_subsystem_info *)data;
+            if (LIBRETRO.core.subsystemInfo != NULL) {
+                MemFree(LIBRETRO.core.subsystemInfo);
+                LIBRETRO.core.subsystemInfo = NULL;
+                LIBRETRO.core.subsystemCount = 0;
+            }
+            unsigned count = 0;
+            for (unsigned i = 0; info[i].ident != NULL; i++) {
+                count++;
+            }
+            if (count > 0) {
+                LIBRETRO.core.subsystemInfo = (struct retro_subsystem_info *)MemAlloc(count * sizeof(struct retro_subsystem_info));
+                if (LIBRETRO.core.subsystemInfo != NULL) {
+                    for (unsigned i = 0; i < count; i++) {
+                        LIBRETRO.core.subsystemInfo[i] = info[i];
+                        TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO [%u] %s (%s)", i, info[i].desc, info[i].ident);
+                    }
+                    LIBRETRO.core.subsystemCount = count;
+                }
+            }
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: {
@@ -3127,6 +3154,10 @@ static void CloseLibretro(void) {
 
     if (LIBRETRO.core.controllerInfo != NULL) {
         MemFree(LIBRETRO.core.controllerInfo);
+    }
+
+    if (LIBRETRO.core.subsystemInfo != NULL) {
+        MemFree(LIBRETRO.core.subsystemInfo);
     }
 
     // Close the dynamically loaded handle.
