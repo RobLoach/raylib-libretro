@@ -336,6 +336,7 @@ typedef struct LibretroData {
     // Persistent settings that survive core loads.
     float volume;
     float speed;
+    double speedAccumulator;
     int textureFilter; // TextureFilter
     int keyboardPlayer1[16];
     char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -1083,7 +1084,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (sampleRateChanged) {
                 InitLibretroAudio();
             }
-            SetTargetFPS((int)(LIBRETRO.core.fps * LIBRETRO.speed));
+            SetTargetFPS((int)(LIBRETRO.core.fps));
             return true;
         }
 
@@ -1785,22 +1786,33 @@ static void UpdateLibretro(void) {
     }
 
     if (IsLibretroGameReady()) {
-        // Report audio buffer occupancy to the core just before retro_run, so
-        // it can decide whether to frameskip to avoid under-runs.
-        if (LIBRETRO.core.audio_buffer_status_callback.callback && LIBRETRO.core.audioRingBufferSize > 0) {
-            unsigned occupancy = (unsigned)((LIBRETRO.core.audioRingAvailable * 100) / LIBRETRO.core.audioRingBufferSize);
-            if (occupancy > 100) occupancy = 100;
-            bool underrun_likely = occupancy < 25;
-            LIBRETRO.core.audio_buffer_status_callback.callback(true, occupancy, underrun_likely);
-        }
+        double framePeriod = (LIBRETRO.core.fps > 0.0) ? (1.0 / LIBRETRO.core.fps) : (1.0 / 60.0);
+        LIBRETRO.speedAccumulator += (double)GetFrameTime() * (double)LIBRETRO.speed;
 
-        LIBRETRO.core.symbols.retro_run();
+        // Cap iterations to avoid spiral of death on slow hardware.
+        int maxTicks = (int)(LIBRETRO.speed + 1.0f);
+        if (maxTicks < 1) maxTicks = 1;
 
-        // Flush any single-sample accumulator left over from retro_run so
-        // samples arrive in the ring buffer within the same frame.
-        if (LIBRETRO.core.singleSampleCount > 0) {
-            UpdateLibretroAudioSampleBatch(LIBRETRO.core.singleSampleBuffer, LIBRETRO.core.singleSampleCount);
-            LIBRETRO.core.singleSampleCount = 0;
+        while (LIBRETRO.speedAccumulator >= framePeriod && maxTicks-- > 0) {
+            LIBRETRO.speedAccumulator -= framePeriod;
+
+            // Report audio buffer occupancy to the core just before retro_run, so
+            // it can decide whether to frameskip to avoid under-runs.
+            if (LIBRETRO.core.audio_buffer_status_callback.callback && LIBRETRO.core.audioRingBufferSize > 0) {
+                unsigned occupancy = (unsigned)((LIBRETRO.core.audioRingAvailable * 100) / LIBRETRO.core.audioRingBufferSize);
+                if (occupancy > 100) occupancy = 100;
+                bool underrun_likely = occupancy < 25;
+                LIBRETRO.core.audio_buffer_status_callback.callback(true, occupancy, underrun_likely);
+            }
+
+            LIBRETRO.core.symbols.retro_run();
+
+            // Flush any single-sample accumulator left over from retro_run so
+            // samples arrive in the ring buffer within the same frame.
+            if (LIBRETRO.core.singleSampleCount > 0) {
+                UpdateLibretroAudioSampleBatch(LIBRETRO.core.singleSampleBuffer, LIBRETRO.core.singleSampleCount);
+                LIBRETRO.core.singleSampleCount = 0;
+            }
         }
 
         // Dynamic Rate Control: nudge audio pitch to steer ring-buffer occupancy
@@ -2271,7 +2283,7 @@ static bool InitLibretroAudioVideo(void) {
     InitLibretroVideo();
     InitLibretroAudio();
 
-    SetTargetFPS((int)(LIBRETRO.core.fps * LIBRETRO.speed));
+    SetTargetFPS((int)(LIBRETRO.core.fps));
 
     return true;
 }
@@ -2863,11 +2875,6 @@ static float GetLibretroVolume(void) {
 static void SetLibretroSpeed(float speed) {
     if (speed <= 0.0f) speed = 0.1f;
     LIBRETRO.speed = speed;
-    if (speed > 1.0f) {
-        SetTargetFPS(0);
-    } else {
-        SetTargetFPS((int)(LIBRETRO.core.fps * speed));
-    }
 }
 
 /**
