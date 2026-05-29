@@ -5,5 +5,4 @@ cores
 install
 *.cfg
 android/app/src/main/jniLibs
-system/*
-!system/.gitkeep
+system

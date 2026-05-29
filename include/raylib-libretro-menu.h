@@ -45,11 +45,11 @@
 #include "raylib-libretro-physfs.h"
 
 typedef enum LibretroMenuStyle {
-    LIBRETRO_MENU_STYLE_DRACULA,
+    LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
     LIBRETRO_MENU_STYLE_CATPPUCCIN_LATTE,
     LIBRETRO_MENU_STYLE_CATPPUCCIN_FRAPPE,
     LIBRETRO_MENU_STYLE_CATPPUCCIN_MACCHIATO,
-    LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
+    LIBRETRO_MENU_STYLE_DRACULA,
     LIBRETRO_MENU_STYLE_DARK,
     LIBRETRO_MENU_STYLE_COUNT,
 } LibretroMenuStyle;
@@ -1001,7 +1001,7 @@ LibretroMenu* InitLibretroMenu(void) {
     //int menuScale = (screenWidth >= 2560) ? 3 : (screenWidth >= 1280) ? 2 : 1;
     int fontSize = 13;// * menuScale;
     menu = (LibretroMenu){0};
-    menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
+    menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA;
     menu.volumeSelected = 1.0f;
     menu.keyScreenshot  = (nk_rune)NK_KEY_F8;
     menu.keyRewind      = (nk_rune)'R';
@@ -1178,7 +1178,7 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* textureFilter = nk_console_combobox(graphicsMenu, "Texture Filter", "None|Bilinear|Trilinear|Anisotropic 4x|Anisotropic 8x|Anisotropic 16x", '|', &menu.textureFilterIndex);
             nk_console_add_event_handler(textureFilter, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
-            nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", "Dracula|Latte|Frappe|Macchiato|Mocha|Dark", '|', &menu.themeSelectedIndex);
+            nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", "Mocha|Latte|Frappe|Macchiato|Dracula|Dark", '|', &menu.themeSelectedIndex);
             nk_console_add_event_handler(themeCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
 
