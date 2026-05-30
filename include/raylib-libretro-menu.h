@@ -119,6 +119,8 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
+    nk_bool hideCursor;
+    nk_bool lockCursor;
     char cheatBuffer[256];
     char cheatList[1024];
     unsigned cheatIndex;
@@ -575,6 +577,16 @@ static int LibretroMenuResolveTargetFps(void) {
 // driven by the time accumulator in UpdateLibretro(), so these only govern how
 // often the frontend renders/polls; "Auto" doubles as a busy-loop safety cap
 // when a compositor or driver ignores the vsync hint.
+static void LibretroMenuApplyCursorSettings(void) {
+    if (menu.active) {
+        ShowCursor();
+        EnableCursor();
+    } else {
+        if (menu.hideCursor) HideCursor(); else ShowCursor();
+        if (menu.lockCursor) DisableCursor(); else EnableCursor();
+    }
+}
+
 static void LibretroMenuApplyVideoSettings(void) {
     if (menu.vsync) {
         SetWindowState(FLAG_VSYNC_HINT);
@@ -1296,6 +1308,8 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_checkbox(gameplayMenu, "Touch Haptics", &menu.touchHapticsEnabled);
             #endif
             nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
+            nk_console_checkbox(gameplayMenu, "Hide Cursor", &menu.hideCursor);
+            nk_console_checkbox(gameplayMenu, "Lock Cursor", &menu.lockCursor);
             nk_console_combobox(gameplayMenu, "Save Slot",
                 "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
                 '|', &menu.saveSlotIndex);
@@ -1560,6 +1574,8 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", menu.volumeSelected);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "menuCombo", menu.menuComboIndex);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "hideCursor", menu.hideCursor ? 1 : 0);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "lockCursor", menu.lockCursor ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchHaptics", menu.touchHapticsEnabled ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyScreenshot", (int)menu.keyScreenshot);
@@ -1718,6 +1734,8 @@ static bool LoadLibretroMenuSettings(void) {
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
     menu.menuComboIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "menuCombo", 0);
     if (menu.menuComboIndex < 0 || menu.menuComboIndex >= LIBRETRO_MENU_COMBO_COUNT) menu.menuComboIndex = 0;
+    menu.hideCursor = (nk_bool)(rlconfig_get_int(menu.cfg, "raylib-libretro", "hideCursor", 0) > 0);
+    menu.lockCursor = (nk_bool)(rlconfig_get_int(menu.cfg, "raylib-libretro", "lockCursor", 0) > 0);
 #if defined(PLATFORM_WEB)
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 1) > 0;
 #else
@@ -1880,10 +1898,12 @@ void UpdateLibretroMenu(void) {
     // where wasm dynamic linking and event-loop timing differ from Chrome.
     static bool menuWasActive = false;
     if (!menu.active) {
+        if (menuWasActive) LibretroMenuApplyCursorSettings();
         menuWasActive = false;
         return;
     }
     bool menuJustOpened = !menuWasActive;
+    if (menuJustOpened) LibretroMenuApplyCursorSettings();
     menuWasActive = true;
 
     // Rebuild when any of these signals say the options pane is stale:
