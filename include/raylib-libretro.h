@@ -783,7 +783,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (message->msg == NULL || message->msg[0] == '\0') {
                 return true;
             }
-            
+
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE: %s (%i frames)", message->msg, message->frames);
 
             // Route through SetLibretroMessage so osd metadata (msg pointer, type,
@@ -2852,6 +2852,8 @@ static bool InitLibretro(const char* core) {
  * @param posX Horizontal screen position.
  * @param posY Vertical screen position.
  * @param tint Color tint applied to the framebuffer texture.
+ *
+ * @see DrawTexture()
  */
 static void DrawLibretroTexture(int posX, int posY, Color tint) {
     Rectangle destRec = {(float)posX, (float)posY, (float)GetLibretroWidth(), (float)GetLibretroHeight()};
@@ -2880,7 +2882,7 @@ static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color 
     }
     Rectangle source = {0, 0, (float)LIBRETRO.core.width, (float)LIBRETRO.core.height};
     Rectangle dest = {position.x, position.y, (float)LIBRETRO.core.width * scale, (float)LIBRETRO.core.height * scale};
-    DrawTexturePro(LIBRETRO.core.texture, source, dest, (Vector2){0, 0}, rotation + (float)LIBRETRO.core.rotation * 90.0f, tint);
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, (Vector2){0, 0}, rotation + (float)(LIBRETRO.core.rotation * 90), tint);
 }
 
 /**
@@ -2892,7 +2894,7 @@ static void DrawLibretroPro(Rectangle destRec, Color tint) {
     if (LIBRETRO.core.loaded == false) {
         return;
     }
-    float rotDeg = (float)LIBRETRO.core.rotation * 90.0f;
+    float rotDeg = (float)(LIBRETRO.core.rotation * 90);
     bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
     float destW = swap ? destRec.height : destRec.width;
     float destH = swap ? destRec.width : destRec.height;
@@ -2988,7 +2990,6 @@ static void DrawLibretroTint(Color tint) {
         return;
     }
 
-    float rotationDeg = (float)LIBRETRO.core.rotation * 90.0f;
     bool swapDims = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
 
     // Find the aspect ratio.
@@ -3019,7 +3020,7 @@ static void DrawLibretroTint(Color tint) {
     Rectangle source = {0, 0, LIBRETRO.core.width, LIBRETRO.core.height};
     Rectangle dest = {cx, cy, (float)destW, (float)destH};
     Vector2 origin = {destW / 2.0f, destH / 2.0f};
-    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotationDeg, tint);
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, (float)(LIBRETRO.core.rotation * 90), tint);
 }
 
 /**
@@ -3039,7 +3040,7 @@ static void DrawLibretro(void) {
  * 0 falls back to a readable default). The target field is ignored — this
  * function only drives the OSD; callers wanting the log should TraceLog too.
  *
- * @param message The message descriptor. message->msg must not be NULL.
+ * @param message The message descriptor.
  */
 static void SetLibretroMessageEx(const struct retro_message_ext *message) {
     if (message == NULL || message->msg == NULL || message->msg[0] == '\0') {
@@ -3180,8 +3181,11 @@ static int GetLibretroRotation(void) {
  * @return Width in pixels
  */
 static unsigned GetLibretroWidth(void) {
-    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
-    return swap ? LIBRETRO.core.height : LIBRETRO.core.width;
+    if (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3) {
+        return LIBRETRO.core.height;
+    }
+
+    return LIBRETRO.core.width;
 }
 
 /**
@@ -3189,8 +3193,10 @@ static unsigned GetLibretroWidth(void) {
  * @return Height in pixels.
  */
 static unsigned GetLibretroHeight(void) {
-    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
-    return swap ? LIBRETRO.core.width : LIBRETRO.core.height;
+    if (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3) {
+        return LIBRETRO.core.width;
+    }
+    return LIBRETRO.core.height;
 }
 
 static double GetLibretroFPS(void) {
