@@ -75,6 +75,28 @@ jobs:
           files: raylib-libretro-macos-arm64.zip
           fail_on_unmatched_files: true
 
+  build-macos-x86_64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Install
+        run: cmake --install build
+      - name: Package
+        run: |
+          cd install
+          zip -r ../raylib-libretro-macos-x86_64.zip .
+      - name: Upload
+        uses: softprops/action-gh-release@v2
+        with:
+          files: raylib-libretro-macos-x86_64.zip
+          fail_on_unmatched_files: true
+
   build-android:
     runs-on: ubuntu-latest
     steps:
