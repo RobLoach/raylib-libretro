@@ -1046,6 +1046,8 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
     }
 }
 
+static void LibretroMenuUpdateLoadGameFilter(LibretroMenu* m);
+
 LibretroMenu* InitLibretroMenu(void) {
     int screenWidth = GetScreenWidth();
     //int menuScale = (screenWidth >= 2560) ? 3 : (screenWidth >= 1280) ? 2 : 1;
