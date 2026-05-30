@@ -77,6 +77,7 @@ typedef struct LibretroMenu {
     int themeSelectedIndex;
     float volumeSelected;
     bool rewindEnabled;
+    int menuComboIndex;
     nk_rune keyScreenshot;
     nk_rune keyRewind;
     nk_rune keyMenu;
@@ -577,6 +578,22 @@ static void LibretroMenuVideoChanged(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     NK_UNUSED(user_data);
     LibretroMenuApplyVideoSettings();
+}
+
+static bool LibretroMenuComboActive(int gamepad) {
+    switch (menu.menuComboIndex) {
+        case 1: return IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT)
+                    && IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+        case 2: return IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_1)
+                    && IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_1);
+        case 3: return IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_2)
+                    && IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_2);
+        case 4: return IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_THUMB)
+                    && IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_THUMB);
+        case 5: return IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_DOWN)
+                    && IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT);
+        default: return false;
+    }
 }
 
 static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
@@ -1277,6 +1294,10 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_button_set_symbol(
                 nk_console_button_onclick(keysMenu, "Keys", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
+            nk_console* menuCombo = nk_console_combobox(keysMenu, "Menu Controller Combo",
+                "None|Select + Start|L1 + R1|L2 + R2|L3 + R3|Down + Select",
+                '|', &menu.menuComboIndex);
+            menuCombo->tooltip = "Controller button combination to toggle the menu";
             nk_console_key(keysMenu, "Screenshot", &menu.keyScreenshot);
             nk_console_key(keysMenu, "Rewind", &menu.keyRewind);
             nk_console_key(keysMenu, "Menu", &menu.keyMenu);
@@ -1523,6 +1544,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", menu.volumeSelected);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "menuCombo", menu.menuComboIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchHaptics", menu.touchHapticsEnabled ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyScreenshot", (int)menu.keyScreenshot);
@@ -1679,6 +1701,8 @@ static bool LoadLibretroMenuSettings(void) {
     SetLibretroVolume(menu.volumeSelected);
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
+    menu.menuComboIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "menuCombo", 0);
+    if (menu.menuComboIndex < 0 || menu.menuComboIndex > 5) menu.menuComboIndex = 0;
 #if defined(PLATFORM_WEB)
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 1) > 0;
 #else
@@ -1818,6 +1842,16 @@ void UpdateLibretroMenu(void) {
             IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) ||
             IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE)) {
         menu.active = !menu.active;
+    }
+
+    // Menu Controller Combo
+    if (menu.menuComboIndex > 0) {
+        static bool comboWasActive[5] = {false, false, false, false, false};
+        for (int gp = 0; gp < 5; gp++) {
+            bool comboNow = IsGamepadAvailable(gp) && LibretroMenuComboActive(gp);
+            if (comboNow && !comboWasActive[gp]) menu.active = !menu.active;
+            comboWasActive[gp] = comboNow;
+        }
     }
 
     // Menu Key
