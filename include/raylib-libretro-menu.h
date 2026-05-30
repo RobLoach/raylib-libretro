@@ -1308,6 +1308,9 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_checkbox(gameplayMenu, "Touch Haptics", &menu.touchHapticsEnabled);
             #endif
             nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
+            nk_console* analogCombo = nk_console_combobox(gameplayMenu, "Analog to D-Pad",
+                "None|Left Analog|Right Analog", '|', &LIBRETRO.analogToDpadIndex);
+            analogCombo->tooltip = "Map an analog stick to D-Pad inputs";
             nk_console_checkbox(gameplayMenu, "Hide Cursor", &menu.hideCursor);
             nk_console_checkbox(gameplayMenu, "Lock Cursor", &menu.lockCursor);
             nk_console_combobox(gameplayMenu, "Save Slot",
@@ -1573,6 +1576,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", menu.volumeSelected);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "analogToDpad", LIBRETRO.analogToDpadIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "menuCombo", menu.menuComboIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "hideCursor", menu.hideCursor ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "lockCursor", menu.lockCursor ? 1 : 0);
@@ -1732,6 +1736,8 @@ static bool LoadLibretroMenuSettings(void) {
     SetLibretroVolume(menu.volumeSelected);
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
+    LIBRETRO.analogToDpadIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "analogToDpad", 0);
+    if (LIBRETRO.analogToDpadIndex < 0 || LIBRETRO.analogToDpadIndex > 2) LIBRETRO.analogToDpadIndex = 0;
     menu.menuComboIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "menuCombo", 0);
     if (menu.menuComboIndex < 0 || menu.menuComboIndex >= LIBRETRO_MENU_COMBO_COUNT) menu.menuComboIndex = 0;
     menu.hideCursor = (nk_bool)(rlconfig_get_int(menu.cfg, "raylib-libretro", "hideCursor", 0) > 0);
