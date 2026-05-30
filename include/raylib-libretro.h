@@ -161,6 +161,8 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #define LIBRETRO_CORE_VARIABLE_LABEL_LEN 512
 #define LIBRETRO_CORE_VARIABLE_VALUES_LEN 512
 #define LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN 256
+#define LIBRETRO_MAX_CORE_CATEGORIES     64
+#define LIBRETRO_CORE_CATEGORY_KEY_LEN   64
 
 /**
  * The amount of controller ports with rumble support.
@@ -289,8 +291,12 @@ typedef struct LibretroCoreData {
     char variableValuesList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
     char variableDisplayList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
     char variableTooltips[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN];
+    char variableCategoryKeys[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_CATEGORY_KEY_LEN];
     bool variableVisible[LIBRETRO_MAX_CORE_VARIABLES];
     unsigned variableCount;
+    char categoryKeys[LIBRETRO_MAX_CORE_CATEGORIES][LIBRETRO_CORE_CATEGORY_KEY_LEN];
+    char categoryLabels[LIBRETRO_MAX_CORE_CATEGORIES][LIBRETRO_CORE_VARIABLE_LABEL_LEN];
+    unsigned categoryCount;
     unsigned variableOptionsVersion; // 0=legacy SET_VARIABLES, 1=SET_CORE_OPTIONS, 2=SET_CORE_OPTIONS_V2
     bool variablesDirty; // Whether or not the variables have been changed since last RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE call.
     bool variablesVisibilityDirty; // Whether option visibility changed and the menu should rebuild.
@@ -392,7 +398,8 @@ static LibretroData LIBRETRO = {
 };
 
 static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
-    const char *label, const char *valuesList, const char *displayList, const char *tooltip) {
+    const char *label, const char *valuesList, const char *displayList,
+    const char *tooltip, const char *categoryKey) {
     for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
         if (TextIsEqual(LIBRETRO.core.variableKeys[i], key)) {
             return; // Already registered; don't overwrite user-set value.
@@ -403,12 +410,13 @@ static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
         return;
     }
     unsigned n = LIBRETRO.core.variableCount;
-    TextCopy(LIBRETRO.core.variableKeys[n],        key);
-    TextCopy(LIBRETRO.core.variableValues[n],      defaultValue  ? defaultValue  : "");
-    TextCopy(LIBRETRO.core.variableLabels[n],      label         ? label         : "");
-    TextCopy(LIBRETRO.core.variableValuesList[n],  valuesList    ? valuesList    : "");
-    TextCopy(LIBRETRO.core.variableDisplayList[n], displayList   ? displayList   : "");
-    TextCopy(LIBRETRO.core.variableTooltips[n],    tooltip       ? tooltip       : "");
+    TextCopy(LIBRETRO.core.variableKeys[n],         key);
+    TextCopy(LIBRETRO.core.variableValues[n],       defaultValue  ? defaultValue  : "");
+    TextCopy(LIBRETRO.core.variableLabels[n],       label         ? label         : "");
+    TextCopy(LIBRETRO.core.variableValuesList[n],   valuesList    ? valuesList    : "");
+    TextCopy(LIBRETRO.core.variableDisplayList[n],  displayList   ? displayList   : "");
+    TextCopy(LIBRETRO.core.variableTooltips[n],     tooltip       ? tooltip       : "");
+    TextCopy(LIBRETRO.core.variableCategoryKeys[n], categoryKey   ? categoryKey   : "");
     LIBRETRO.core.variableVisible[n] = true;
     LIBRETRO.core.variableCount++;
     // A new option appeared: cores that register variables after the menu has
@@ -945,7 +953,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                         memcpy(defaultVal, opts, len);
                     }
                 }
-                LibretroInitCoreVariable(var->key, defaultVal, label, valuesList, valuesList, "");
+                LibretroInitCoreVariable(var->key, defaultVal, label, valuesList, valuesList, "", "");
             }
             return true;
         }
@@ -1407,7 +1415,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
 
                 LibretroInitCoreVariable(opts->key, def ? def : "",
                     opts->desc, valuesList, displayList,
-                    opts->info ? opts->info : "");
+                    opts->info ? opts->info : "", "");
             }
             return true;
         }
@@ -1578,6 +1586,18 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             LIBRETRO.core.variableOptionsVersion = 2;
+
+            // Store category metadata for BuildLibretroMenuOptions to use
+            LIBRETRO.core.categoryCount = 0;
+            if (opts->categories) {
+                const struct retro_core_option_v2_category *cat = opts->categories;
+                for (; cat->key != NULL && LIBRETRO.core.categoryCount < LIBRETRO_MAX_CORE_CATEGORIES; cat++) {
+                    TextCopy(LIBRETRO.core.categoryKeys[LIBRETRO.core.categoryCount],   cat->key);
+                    TextCopy(LIBRETRO.core.categoryLabels[LIBRETRO.core.categoryCount], cat->desc ? cat->desc : cat->key);
+                    LIBRETRO.core.categoryCount++;
+                }
+            }
+
             const struct retro_core_option_v2_definition *def = opts->definitions;
             for (; def->key != NULL; def++) {
                 const char *defaultVal = def->default_value;
@@ -1612,7 +1632,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 }
 
                 LibretroInitCoreVariable(def->key, defaultVal ? defaultVal : "",
-                    label, valuesList, displayList, tooltip);
+                    label, valuesList, displayList, tooltip,
+                    (def->category_key && def->category_key[0]) ? def->category_key : "");
             }
             return true;
         }

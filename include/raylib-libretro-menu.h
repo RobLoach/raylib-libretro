@@ -1530,6 +1530,26 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
         nk_console_button_onclick(m->optionsMenu, "Core Options", &nk_console_button_back),
         NK_SYMBOL_TRIANGLE_UP);
 
+    // Build a tree node per category (v2 only); options without a category go flat.
+    nk_console* categoryTrees[LIBRETRO_MAX_CORE_CATEGORIES] = {0};
+    if (LIBRETRO.core.categoryCount > 0) {
+        for (unsigned c = 0; c < LIBRETRO.core.categoryCount; c++) {
+            // Only create the tree if at least one visible option references it.
+            bool hasVisible = false;
+            for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
+                if (!LIBRETRO.core.variableVisible[i]) continue;
+                if (TextLength(LIBRETRO.core.variableValuesList[i]) == 0) continue;
+                if (TextIsEqual(LIBRETRO.core.variableCategoryKeys[i], LIBRETRO.core.categoryKeys[c])) {
+                    hasVisible = true;
+                    break;
+                }
+            }
+            if (hasVisible) {
+                categoryTrees[c] = nk_console_tree(m->optionsMenu, LIBRETRO.core.categoryLabels[c], nk_false);
+            }
+        }
+    }
+
     for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
         if (TextLength(LIBRETRO.core.variableValuesList[i]) == 0) continue;
         if (!LIBRETRO.core.variableVisible[i]) continue;
@@ -1538,11 +1558,23 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
             ? LIBRETRO.core.variableLabels[i]
             : LIBRETRO.core.variableKeys[i];
 
+        // Find the parent: a category tree node if one exists, otherwise the options menu.
+        nk_console* parent = m->optionsMenu;
+        if (LIBRETRO.core.variableCategoryKeys[i][0] != '\0') {
+            for (unsigned c = 0; c < LIBRETRO.core.categoryCount; c++) {
+                if (TextIsEqual(LIBRETRO.core.variableCategoryKeys[i], LIBRETRO.core.categoryKeys[c])
+                        && categoryTrees[c] != NULL) {
+                    parent = categoryTrees[c];
+                    break;
+                }
+            }
+        }
+
         nk_console* widget;
 
         if (LibretroMenuIsEnabledDisabledOption(LIBRETRO.core.variableValuesList[i])) {
             m->optionCheckboxValues[i] = (nk_bool)TextIsEqual(LIBRETRO.core.variableValues[i], "enabled");
-            widget = nk_console_checkbox(m->optionsMenu, label, &m->optionCheckboxValues[i]);
+            widget = nk_console_checkbox(parent, label, &m->optionCheckboxValues[i]);
             nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
                                          LibretroMenuOptionCheckboxChanged,
                                          (void*)(uintptr_t)i, NULL);
@@ -1554,7 +1586,7 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
                 ? LIBRETRO.core.variableDisplayList[i]
                 : LIBRETRO.core.variableValuesList[i];
 
-            widget = nk_console_combobox(m->optionsMenu, label,
+            widget = nk_console_combobox(parent, label,
                                          displayStr, '|',
                                          &m->optionSelectedIndices[i]);
             nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
