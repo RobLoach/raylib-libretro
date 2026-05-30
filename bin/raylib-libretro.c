@@ -169,32 +169,54 @@ bool Init(void** userData, int argc, char** argv) {
     // Parse the command line arguments.
     // -L/--libretro <core> sets the core; the first non-flag argument is the game file.
     const char* corePath = NULL;
-    const char* gameFile = NULL;
+    const char* gameFiles[8];
+    int gameFileCount = 0;
+    const char* subsystemIdent = NULL;
     for (int i = 1; i < argc; i++) {
         if (TextIsEqual(argv[i], "-h") || TextIsEqual(argv[i], "--help")) {
-            printf("Usage: %s [-L <core>] [game]\n\n", argv[0]);
+            printf("Usage: %s [-L <core>] [--subsystem <ident>] [game [game2 ...]]\n\n", argv[0]);
             printf("Options:\n");
-            printf("  -L, --libretro <core>   Path to the libretro core (.so/.dll/.dylib)\n");
-            printf("  -h, --help              Show this help message\n\n");
+            printf("  -L, --libretro <core>       Path to the libretro core (.so/.dll/.dylib)\n");
+            printf("  --subsystem <ident>         Subsystem identifier for multi-content cores\n");
+            printf("  -h, --help                  Show this help message\n\n");
             printf("Examples:\n");
             printf("  %s -L fceumm_libretro.so smb.nes\n", argv[0]);
-            printf("  %s -L fceumm_libretro.so smb.zip\n", argv[0]);
-            printf("  %s smb.nes\n", argv[0]);
+            printf("  %s -L snes9x_libretro.so --subsystem sgb game.gb bios.sfc\n", argv[0]);
             return false;
         } else if ((TextIsEqual(argv[i], "-L") || TextIsEqual(argv[i], "--libretro")) && i + 1 < argc) {
             corePath = argv[++i];
-        } else if (!gameFile) {
-            gameFile = argv[i];
+        } else if (TextIsEqual(argv[i], "--subsystem") && i + 1 < argc) {
+            subsystemIdent = argv[++i];
+        } else if (gameFileCount < 8) {
+            gameFiles[gameFileCount++] = argv[i];
         }
     }
 
     if (corePath) {
-        if (MenuInitCore(corePath) && LoadLibretroGameFromPhysFS(gameFile)) {
-            BuildLibretroMenuOptions(data->menu);
-            data->menu->active = false;
+        if (MenuInitCore(corePath)) {
+            bool loaded = false;
+            if (subsystemIdent && gameFileCount > 0) {
+                unsigned subCount = 0;
+                const struct retro_subsystem_info* subs = GetLibretroSubsystemInfo(&subCount);
+                for (unsigned s = 0; s < subCount; s++) {
+                    if (TextIsEqual(subs[s].ident, subsystemIdent)) {
+                        loaded = LoadLibretroGameSpecial(subs[s].id, gameFiles, (size_t)gameFileCount);
+                        break;
+                    }
+                }
+                if (!loaded) TraceLog(LOG_WARNING, "APP: Subsystem '%s' not found in core", subsystemIdent);
+            } else if (gameFileCount > 0) {
+                loaded = LoadLibretroGameFromPhysFS(gameFiles[0]);
+            } else {
+                loaded = LoadLibretroGameFromPhysFS(NULL);
+            }
+            if (loaded) {
+                BuildLibretroMenuOptions(data->menu);
+                data->menu->active = false;
+            }
         }
-    } else if (gameFile) {
-        data->menu->active = !MenuLoadGame(gameFile);
+    } else if (gameFileCount > 0) {
+        data->menu->active = !MenuLoadGame(gameFiles[0]);
     }
 
     return true;
@@ -331,16 +353,27 @@ bool Update(void* userData) {
     if (IsFileDropped()) {
         FilePathList dropped = LoadDroppedFiles();
         if (dropped.count > 0) {
-            const char* droppedPath = dropped.paths[0];
             SaveLibretroAllSettings();
             CloseLibretro();
             // The previous game's rewind snapshots are now meaningless.
             RewindBufferFree(&data->rewind);
+            const char* droppedPath = dropped.paths[0];
             if (IsLibretroCoreFile(droppedPath)) {
                 if (MenuInitCore(droppedPath)) {
                     BuildLibretroMenuOptions(data->menu);
                     data->menu->active = true;
                 }
+            } else if (dropped.count > 1 && IsLibretroReady()) {
+                // Multiple files dropped: try as a subsystem load using first available subsystem.
+                unsigned subCount = 0;
+                const struct retro_subsystem_info* subs = GetLibretroSubsystemInfo(&subCount);
+                bool loaded = false;
+                if (subs && subCount > 0 && (unsigned)dropped.count >= subs[0].num_roms) {
+                    const char** paths = (const char**)dropped.paths;
+                    loaded = LoadLibretroGameSpecial(subs[0].id, paths, (size_t)dropped.count);
+                }
+                if (!loaded) data->menu->active = !MenuLoadGame(droppedPath);
+                else data->menu->active = false;
             } else {
                 // MenuLoadGame autodetects a core for the dropped game via FindCoreForGame().
                 data->menu->active = !MenuLoadGame(droppedPath);

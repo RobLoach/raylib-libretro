@@ -53,6 +53,7 @@ extern "C" {
 static bool InitLibretro(const char* core);
 static bool PeekLibretroCoreInfo(const char* core);
 static bool LoadLibretroGame(const char* gameFile);
+static bool LoadLibretroGameSpecial(unsigned game_type, const char** paths, size_t num_paths);
 static bool IsLibretroReady(void);
 static bool IsLibretroGameReady(void);
 static void UpdateLibretro(void);
@@ -2696,6 +2697,110 @@ static bool LoadLibretroGame(const char* gameFile) {
         UnloadFileData(gameData);
     }
     return ok;
+}
+
+/**
+ * Load multi-content (subsystem) game using retro_load_game_special().
+ *
+ * @param game_type  The subsystem id (retro_subsystem_info.id).
+ * @param paths      Array of content file paths, one per subsystem ROM slot.
+ * @param num_paths  Number of paths in the array.
+ * @return True on success.
+ */
+static bool LoadLibretroGameSpecial(unsigned game_type, const char** paths, size_t num_paths) {
+    if (!IsLibretroReady()) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Core required before loading a subsystem game");
+        return false;
+    }
+    if (!LIBRETRO.core.symbols.retro_load_game_special) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Core does not support retro_load_game_special");
+        return false;
+    }
+    if (paths == NULL || num_paths == 0) {
+        TraceLog(LOG_ERROR, "LIBRETRO: LoadLibretroGameSpecial requires at least one path");
+        return false;
+    }
+
+    if (IsLibretroGameReady()) {
+        UnloadLibretroGame();
+    }
+
+    // Find the matching subsystem to know per-ROM need_fullpath.
+    const struct retro_subsystem_info* sub = NULL;
+    for (unsigned i = 0; i < LIBRETRO.core.subsystemCount; i++) {
+        if (LIBRETRO.core.subsystemInfo[i].id == game_type) {
+            sub = &LIBRETRO.core.subsystemInfo[i];
+            break;
+        }
+    }
+
+    struct retro_game_info* infos = (struct retro_game_info*)MemAlloc((unsigned int)(num_paths * sizeof(struct retro_game_info)));
+    if (!infos) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Out of memory for subsystem game info");
+        return false;
+    }
+
+    // Track allocated data buffers so we can free them afterwards.
+    unsigned char** dataBufs = (unsigned char**)MemAlloc((unsigned int)(num_paths * sizeof(unsigned char*)));
+    size_t i;
+    for (i = 0; i < num_paths; i++) {
+        dataBufs[i] = NULL;
+    }
+
+    bool allOk = true;
+    for (i = 0; i < num_paths; i++) {
+        infos[i].data = NULL;
+        infos[i].size = 0;
+        infos[i].path = paths[i];
+        infos[i].meta = "";
+
+        // Determine need_fullpath for this slot from subsystem info.
+        bool needFullpath = false;
+        if (sub && i < sub->num_roms) {
+            needFullpath = sub->roms[i].need_fullpath;
+        }
+
+        if (paths[i] == NULL || paths[i][0] == '\0') {
+            continue; // Optional slot left empty.
+        }
+
+        if (!needFullpath) {
+            int dataSize = 0;
+            dataBufs[i] = LoadFileData(paths[i], &dataSize);
+            if (dataBufs[i] == NULL || dataSize == 0) {
+                TraceLog(LOG_ERROR, "LIBRETRO: Failed to load subsystem ROM: %s", paths[i]);
+                allOk = false;
+                break;
+            }
+            infos[i].data = dataBufs[i];
+            infos[i].size = (size_t)dataSize;
+        }
+    }
+
+    bool loaded = false;
+    if (allOk) {
+        if (LIBRETRO.core.symbols.retro_load_game_special(game_type, infos, num_paths)) {
+            TraceLog(LOG_INFO, "LIBRETRO: Loaded subsystem game (type %u, %zu ROMs)", game_type, num_paths);
+            if (paths[0] && paths[0][0] != '\0') {
+                TextCopy(LIBRETRO.core.contentPath, paths[0]);
+            }
+            LIBRETRO.core.loaded = true;
+            loaded = InitLibretroAudioVideo();
+        } else {
+            TraceLog(LOG_ERROR, "LIBRETRO: retro_load_game_special failed");
+            LIBRETRO.core.loaded = false;
+        }
+    }
+
+    // Free loaded data buffers.
+    for (i = 0; i < num_paths; i++) {
+        if (dataBufs[i] != NULL) {
+            UnloadFileData(dataBufs[i]);
+        }
+    }
+    MemFree(dataBufs);
+    MemFree(infos);
+    return loaded;
 }
 
 /**

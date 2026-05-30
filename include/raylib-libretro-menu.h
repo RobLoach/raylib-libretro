@@ -108,6 +108,10 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
+    int subsystemSelectedIndex;
+    char subsystemPaths[8][RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    nk_console* subsystemMenu;
+    nk_console* subsystemFileWidgets[8];
     char cheatBuffer[256];
     char cheatList[1024];
     unsigned cheatIndex;
@@ -637,6 +641,73 @@ static void MenuResetGameClicked(nk_console* widget, void* user_data) {
     if (!IsLibretroGameReady()) return;
     ResetLibretro();
     menu.active = false;
+}
+
+static void MenuLoadSubsystemGame(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    unsigned count = 0;
+    const struct retro_subsystem_info* subs = GetLibretroSubsystemInfo(&count);
+    if (!subs || (unsigned)menu.subsystemSelectedIndex >= count) return;
+    const struct retro_subsystem_info* sub = &subs[menu.subsystemSelectedIndex];
+    // Check all required slots are filled.
+    for (unsigned r = 0; r < sub->num_roms; r++) {
+        if (sub->roms[r].required && (r >= 8 || menu.subsystemPaths[r][0] == '\0')) {
+            SetLibretroMessage(TextFormat("Please provide ROM: %s", sub->roms[r].desc), 3.0);
+            return;
+        }
+    }
+    unsigned numPaths = sub->num_roms < 8 ? sub->num_roms : 8;
+    const char* paths[8];
+    for (unsigned r = 0; r < numPaths; r++) {
+        paths[r] = menu.subsystemPaths[r];
+    }
+    SaveLibretroAllSettings();
+    if (IsLibretroGameReady()) UnloadLibretroGame();
+    if (LoadLibretroGameSpecial(sub->id, paths, numPaths)) {
+        menu.active = false;
+    } else {
+        SetLibretroMessage("Failed to load subsystem game", 3.0);
+    }
+}
+
+static void LibretroMenuRebuildSubsystemMenu(LibretroMenu* m) {
+    if (!m || !m->subsystemMenu) return;
+    unsigned count = 0;
+    const struct retro_subsystem_info* subs = GetLibretroSubsystemInfo(&count);
+    if (!subs || count == 0) {
+        m->subsystemMenu->visible = nk_false;
+        return;
+    }
+    m->subsystemMenu->visible = nk_true;
+    nk_console_free_children(m->subsystemMenu);
+    nk_console_button_set_symbol(
+        nk_console_button_onclick(m->subsystemMenu, "Load Subsystem Game", &nk_console_button_back),
+        NK_SYMBOL_TRIANGLE_UP);
+
+    // Build subsystem name list for combobox.
+    static char subsysNames[512];
+    subsysNames[0] = '\0';
+    int nameLen = 0;
+    for (unsigned i = 0; i < count && nameLen < (int)sizeof(subsysNames) - 64; i++) {
+        if (i > 0) { TextAppend(subsysNames, "|", &nameLen); }
+        TextAppend(subsysNames, subs[i].desc, &nameLen);
+    }
+    if (m->subsystemSelectedIndex < 0 || (unsigned)m->subsystemSelectedIndex >= count) {
+        m->subsystemSelectedIndex = 0;
+    }
+    nk_console_combobox(m->subsystemMenu, "Subsystem", subsysNames, '|', &m->subsystemSelectedIndex);
+
+    // Add file pickers for each ROM slot of the currently selected subsystem.
+    const struct retro_subsystem_info* sub = &subs[m->subsystemSelectedIndex];
+    for (unsigned r = 0; r < sub->num_roms && r < 8; r++) {
+        m->subsystemFileWidgets[r] = nk_console_file_action(m->subsystemMenu,
+            sub->roms[r].desc, m->subsystemPaths[r], RAYLIB_LIBRETRO_VFS_MAX_PATH);
+        if (m->fileBrowserStartDirectory[0] != '\0') {
+            nk_console_file_set_directory(m->subsystemFileWidgets[r], m->fileBrowserStartDirectory);
+        }
+    }
+    nk_console_button_onclick(m->subsystemMenu, "Load", &MenuLoadSubsystemGame);
 }
 
 static void LibretroMenuCheatChanged(nk_console* widget, void* user_data) {
@@ -1190,6 +1261,11 @@ LibretroMenu* InitLibretroMenu(void) {
         nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
     }
 
+    // Load Subsystem Game (multi-cart/link-cable; populated in BuildLibretroMenuOptions)
+    menu.subsystemMenu = nk_console_button(menu.console, "Load Subsystem Game");
+    menu.subsystemMenu->visible = nk_false;
+    LibretroMenuRebuildSubsystemMenu(&menu);
+
     // Close Game
     //menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
     //nk_console_button_set_symbol(menu.resumeButton, NK_SYMBOL_X);
@@ -1441,6 +1517,9 @@ static bool LibretroMenuIsEnabledDisabledOption(const char* valuesList) {
 
 void BuildLibretroMenuOptions(LibretroMenu* m) {
     if (!m || !m->optionsMenu) return;
+
+    // Rebuild the subsystem menu for the newly loaded core.
+    LibretroMenuRebuildSubsystemMenu(m);
 
     // The menu now reflects the current option set; clear the dirty flag so
     // the lazy-rebuild trigger in UpdateLibretroMenu doesn't fire redundantly.
