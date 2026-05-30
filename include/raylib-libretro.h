@@ -2843,10 +2843,7 @@ static bool InitLibretro(const char* core) {
  * @param tint Color tint applied to the framebuffer texture.
  */
 static void DrawLibretroTexture(int posX, int posY, Color tint) {
-    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
-    float visW = swap ? (float)LIBRETRO.core.texture.height : (float)LIBRETRO.core.texture.width;
-    float visH = swap ? (float)LIBRETRO.core.texture.width : (float)LIBRETRO.core.texture.height;
-    Rectangle destRec = {(float)posX, (float)posY, visW, visH};
+    Rectangle destRec = {(float)posX, (float)posY, (float)GetLibretroWidth(), (float)GetLibretroHeight()};
     DrawLibretroPro(destRec, tint);
 }
 
