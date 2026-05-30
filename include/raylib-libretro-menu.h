@@ -1189,6 +1189,7 @@ LibretroMenu* InitLibretroMenu(void) {
     if (menu.fileBrowserStartDirectory[0] != '\0') {
         nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
     }
+    LibretroMenuUpdateLoadGameFilter(&menu);
 
     // Close Game
     //menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
@@ -1439,8 +1440,27 @@ static bool LibretroMenuIsEnabledDisabledOption(const char* valuesList) {
            TextIsEqual(valuesList, "off|on");
 }
 
+static void LibretroMenuUpdateLoadGameFilter(LibretroMenu* m) {
+    if (!m || !m->loadGameWidget) return;
+    const char* exts = GetLibretroValidExtensions();
+    if (exts && exts[0] != '\0') {
+        char filter[512];
+        GetLibretroFileExtensionPattern(exts, filter, sizeof(filter) - 5);
+        int len = (int)TextLength(filter);
+        if (len > 0 && len < (int)sizeof(filter) - 5) {
+            TextCopy(filter + len, ";.zip");
+        }
+        nk_console_file_set_filter(m->loadGameWidget, filter);
+    } else {
+        nk_console_file_set_filter(m->loadGameWidget, NULL);
+    }
+}
+
 void BuildLibretroMenuOptions(LibretroMenu* m) {
     if (!m || !m->optionsMenu) return;
+
+    // Update the Load Game file filter to match the newly loaded core.
+    LibretroMenuUpdateLoadGameFilter(m);
 
     // The menu now reflects the current option set; clear the dirty flag so
     // the lazy-rebuild trigger in UpdateLibretroMenu doesn't fire redundantly.
