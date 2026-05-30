@@ -54,6 +54,16 @@ typedef enum LibretroMenuStyle {
     LIBRETRO_MENU_STYLE_COUNT,
 } LibretroMenuStyle;
 
+typedef enum LibretroMenuCombo {
+    LIBRETRO_MENU_COMBO_NONE = 0,
+    LIBRETRO_MENU_COMBO_SELECT_START,
+    LIBRETRO_MENU_COMBO_L1_R1,
+    LIBRETRO_MENU_COMBO_L2_R2,
+    LIBRETRO_MENU_COMBO_L3_R3,
+    LIBRETRO_MENU_COMBO_DOWN_SELECT,
+    LIBRETRO_MENU_COMBO_COUNT,
+} LibretroMenuCombo;
+
 typedef struct LibretroMenu {
     struct nk_context* ctx;
     Font font;
@@ -77,6 +87,7 @@ typedef struct LibretroMenu {
     int themeSelectedIndex;
     float volumeSelected;
     bool rewindEnabled;
+    int menuComboIndex;
     nk_rune keyScreenshot;
     nk_rune keyRewind;
     nk_rune keyMenu;
@@ -108,6 +119,8 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
+    nk_bool hideCursor;
+    nk_bool lockCursor;
     char cheatBuffer[256];
     char cheatList[1024];
     unsigned cheatIndex;
@@ -564,6 +577,16 @@ static int LibretroMenuResolveTargetFps(void) {
 // driven by the time accumulator in UpdateLibretro(), so these only govern how
 // often the frontend renders/polls; "Auto" doubles as a busy-loop safety cap
 // when a compositor or driver ignores the vsync hint.
+static void LibretroMenuApplyCursorSettings(void) {
+    if (menu.active) {
+        ShowCursor();
+        EnableCursor();
+    } else {
+        if (menu.hideCursor) HideCursor(); else ShowCursor();
+        if (menu.lockCursor) DisableCursor(); else EnableCursor();
+    }
+}
+
 static void LibretroMenuApplyVideoSettings(void) {
     if (menu.vsync) {
         SetWindowState(FLAG_VSYNC_HINT);
@@ -577,6 +600,27 @@ static void LibretroMenuVideoChanged(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     NK_UNUSED(user_data);
     LibretroMenuApplyVideoSettings();
+}
+
+static bool LibretroMenuComboTriggered(int gamepad) {
+    switch (menu.menuComboIndex) {
+        case LIBRETRO_MENU_COMBO_SELECT_START:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_MIDDLE_RIGHT))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_RIGHT) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT));
+        case LIBRETRO_MENU_COMBO_L1_R1:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_1) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_1))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_1) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_1));
+        case LIBRETRO_MENU_COMBO_L2_R2:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_2) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_2))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_2) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_2));
+        case LIBRETRO_MENU_COMBO_L3_R3:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_THUMB) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_RIGHT_THUMB))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_THUMB) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_THUMB));
+        case LIBRETRO_MENU_COMBO_DOWN_SELECT:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_DOWN) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_FACE_DOWN));
+        default: return false;
+    }
 }
 
 static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
@@ -1267,6 +1311,8 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* analogCombo = nk_console_combobox(gameplayMenu, "Analog to D-Pad",
                 "None|Left Analog|Right Analog", '|', &LIBRETRO.analogToDpadIndex);
             analogCombo->tooltip = "Map an analog stick to D-Pad inputs";
+            nk_console_checkbox(gameplayMenu, "Hide Cursor", &menu.hideCursor);
+            nk_console_checkbox(gameplayMenu, "Lock Cursor", &menu.lockCursor);
             nk_console_combobox(gameplayMenu, "Save Slot",
                 "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
                 '|', &menu.saveSlotIndex);
@@ -1280,6 +1326,10 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_button_set_symbol(
                 nk_console_button_onclick(keysMenu, "Keys", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
+            nk_console* menuCombo = nk_console_combobox(keysMenu, "Menu Controller Combo",
+                "None|Select + Start|L1 + R1|L2 + R2|L3 + R3|Down + Select",
+                '|', &menu.menuComboIndex);
+            menuCombo->tooltip = "Controller button combination to toggle the menu";
             nk_console_key(keysMenu, "Screenshot", &menu.keyScreenshot);
             nk_console_key(keysMenu, "Rewind", &menu.keyRewind);
             nk_console_key(keysMenu, "Menu", &menu.keyMenu);
@@ -1527,6 +1577,9 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", menu.volumeSelected);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "analogToDpad", LIBRETRO.analogToDpadIndex);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "menuCombo", menu.menuComboIndex);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "hideCursor", menu.hideCursor ? 1 : 0);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "lockCursor", menu.lockCursor ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchHaptics", menu.touchHapticsEnabled ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyScreenshot", (int)menu.keyScreenshot);
@@ -1685,6 +1738,10 @@ static bool LoadLibretroMenuSettings(void) {
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
     LIBRETRO.analogToDpadIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "analogToDpad", 0);
     if (LIBRETRO.analogToDpadIndex < 0 || LIBRETRO.analogToDpadIndex > 2) LIBRETRO.analogToDpadIndex = 0;
+    menu.menuComboIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "menuCombo", 0);
+    if (menu.menuComboIndex < 0 || menu.menuComboIndex >= LIBRETRO_MENU_COMBO_COUNT) menu.menuComboIndex = 0;
+    menu.hideCursor = (nk_bool)(rlconfig_get_int(menu.cfg, "raylib-libretro", "hideCursor", 0) > 0);
+    menu.lockCursor = (nk_bool)(rlconfig_get_int(menu.cfg, "raylib-libretro", "lockCursor", 0) > 0);
 #if defined(PLATFORM_WEB)
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 1) > 0;
 #else
@@ -1826,6 +1883,13 @@ void UpdateLibretroMenu(void) {
         menu.active = !menu.active;
     }
 
+    // Menu Controller Combo
+    if (menu.menuComboIndex > 0) {
+        for (int gp = 0; gp < 4; gp++) {
+            if (IsGamepadAvailable(gp) && LibretroMenuComboTriggered(gp)) menu.active = !menu.active;
+        }
+    }
+
     // Menu Key
     if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyMenu)) && !menu.active) {
         menu.active = true;
@@ -1840,10 +1904,12 @@ void UpdateLibretroMenu(void) {
     // where wasm dynamic linking and event-loop timing differ from Chrome.
     static bool menuWasActive = false;
     if (!menu.active) {
+        if (menuWasActive) LibretroMenuApplyCursorSettings();
         menuWasActive = false;
         return;
     }
     bool menuJustOpened = !menuWasActive;
+    if (menuJustOpened) LibretroMenuApplyCursorSettings();
     menuWasActive = true;
 
     // Rebuild when any of these signals say the options pane is stale:
