@@ -12,6 +12,8 @@ if (NOT raylib_FOUND)
     set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(BUILD_GAMES    OFF CACHE BOOL "" FORCE)
     set(BUILD_TESTING  OFF CACHE BOOL "" FORCE)
+    set(CUSTOMIZE_BUILD         ON  CACHE BOOL "" FORCE)
+    set(SUPPORT_MODULE_RMODELS  OFF CACHE BOOL "" FORCE)
     add_subdirectory(vendor/raylib vendor/raylib EXCLUDE_FROM_ALL)
 endif()
 
