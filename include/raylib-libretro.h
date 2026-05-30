@@ -2867,15 +2867,9 @@ static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color 
     if (LIBRETRO.core.loaded == false) {
         return;
     }
-    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
-    float visW = (float)GetLibretroWidth() * scale;
-    float visH = (float)GetLibretroHeight() * scale;
-    float destW = swap ? visH : visW;
-    float destH = swap ? visW : visH;
     Rectangle source = {0, 0, (float)LIBRETRO.core.width, (float)LIBRETRO.core.height};
-    Rectangle dest = {position.x + visW / 2.0f, position.y + visH / 2.0f, destW, destH};
-    Vector2 origin = {destW / 2.0f, destH / 2.0f};
-    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotation + (float)LIBRETRO.core.rotation * 90.0f, tint);
+    Rectangle dest = {position.x, position.y, (float)LIBRETRO.core.width * scale, (float)LIBRETRO.core.height * scale};
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, (Vector2){0, 0}, rotation + (float)LIBRETRO.core.rotation * 90.0f, tint);
 }
 
 /**
