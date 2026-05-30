@@ -1497,10 +1497,23 @@ static bool LibretroMenuIsEnabledDisabledOption(const char* valuesList) {
 
 static void LibretroMenuUpdateLoadGameFilter(LibretroMenu* m) {
     if (!m || !m->loadGameWidget) return;
-    const char* exts = GetLibretroValidExtensions();
-    if (exts && exts[0] != '\0') {
-        char filter[512];
-        GetLibretroFileExtensionPattern(exts, filter, sizeof(filter) - 5);
+
+    // Collect extensions from all cached cores into a pipe-separated list.
+    char allExts[1024] = {0};
+    int coreCount = rlconfig_get_int(m->cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
+    for (int i = 0; i < coreCount; i++) {
+        const char* exts = rlconfig_get(m->cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_extensions", i));
+        if (!exts || exts[0] == '\0') continue;
+        unsigned int curLen = TextLength(allExts);
+        unsigned int addLen = TextLength(exts);
+        if (curLen + addLen + 2 >= sizeof(allExts)) continue;
+        if (curLen > 0) allExts[curLen++] = '|';
+        TextCopy(allExts + curLen, exts);
+    }
+
+    if (allExts[0] != '\0') {
+        char filter[1200];
+        GetLibretroFileExtensionPattern(allExts, filter, sizeof(filter) - 5);
         int len = (int)TextLength(filter);
         if (len > 0 && len < (int)sizeof(filter) - 5) {
             TextCopy(filter + len, ";.zip");
