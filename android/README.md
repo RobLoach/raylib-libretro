@@ -31,29 +31,16 @@ an `android.app.NativeActivity` — there is no Java/Kotlin application code
 > **not** on an x86_64 emulator. To test on an emulator, add `x86_64` to
 > `abiFilters` in [app/build.gradle](app/build.gradle).
 
-## The Gradle wrapper is not committed
-
-This directory ships only `gradle/wrapper/gradle-wrapper.properties` — the
-`gradlew` / `gradlew.bat` scripts and `gradle-wrapper.jar` are **not** in the
-repo, so `./gradlew` will not work until you generate them. Once, on a machine
-with a modern Gradle installed:
-
-```sh
-cd android
-gradle wrapper --gradle-version 8.6
-```
-
-Alternatively, open the `android/` folder in Android Studio and let it create
-the wrapper, or run the Gradle tasks below with a system-installed `gradle`
-(8.6+) instead of `./gradlew`.
-
 ## Build
+
+The Gradle wrapper is committed (pinned to Gradle 8.6), so `./gradlew` works
+without a separate Gradle install:
 
 ```sh
 cd android
 git -C .. submodule update --init   # raylib, libretro-common, physfs, etc.
 
-./gradlew assembleDebug             # or: gradle assembleDebug
+./gradlew assembleDebug
 ```
 
 The signed-with-debug-key APK lands at:
@@ -66,6 +53,20 @@ android/app/build/outputs/apk/debug/app-debug.apk
 > nightly buildbot into `app/src/main/assets/cores/` (see
 > [app/CMakeLists.txt](app/CMakeLists.txt)). This needs network access and is
 > cached for subsequent builds.
+
+## Releases
+
+Prebuilt APKs are attached to every
+[GitHub Release](https://github.com/RobLoach/raylib-libretro/releases), built by
+[.github/workflows/Release.yml](../.github/workflows/Release.yml) when a release
+is published. The asset is named `raylib-libretro-android-arm64.apk`; its
+`versionName` is taken from the release tag and `versionCode` from the build
+number, so each release is a valid update over the last.
+
+> **Known limitation:** release APKs are signed with the Android **debug key**,
+> which is not stable across builds. Installing a newer release over an existing
+> install fails with a signature mismatch — uninstall the previous version first
+> (this loses save data). A persistent release-signing key would remove this.
 
 ## Install & run
 
@@ -135,9 +136,10 @@ from [../bin/icon-512.png](../bin/icon-512.png).
 
 | Symptom | Likely cause |
 |---------|--------------|
-| `./gradlew: not found` | The Gradle wrapper isn't committed — see [above](#the-gradle-wrapper-is-not-committed). |
+| `./gradlew: Permission denied` | The wrapper lost its executable bit — `chmod +x gradlew`. |
 | Crashes instantly, blank screen | Missing `ANativeActivity_onCreate` — verify the `-u` link flag survived (`nm -D libmain.so \| grep ANativeActivity_onCreate`). |
 | Installs but won't launch on emulator | Emulator is x86_64; only `arm64-v8a` is built. Add `x86_64` to `abiFilters`. |
+| Won't install over an older build (signature mismatch) | Release APKs are debug-signed; uninstall the previous version first. |
 | Menu shows no cores | The core download failed at build time (logged as a CMake warning), or first-launch copy failed — check `adb logcat`. |
 | Can't find ROMs in the browser | All-Files Access not granted, or ROMs are outside the app's storage. |
 
