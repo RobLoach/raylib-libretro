@@ -138,6 +138,10 @@ LibretroMenu* InitLibretroMenu(void);
 void CloseLibretroMenu(void);
 void UpdateLibretroMenu(void);
 void DrawLibretroMenu(void);
+void ShowLibretroMenu(void);      // Show the menu and apply cursor settings.
+void HideLibretroMenu(void);      // Hide the menu and apply cursor settings.
+void ToggleLibretroMenu(void);    // Toggle menu visibility.
+bool IsLibretroMenuShown(void);   // Returns true if the menu is currently visible.
 void BuildLibretroMenuOptions(LibretroMenu* menu); // Populate "Core Options" with comboboxes from the loaded core.
 bool LoadLibretroCoreOptions(void);    // Apply saved core options from config to the loaded core.
 bool SaveLibretroAllSettings(void);    // Save menu settings + core options in a single file write.
@@ -587,6 +591,28 @@ static void LibretroMenuApplyCursorSettings(void) {
     }
 }
 
+void ShowLibretroMenu(void) {
+    if (!menu.active) {
+        menu.active = true;
+        LibretroMenuApplyCursorSettings();
+    }
+}
+
+void HideLibretroMenu(void) {
+    if (menu.active) {
+        menu.active = false;
+        LibretroMenuApplyCursorSettings();
+    }
+}
+
+void ToggleLibretroMenu(void) {
+    if (menu.active) HideLibretroMenu(); else ShowLibretroMenu();
+}
+
+bool IsLibretroMenuShown(void) {
+    return menu.active;
+}
+
 static void LibretroMenuApplyVideoSettings(void) {
     if (menu.vsync) {
         SetWindowState(FLAG_VSYNC_HINT);
@@ -660,7 +686,7 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
         MemFree(saveData);
         LibretroFlushPersistentStorage();
         SetLibretroMessage(TextFormat("Slot %d Saved", menu.saveSlotIndex + 1), 2.0);
-        menu.active = false;
+        HideLibretroMenu();
     }
     else {
         SetLibretroMessage("State Saved Failed", 2.0);
@@ -671,7 +697,7 @@ static void MenuResumeClicked(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     NK_UNUSED(user_data);
     if (IsLibretroGameReady()) {
-        menu.active = false;
+        HideLibretroMenu();
     }
 }
 
@@ -680,7 +706,7 @@ static void MenuResetGameClicked(nk_console* widget, void* user_data) {
     NK_UNUSED(user_data);
     if (!IsLibretroGameReady()) return;
     ResetLibretro();
-    menu.active = false;
+    HideLibretroMenu();
 }
 
 static void LibretroMenuCheatChanged(nk_console* widget, void* user_data) {
@@ -1053,7 +1079,7 @@ static bool MenuLoadGame(const char* gamePath) {
     }
 
     BuildLibretroMenuOptions(&menu);
-    menu.active = false;
+    HideLibretroMenu();
     MenuLoadGameSRAM();
     return true;
 }
@@ -1064,7 +1090,7 @@ static void MenuGameFileChanged(nk_console* widget, void* user_data) {
     if (path && path[0]) {
         SaveLibretroAllSettings();
         CloseLibretro();
-        menu.active = !MenuLoadGame(path);
+        if (MenuLoadGame(path)) HideLibretroMenu(); else ShowLibretroMenu();
         path[0] = '\0';
     }
 }
@@ -1083,7 +1109,7 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
         // accumulator backlog so the next frame doesn't burst to catch up.
         ResetLibretroTiming();
         SetLibretroMessage(TextFormat("Slot %d Loaded", menu.saveSlotIndex + 1), 2.0);
-        menu.active = false;
+        HideLibretroMenu();
     }
     else {
         SetLibretroMessage("Load State failed", 2.0);
@@ -1421,7 +1447,7 @@ LibretroMenu* InitLibretroMenu(void) {
     nk_console_button_set_symbol(quitButton, NK_SYMBOL_X);
 #endif
 
-    menu.active = true;
+    ShowLibretroMenu();
     return &menu;
 }
 
@@ -1893,37 +1919,33 @@ void UpdateLibretroMenu(void) {
             IsGamepadButtonReleased(1, GAMEPAD_BUTTON_MIDDLE) ||
             IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) ||
             IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE)) {
-        menu.active = !menu.active;
+        ToggleLibretroMenu();
     }
 
     // Menu Controller Combo
     if (menu.menuComboIndex > 0) {
         for (int gp = 0; gp < 4; gp++) {
-            if (IsGamepadAvailable(gp) && LibretroMenuComboTriggered(gp)) menu.active = !menu.active;
+            if (IsGamepadAvailable(gp) && LibretroMenuComboTriggered(gp)) ToggleLibretroMenu();
         }
     }
 
     // Menu Key
     if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyMenu)) && !menu.active) {
-        menu.active = true;
+        ShowLibretroMenu();
     }
 
     if (!menu.active && IsLibretroGameReady() && IsWindowMinimized()) {
-        menu.active = true;
+        ShowLibretroMenu();
     }
 
-    // Track menu open state so we can force a rebuild on every open. The
-    // dirty flag alone has been seen to miss late-arriving options on Firefox
-    // where wasm dynamic linking and event-loop timing differ from Chrome.
-    static bool menuWasActive = false;
     if (!menu.active) {
-        if (menuWasActive) LibretroMenuApplyCursorSettings();
-        menuWasActive = false;
         return;
     }
+
+    // Track whether menu just opened this frame for the rebuild logic below.
+    static bool menuWasActive = false;
     bool menuJustOpened = !menuWasActive;
-    if (menuJustOpened) LibretroMenuApplyCursorSettings();
-    menuWasActive = true;
+    menuWasActive = menu.active;
 
     // Rebuild when any of these signals say the options pane is stale:
     //   * dirty flag set by a SET_CORE_OPTIONS_DISPLAY / late SET_VARIABLES
