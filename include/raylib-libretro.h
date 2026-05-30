@@ -119,6 +119,7 @@ static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *
 static int LibretroRetroPixelFormatToPixelFormat(int pixelFormat);
 static int LibretroRetroJoypadButtonToGamepadButton(int button);
 static int LibretroRetroJoypadButtontoRetroKey(int button);
+static bool LibretroAnalogToDpadPressed(int port, int btn);
 static int LibretroRetroKeyToKeyboardKey(int key);
 static int LibretroMapRetroLogLevelToTraceLogType(int level);
 
@@ -232,6 +233,7 @@ typedef struct LibretroCoreData {
     enum retro_pixel_format pixelFormat;
     unsigned performanceLevel;
     bool loaded;
+    uint64_t serializationQuirks; /** Bitmask from RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS. */
 
     // The last performance counter registered. TODO: Make it a linked list.
     struct retro_perf_counter* perf_counter_last;
@@ -343,6 +345,7 @@ typedef struct LibretroData {
     float speed;
     double speedAccumulator;
     int textureFilter; // TextureFilter
+    int analogToDpadIndex; // 0=None, 1=Left Analog, 2=Right Analog
     int keyboardPlayer1[16];
     char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -1245,8 +1248,13 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS not implemented");
-            return false;
+            const uint64_t* quirks = (const uint64_t*)data;
+            if (quirks == NULL) {
+                return false;
+            }
+            LIBRETRO.core.serializationQuirks = *quirks;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: 0x%llx", (unsigned long long)*quirks);
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: {
@@ -2114,6 +2122,7 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                     } else if (gpAvail) {
                         pressed = IsGamepadButtonDown((int)port, LibretroRetroJoypadButtonToGamepadButton(btn));
                     }
+                    if (!pressed) pressed = LibretroAnalogToDpadPressed((int)port, btn);
                     if (pressed) mask |= (1 << btn);
                 }
                 return mask;
@@ -2136,18 +2145,20 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                 }
                 int retroKey = LibretroRetroJoypadButtontoRetroKey(id);
                 if (retroKey == RETROK_UNKNOWN) {
-                    return 0;
+                    return LibretroAnalogToDpadPressed(0, id) ? 1 : 0;
                 }
                 int raylibKey = LibretroRetroKeyToKeyboardKey(retroKey);
-                return (raylibKey > 0) ? (int)IsKeyDown(raylibKey) : 0;
+                if (raylibKey > 0 && IsKeyDown(raylibKey)) return 1;
+                return LibretroAnalogToDpadPressed(0, id) ? 1 : 0;
             }
 
             // Port 1+: map to gamepad (port 1 → gamepad 1, port 2 → gamepad 2, ...).
             if (!IsGamepadAvailable(port)) {
-                return 0;
+                return LibretroAnalogToDpadPressed((int)port, id) ? 1 : 0;
             }
             int gamepadButton = LibretroRetroJoypadButtonToGamepadButton(id);
-            return (int)IsGamepadButtonDown(port, gamepadButton);
+            if (IsGamepadButtonDown(port, gamepadButton)) return 1;
+            return LibretroAnalogToDpadPressed((int)port, id) ? 1 : 0;
         }
 
         case RETRO_DEVICE_MOUSE: {
@@ -3780,6 +3791,21 @@ static int LibretroRetroJoypadButtonToGamepadButton(int button) {
     return GAMEPAD_BUTTON_UNKNOWN;
 }
 
+static bool LibretroAnalogToDpadPressed(int port, int btn) {
+    if (LIBRETRO.analogToDpadIndex == 0 || !IsGamepadAvailable(port)) return false;
+    float axisX = GetGamepadAxisMovement(port,
+        LIBRETRO.analogToDpadIndex == 2 ? GAMEPAD_AXIS_RIGHT_X : GAMEPAD_AXIS_LEFT_X);
+    float axisY = GetGamepadAxisMovement(port,
+        LIBRETRO.analogToDpadIndex == 2 ? GAMEPAD_AXIS_RIGHT_Y : GAMEPAD_AXIS_LEFT_Y);
+    switch (btn) {
+        case RETRO_DEVICE_ID_JOYPAD_UP:    return axisY < -0.5f;
+        case RETRO_DEVICE_ID_JOYPAD_DOWN:  return axisY >  0.5f;
+        case RETRO_DEVICE_ID_JOYPAD_LEFT:  return axisX < -0.5f;
+        case RETRO_DEVICE_ID_JOYPAD_RIGHT: return axisX >  0.5f;
+        default: return false;
+    }
+}
+
 /**
  * Maps a libretro pixel format to a raylib PixelFormat.
  */
@@ -3853,6 +3879,12 @@ static void* GetLibretroSerializedData(unsigned int* size) {
     if (finalSize == 0) {
         return NULL;
     }
+
+    // For variable-size cores, re-query the size each call.
+    if (LIBRETRO.core.serializationQuirks & RETRO_SERIALIZATION_QUIRK_CORE_VARIABLE_SIZE) {
+        finalSize = LIBRETRO.core.symbols.retro_serialize_size();
+    }
+
     if (size != NULL) {
         *size = (unsigned int)finalSize;
     }
@@ -3860,6 +3892,11 @@ static void* GetLibretroSerializedData(unsigned int* size) {
     void* saveData = MemAlloc((unsigned int)finalSize);
     if (saveData == NULL) {
         return NULL;
+    }
+
+    // MUST_INITIALIZE: zero the buffer before serializing.
+    if (LIBRETRO.core.serializationQuirks & RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE) {
+        memset(saveData, 0, finalSize);
     }
 
     if (LIBRETRO.core.symbols.retro_serialize(saveData, finalSize)) {
