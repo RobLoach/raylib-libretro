@@ -2846,7 +2846,15 @@ static void DrawLibretroTexture(int posX, int posY, Color tint) {
     if (LIBRETRO.core.loaded == false) {
         return;
     }
-    DrawTexture(LIBRETRO.core.texture, posX, posY, tint);
+    float rotDeg = (float)LIBRETRO.core.rotation * 90.0f;
+    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
+    float visW = swap ? (float)LIBRETRO.core.texture.height : (float)LIBRETRO.core.texture.width;
+    float visH = swap ? (float)LIBRETRO.core.texture.width : (float)LIBRETRO.core.texture.height;
+    Rectangle source = {0, 0, (float)LIBRETRO.core.width, (float)LIBRETRO.core.height};
+    Rectangle dest = {(float)posX + visW / 2.0f, (float)posY + visH / 2.0f,
+                      (float)LIBRETRO.core.texture.width, (float)LIBRETRO.core.texture.height};
+    Vector2 origin = {(float)LIBRETRO.core.texture.width / 2.0f, (float)LIBRETRO.core.texture.height / 2.0f};
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotDeg, tint);
 }
 
 /**
@@ -2858,7 +2866,15 @@ static void DrawLibretroV(Vector2 position, Color tint) {
     if (LIBRETRO.core.loaded == false) {
         return;
     }
-    DrawTextureV(LIBRETRO.core.texture, position, tint);
+    float rotDeg = (float)LIBRETRO.core.rotation * 90.0f;
+    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
+    float visW = swap ? (float)LIBRETRO.core.texture.height : (float)LIBRETRO.core.texture.width;
+    float visH = swap ? (float)LIBRETRO.core.texture.width : (float)LIBRETRO.core.texture.height;
+    Rectangle source = {0, 0, (float)LIBRETRO.core.width, (float)LIBRETRO.core.height};
+    Rectangle dest = {position.x + visW / 2.0f, position.y + visH / 2.0f,
+                      (float)LIBRETRO.core.texture.width, (float)LIBRETRO.core.texture.height};
+    Vector2 origin = {(float)LIBRETRO.core.texture.width / 2.0f, (float)LIBRETRO.core.texture.height / 2.0f};
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotDeg, tint);
 }
 
 /**
@@ -2872,7 +2888,7 @@ static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color 
     if (LIBRETRO.core.loaded == false) {
         return;
     }
-    DrawTextureEx(LIBRETRO.core.texture, position, rotation, scale, tint);
+    DrawTextureEx(LIBRETRO.core.texture, position, rotation + (float)LIBRETRO.core.rotation * 90.0f, scale, tint);
 }
 
 /**
@@ -2884,9 +2900,14 @@ static void DrawLibretroPro(Rectangle destRec, Color tint) {
     if (LIBRETRO.core.loaded == false) {
         return;
     }
-    Rectangle source = {0, 0, LIBRETRO.core.width, LIBRETRO.core.height};
-    Vector2 origin = {0, 0};
-    DrawTexturePro(LIBRETRO.core.texture, source, destRec, origin, 0, tint);
+    float rotDeg = (float)LIBRETRO.core.rotation * 90.0f;
+    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
+    float destW = swap ? destRec.height : destRec.width;
+    float destH = swap ? destRec.width : destRec.height;
+    Rectangle source = {0, 0, (float)LIBRETRO.core.width, (float)LIBRETRO.core.height};
+    Rectangle dest = {destRec.x + destRec.width / 2.0f, destRec.y + destRec.height / 2.0f, destW, destH};
+    Vector2 origin = {destW / 2.0f, destH / 2.0f};
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotDeg, tint);
 }
 
 /**
@@ -3167,7 +3188,8 @@ static int GetLibretroRotation(void) {
  * @return Width in pixels
  */
 static unsigned GetLibretroWidth(void) {
-    return LIBRETRO.core.width;
+    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
+    return swap ? LIBRETRO.core.height : LIBRETRO.core.width;
 }
 
 /**
@@ -3175,7 +3197,8 @@ static unsigned GetLibretroWidth(void) {
  * @return Height in pixels.
  */
 static unsigned GetLibretroHeight(void) {
-    return LIBRETRO.core.height;
+    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
+    return swap ? LIBRETRO.core.width : LIBRETRO.core.height;
 }
 
 static double GetLibretroFPS(void) {
