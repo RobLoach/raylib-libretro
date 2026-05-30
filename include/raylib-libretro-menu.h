@@ -54,6 +54,16 @@ typedef enum LibretroMenuStyle {
     LIBRETRO_MENU_STYLE_COUNT,
 } LibretroMenuStyle;
 
+typedef enum LibretroMenuCombo {
+    LIBRETRO_MENU_COMBO_NONE = 0,
+    LIBRETRO_MENU_COMBO_SELECT_START,
+    LIBRETRO_MENU_COMBO_L1_R1,
+    LIBRETRO_MENU_COMBO_L2_R2,
+    LIBRETRO_MENU_COMBO_L3_R3,
+    LIBRETRO_MENU_COMBO_DOWN_SELECT,
+    LIBRETRO_MENU_COMBO_COUNT,
+} LibretroMenuCombo;
+
 typedef struct LibretroMenu {
     struct nk_context* ctx;
     Font font;
@@ -77,6 +87,7 @@ typedef struct LibretroMenu {
     int themeSelectedIndex;
     float volumeSelected;
     bool rewindEnabled;
+    int menuComboIndex;
     nk_rune keyScreenshot;
     nk_rune keyRewind;
     nk_rune keyMenu;
@@ -589,6 +600,27 @@ static void LibretroMenuVideoChanged(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     NK_UNUSED(user_data);
     LibretroMenuApplyVideoSettings();
+}
+
+static bool LibretroMenuComboTriggered(int gamepad) {
+    switch (menu.menuComboIndex) {
+        case LIBRETRO_MENU_COMBO_SELECT_START:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_MIDDLE_RIGHT))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_RIGHT) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT));
+        case LIBRETRO_MENU_COMBO_L1_R1:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_1) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_1))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_1) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_1));
+        case LIBRETRO_MENU_COMBO_L2_R2:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_2) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_2))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_2) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_2));
+        case LIBRETRO_MENU_COMBO_L3_R3:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_THUMB) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_RIGHT_THUMB))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_THUMB) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_THUMB));
+        case LIBRETRO_MENU_COMBO_DOWN_SELECT:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_DOWN) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_FACE_DOWN));
+        default: return false;
+    }
 }
 
 static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
@@ -1291,6 +1323,10 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_button_set_symbol(
                 nk_console_button_onclick(keysMenu, "Keys", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
+            nk_console* menuCombo = nk_console_combobox(keysMenu, "Menu Controller Combo",
+                "None|Select + Start|L1 + R1|L2 + R2|L3 + R3|Down + Select",
+                '|', &menu.menuComboIndex);
+            menuCombo->tooltip = "Controller button combination to toggle the menu";
             nk_console_key(keysMenu, "Screenshot", &menu.keyScreenshot);
             nk_console_key(keysMenu, "Rewind", &menu.keyRewind);
             nk_console_key(keysMenu, "Menu", &menu.keyMenu);
@@ -1537,6 +1573,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", menu.volumeSelected);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "menuCombo", menu.menuComboIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "hideCursor", menu.hideCursor ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "lockCursor", menu.lockCursor ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
@@ -1695,6 +1732,8 @@ static bool LoadLibretroMenuSettings(void) {
     SetLibretroVolume(menu.volumeSelected);
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
+    menu.menuComboIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "menuCombo", 0);
+    if (menu.menuComboIndex < 0 || menu.menuComboIndex >= LIBRETRO_MENU_COMBO_COUNT) menu.menuComboIndex = 0;
     menu.hideCursor = (nk_bool)(rlconfig_get_int(menu.cfg, "raylib-libretro", "hideCursor", 0) > 0);
     menu.lockCursor = (nk_bool)(rlconfig_get_int(menu.cfg, "raylib-libretro", "lockCursor", 0) > 0);
 #if defined(PLATFORM_WEB)
@@ -1836,6 +1875,13 @@ void UpdateLibretroMenu(void) {
             IsGamepadButtonReleased(3, GAMEPAD_BUTTON_MIDDLE) ||
             IsGamepadButtonReleased(4, GAMEPAD_BUTTON_MIDDLE)) {
         menu.active = !menu.active;
+    }
+
+    // Menu Controller Combo
+    if (menu.menuComboIndex > 0) {
+        for (int gp = 0; gp < 4; gp++) {
+            if (IsGamepadAvailable(gp) && LibretroMenuComboTriggered(gp)) menu.active = !menu.active;
+        }
     }
 
     // Menu Key
