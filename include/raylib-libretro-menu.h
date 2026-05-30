@@ -54,6 +54,16 @@ typedef enum LibretroMenuStyle {
     LIBRETRO_MENU_STYLE_COUNT,
 } LibretroMenuStyle;
 
+typedef enum LibretroMenuCombo {
+    LIBRETRO_MENU_COMBO_NONE = 0,
+    LIBRETRO_MENU_COMBO_SELECT_START,
+    LIBRETRO_MENU_COMBO_L1_R1,
+    LIBRETRO_MENU_COMBO_L2_R2,
+    LIBRETRO_MENU_COMBO_L3_R3,
+    LIBRETRO_MENU_COMBO_DOWN_SELECT,
+    LIBRETRO_MENU_COMBO_COUNT,
+} LibretroMenuCombo;
+
 typedef struct LibretroMenu {
     struct nk_context* ctx;
     Font font;
@@ -580,18 +590,23 @@ static void LibretroMenuVideoChanged(nk_console* widget, void* user_data) {
     LibretroMenuApplyVideoSettings();
 }
 
-static bool LibretroMenuComboActive(int gamepad) {
+static bool LibretroMenuComboTriggered(int gamepad) {
     switch (menu.menuComboIndex) {
-        case 1: return IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT)
-                    && IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_RIGHT);
-        case 2: return IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_1)
-                    && IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_1);
-        case 3: return IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_2)
-                    && IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_2);
-        case 4: return IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_THUMB)
-                    && IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_THUMB);
-        case 5: return IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_DOWN)
-                    && IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT);
+        case LIBRETRO_MENU_COMBO_SELECT_START:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_MIDDLE_RIGHT))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_RIGHT) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT));
+        case LIBRETRO_MENU_COMBO_L1_R1:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_1) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_1))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_1) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_1));
+        case LIBRETRO_MENU_COMBO_L2_R2:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_2) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_2))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_2) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_2));
+        case LIBRETRO_MENU_COMBO_L3_R3:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_THUMB) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_RIGHT_THUMB))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_THUMB) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_THUMB));
+        case LIBRETRO_MENU_COMBO_DOWN_SELECT:
+            return (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_DOWN) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT))
+                || (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT) && IsGamepadButtonReleased(gamepad, GAMEPAD_BUTTON_LEFT_FACE_DOWN));
         default: return false;
     }
 }
@@ -1702,7 +1717,7 @@ static bool LoadLibretroMenuSettings(void) {
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
     menu.menuComboIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "menuCombo", 0);
-    if (menu.menuComboIndex < 0 || menu.menuComboIndex > 5) menu.menuComboIndex = 0;
+    if (menu.menuComboIndex < 0 || menu.menuComboIndex >= LIBRETRO_MENU_COMBO_COUNT) menu.menuComboIndex = 0;
 #if defined(PLATFORM_WEB)
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 1) > 0;
 #else
@@ -1846,11 +1861,8 @@ void UpdateLibretroMenu(void) {
 
     // Menu Controller Combo
     if (menu.menuComboIndex > 0) {
-        static bool comboWasActive[5] = {false, false, false, false, false};
-        for (int gp = 0; gp < 5; gp++) {
-            bool comboNow = IsGamepadAvailable(gp) && LibretroMenuComboActive(gp);
-            if (comboNow && !comboWasActive[gp]) menu.active = !menu.active;
-            comboWasActive[gp] = comboNow;
+        for (int gp = 0; gp < 4; gp++) {
+            if (IsGamepadAvailable(gp) && LibretroMenuComboTriggered(gp)) menu.active = !menu.active;
         }
     }
 
