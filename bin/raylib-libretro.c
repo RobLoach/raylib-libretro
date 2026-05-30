@@ -228,7 +228,7 @@ bool Update(void* userData) {
         UpdateLibretroShaders(GetFrameTime());
 
         // While rewinding we step back one snapshot per capture interval and
-        // render only on that step (via StepLibretro), so the picture holds
+        // render only on that step (via UpdateLibretroEx(true)), so the picture holds
         // between steps instead of running the core forward.
         bool rewinding = false;
 
@@ -260,7 +260,7 @@ bool Update(void* userData) {
                             // Render the restored snapshot. Bypasses the time
                             // accumulator, which would run zero ticks when called
                             // this sparsely and leave the display frozen.
-                            StepLibretro();
+                            UpdateLibretroEx(true);
                         }
                     } else {
                         SetLibretroMessage("Rewind limit reached", 1.0f);
@@ -319,7 +319,7 @@ bool Update(void* userData) {
         }
 
         // Run a paced frame while playing forward. During rewind the core is
-        // advanced by StepLibretro() above, so skip the accumulator here.
+        // advanced by UpdateLibretroEx(true) above, so skip the accumulator here.
         if (!rewinding) {
             UpdateLibretro();
         }

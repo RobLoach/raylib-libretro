@@ -56,7 +56,7 @@ static bool LoadLibretroGame(const char* gameFile);
 static bool IsLibretroReady(void);
 static bool IsLibretroGameReady(void);
 static void UpdateLibretro(void);
-static void StepLibretro(void);
+static void UpdateLibretroEx(bool onlyTick);
 static bool LibretroShouldClose(void);
 static void DrawLibretro(void);
 static void DrawLibretroTint(Color tint);
@@ -1776,18 +1776,27 @@ static void LibretroTick(void) {
 }
 
 /**
- * Run exactly one emulation frame immediately, bypassing the time accumulator.
- * Useful for frame-stepping and rewind, where the frontend decides when to
- * advance the core rather than pacing ticks to wall-clock. Renders the frame
- * via retro_run()'s video callback, so the display updates on return.
+ * Extended function for UpdateLibretro().
+ *
+ * @param onlyTick When enabled, will only step the audio and game, without updating any of the inputs.
+ *
+ * @see UpdateLibretro()
  */
-static void StepLibretro(void) {
+static void UpdateLibretroEx(bool onlyTick) {
     if (!IsLibretroGameReady()) {
         return;
     }
+
+    if (!onlyTick) {
+        UpdateLibretro();
+        return;
+    }
+
+    // Ensure the texture is updated.
     if (LIBRETRO.core.textureRebuild) {
         InitLibretroVideo();
     }
+
     LibretroTick();
 }
 
