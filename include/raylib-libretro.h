@@ -71,7 +71,7 @@ static const char* GetLibretroContentName(void);
 static const char* GetLibretroVersion(void);
 static unsigned GetLibretroWidth(void);
 static unsigned GetLibretroHeight(void);
-static unsigned GetLibretroRotation(void);
+static int GetLibretroRotation(void);
 static Texture2D GetLibretroTexture(void);
 static bool IsLibretroGameRequired(void);
 static bool ResetLibretro(void);
@@ -294,7 +294,7 @@ typedef struct LibretroCoreData {
     bool variablesVisibilityDirty; // Whether option visibility changed and the menu should rebuild.
 
     // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
-    unsigned rotation;
+    int rotation;
 
     // Single-sample audio accumulation buffer (avoids static locals).
     int16_t singleSampleBuffer[LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
@@ -751,8 +751,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (data == NULL) {
                 return false;
             }
-            LIBRETRO.core.rotation = *(const unsigned *)data;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_ROTATION: %u (%u°)", LIBRETRO.core.rotation, LIBRETRO.core.rotation * 90);
+            LIBRETRO.core.rotation = (int)*(const unsigned *)data;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_ROTATION: %d (%d°)", LIBRETRO.core.rotation, LIBRETRO.core.rotation * 90);
             return true;
         }
 
@@ -3158,7 +3158,7 @@ static bool IsLibretroDynamicRateControlEnabled(void) {
  * Get the current display rotation index (0=0°, 1=90°, 2=180°, 3=270°).
  * @return Rotation index.
  */
-static unsigned GetLibretroRotation(void) {
+static int GetLibretroRotation(void) {
     return LIBRETRO.core.rotation;
 }
 
