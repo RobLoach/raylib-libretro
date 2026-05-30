@@ -1,3 +1,7 @@
+/*
+ * CRT Geom Mini
+ * https://github.com/libretro/glsl-shaders/blob/master/crt/shaders/crt-geom-mini.glsl
+ */
 "#version 120\n"
 "\n"
 "// Input vertex attributes (from vertex shader)\n"

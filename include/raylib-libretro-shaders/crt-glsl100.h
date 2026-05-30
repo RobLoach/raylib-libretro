@@ -1,3 +1,7 @@
+/*
+ * CRT Geom Mini
+ * https://github.com/libretro/glsl-shaders/blob/master/crt/shaders/crt-geom-mini.glsl
+ */
 "#version 100\n"
 "\n"
 "precision mediump float;\n"
