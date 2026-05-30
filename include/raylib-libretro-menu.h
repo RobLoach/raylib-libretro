@@ -108,7 +108,6 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
-    int rotationIndex; /** Display rotation override: 0=0°, 1=90°, 2=180°, 3=270° */
     char cheatBuffer[256];
     char cheatList[1024];
     unsigned cheatIndex;
@@ -219,7 +218,6 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
         InitLibretroVideo();
     }
     SetExitKey(NuklearKeyToKeyboardKey(menu.keyQuit));
-    LIBRETRO.core.rotation = (unsigned)menu.rotationIndex;
 }
 
 static LibretroMenu* GetLibretroMenu(void) {
@@ -1270,7 +1268,7 @@ LibretroMenu* InitLibretroMenu(void) {
                 "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
                 '|', &menu.saveSlotIndex);
             {
-                nk_console* rotation = nk_console_combobox(gameplayMenu, "Rotation", "0°|90°|180°|270°", '|', &menu.rotationIndex);
+                nk_console* rotation = nk_console_combobox(gameplayMenu, "Rotation", "0°|90°|180°|270°", '|', (int*)&LIBRETRO.core.rotation);
                 rotation->tooltip = "Override the display rotation for the running game.";
                 nk_console_add_event_handler(rotation, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             }
@@ -1532,7 +1530,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchHaptics", menu.touchHapticsEnabled ? 1 : 0);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "rotation", menu.rotationIndex);
+
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyScreenshot", (int)menu.keyScreenshot);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyRewind", (int)menu.keyRewind);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyMenu", (int)menu.keyMenu);
@@ -1693,10 +1691,6 @@ static bool LoadLibretroMenuSettings(void) {
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 0) > 0;
 #endif
     menu.touchHapticsEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchHaptics", 1) > 0;
-    menu.rotationIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "rotation", 0);
-    if (menu.rotationIndex < 0 || menu.rotationIndex > 3) menu.rotationIndex = 0;
-    LIBRETRO.core.rotation = (unsigned)menu.rotationIndex;
-
     menu.keyScreenshot = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyScreenshot", (int)menu.keyScreenshot);
     menu.keyRewind     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyRewind",     (int)menu.keyRewind);
     menu.keyMenu       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyMenu",       (int)menu.keyMenu);
