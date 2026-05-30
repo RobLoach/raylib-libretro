@@ -340,10 +340,10 @@ bool Init(void** userData, int argc, char** argv) {
     if (corePath) {
         if (MenuInitCore(corePath) && LoadLibretroGameFromPhysFS(gameFile)) {
             BuildLibretroMenuOptions(data->menu);
-            data->menu->active = false;
+            HideLibretroMenu();
         }
     } else if (gameFile) {
-        data->menu->active = !MenuLoadGame(gameFile);
+        if (MenuLoadGame(gameFile)) HideLibretroMenu(); else ShowLibretroMenu();
     }
 
     return true;
@@ -355,7 +355,7 @@ bool Update(void* userData) {
     // Deferred menu open: apply after input has refreshed so the release event
     // that triggered the MENU touch button is gone before Nuklear processes input.
     if (data->pendingMenuOpen) {
-        data->menu->active = true;
+        ShowLibretroMenu();
         data->pendingMenuOpen = false;
     }
 
@@ -488,11 +488,11 @@ bool Update(void* userData) {
             if (IsLibretroCoreFile(droppedPath)) {
                 if (MenuInitCore(droppedPath)) {
                     BuildLibretroMenuOptions(data->menu);
-                    data->menu->active = true;
+                    ShowLibretroMenu();
                 }
             } else {
                 // MenuLoadGame autodetects a core for the dropped game via FindCoreForGame().
-                data->menu->active = !MenuLoadGame(droppedPath);
+                if (MenuLoadGame(droppedPath)) HideLibretroMenu(); else ShowLibretroMenu();
             }
         }
         UnloadDroppedFiles(dropped);
