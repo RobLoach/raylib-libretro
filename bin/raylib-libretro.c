@@ -517,8 +517,8 @@ void Close(void* userData) {
 App Main() {
     return (App){
         .title = "raylib-libretro",
-        .width = 1280,
-        .height = 720,
+        .width = 1024,
+        .height = 768,
         .init = Init,
         .update = Update,
         .draw = Draw,

@@ -1288,7 +1288,7 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* textureFilter = nk_console_combobox(graphicsMenu, "Texture Filter", "None|Bilinear|Trilinear|Anisotropic 4x|Anisotropic 8x|Anisotropic 16x", '|', &menu.textureFilterIndex);
             nk_console_add_event_handler(textureFilter, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
-            nk_console* rotation = nk_console_combobox(graphicsMenu, "Rotation", "0'|90'|180'|270'", '|', &LIBRETRO.core.rotation);
+            nk_console* rotation = nk_console_combobox(graphicsMenu, "Rotation", "0 Degrees|90 Degrees|180 Degrees|270 Degrees", '|', &LIBRETRO.core.rotation);
             rotation->tooltip = "Override the display rotation for the running game.";
 
             nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", "Mocha|Latte|Frappe|Macchiato|Dracula|Dark", '|', &menu.themeSelectedIndex);
@@ -1947,7 +1947,10 @@ void UpdateLibretroMenu(void) {
     menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
 
     // Scaling
-    float scaling = (GetScreenWidth() >= 2560) ? 4.0f : (GetScreenWidth() >= 1280) ? 3.0f : 2.0f;
+    float scaling = (GetScreenWidth() >= 3840) ? 5.0f :
+            (GetScreenWidth() >= 2560) ? 4.0f :
+            (GetScreenWidth() >= 1280) ? 3.0f :
+            (GetScreenWidth() >= 480) ? 2.0f : 1.0f;
     SetNuklearScaling(menu.ctx, scaling);
 
     // Input & Update
