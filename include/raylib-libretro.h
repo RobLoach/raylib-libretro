@@ -2843,18 +2843,11 @@ static bool InitLibretro(const char* core) {
  * @param tint Color tint applied to the framebuffer texture.
  */
 static void DrawLibretroTexture(int posX, int posY, Color tint) {
-    if (LIBRETRO.core.loaded == false) {
-        return;
-    }
-    float rotDeg = (float)LIBRETRO.core.rotation * 90.0f;
     bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
     float visW = swap ? (float)LIBRETRO.core.texture.height : (float)LIBRETRO.core.texture.width;
     float visH = swap ? (float)LIBRETRO.core.texture.width : (float)LIBRETRO.core.texture.height;
-    Rectangle source = {0, 0, (float)LIBRETRO.core.width, (float)LIBRETRO.core.height};
-    Rectangle dest = {(float)posX + visW / 2.0f, (float)posY + visH / 2.0f,
-                      (float)LIBRETRO.core.texture.width, (float)LIBRETRO.core.texture.height};
-    Vector2 origin = {(float)LIBRETRO.core.texture.width / 2.0f, (float)LIBRETRO.core.texture.height / 2.0f};
-    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotDeg, tint);
+    Rectangle destRec = {(float)posX, (float)posY, visW, visH};
+    DrawLibretroPro(destRec, tint);
 }
 
 /**
@@ -2863,18 +2856,7 @@ static void DrawLibretroTexture(int posX, int posY, Color tint) {
  * @param tint Color tint applied to the framebuffer texture.
  */
 static void DrawLibretroV(Vector2 position, Color tint) {
-    if (LIBRETRO.core.loaded == false) {
-        return;
-    }
-    float rotDeg = (float)LIBRETRO.core.rotation * 90.0f;
-    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
-    float visW = swap ? (float)LIBRETRO.core.texture.height : (float)LIBRETRO.core.texture.width;
-    float visH = swap ? (float)LIBRETRO.core.texture.width : (float)LIBRETRO.core.texture.height;
-    Rectangle source = {0, 0, (float)LIBRETRO.core.width, (float)LIBRETRO.core.height};
-    Rectangle dest = {position.x + visW / 2.0f, position.y + visH / 2.0f,
-                      (float)LIBRETRO.core.texture.width, (float)LIBRETRO.core.texture.height};
-    Vector2 origin = {(float)LIBRETRO.core.texture.width / 2.0f, (float)LIBRETRO.core.texture.height / 2.0f};
-    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotDeg, tint);
+    DrawLibretroTexture((int)position.x, (int)position.y, tint);
 }
 
 /**
