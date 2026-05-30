@@ -90,7 +90,8 @@ static unsigned int GetLibretroSerializedSize(void);
 static bool SetLibretroSerializedData(void* data, unsigned int size);
 static void* GetLibretroSRAMData(size_t* size);
 static bool SetLibretroSRAMData(const void* data, size_t size);
-static void SetLibretroMessage(const char* msg, float duration);
+static void SetLibretroMessage(const char* msg, double duration);
+static void SetLibretroMessageEx(const struct retro_message_ext *message);
 static bool DrawLibretroMessage(void);
 static const char* GetLibretroDirectory(int directory);
 static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count);
@@ -295,10 +296,6 @@ typedef struct LibretroCoreData {
     // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
     unsigned rotation;
 
-    // OSD message (RETRO_ENVIRONMENT_SET_MESSAGE / SET_MESSAGE_EXT)
-    char osdMessage[256];
-    double osdEndTime;
-
     // Single-sample audio accumulation buffer (avoids static locals).
     int16_t singleSampleBuffer[LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
     size_t singleSampleCount;
@@ -360,6 +357,16 @@ typedef struct LibretroData {
      * @see RETRO_ENVIRONMENT_GET_USERNAME
      */
     char username[128];
+
+    // OSD message (RETRO_ENVIRONMENT_SET_MESSAGE / SET_MESSAGE_EXT).
+    // Lives here rather than in `core` so a core-exit error message survives the
+    // core/content unload, as the libretro spec requires. osd holds the active
+    // message's metadata (type/priority/progress/level/target); osd.msg always
+    // points at our owned osdMessage buffer rather than the core's transient
+    // string. osdEndTime is the absolute GetTime() expiry.
+    char osdMessage[256];
+    double osdEndTime;
+    struct retro_message_ext osd;
 
     // Per-core state (reset with memset(0) on core unload).
     LibretroCoreData core;
@@ -770,13 +777,16 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE no data provided");
                 return false;
             }
-            if (message->msg == NULL) {
-                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE: No message");
-                return false;
+            if (message->msg == NULL || message->msg[0] == '\0') {
+                return true;
             }
+            
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE: %s (%i frames)", message->msg, message->frames);
-            TextCopy(LIBRETRO.core.osdMessage, message->msg);
-            LIBRETRO.core.osdEndTime = GetTime() + message->frames / (LIBRETRO.core.fps > 0 ? LIBRETRO.core.fps : 60.0);
+
+            // Route through SetLibretroMessage so osd metadata (msg pointer, type,
+            // progress, priority) gets its defaults; this legacy call carries none.
+            double seconds = message->frames / (LIBRETRO.core.fps > 0 ? LIBRETRO.core.fps : 60.0);
+            SetLibretroMessage(message->msg, seconds);
             return true;
         }
 
@@ -1454,8 +1464,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LibretroMapRetroLogLevelToTraceLogType(message->level), "LIBRETRO: %s", message->msg);
             }
             if (message->target == RETRO_MESSAGE_TARGET_OSD || message->target == RETRO_MESSAGE_TARGET_ALL) {
-                TextCopy(LIBRETRO.core.osdMessage, message->msg);
-                LIBRETRO.core.osdEndTime = GetTime() + message->duration / 1000.0;
+                SetLibretroMessageEx(message);
             }
             return true;
         }
@@ -2885,17 +2894,75 @@ static void DrawLibretroPro(Rectangle destRec, Color tint) {
  * @return true if a message was drawn; false if there was nothing to display.
  */
 static bool DrawLibretroMessage(void) {
-    if (GetTime() > LIBRETRO.core.osdEndTime) {
+    if (GetTime() > LIBRETRO.osdEndTime) {
         return false;
     }
 
-    int fontSize = 20;
+    const struct retro_message_ext *osd = &LIBRETRO.osd;
+    // Nothing to render for an empty string; skip drawing an empty box.
+    if (osd->msg[0] == '\0') {
+        return false;
+    }
+    float fontSize = 20.0f;
     int padding = 8;
-    int textWidth = MeasureText(LIBRETRO.core.osdMessage, fontSize);
-    int x = (GetScreenWidth() - textWidth) / 2;
-    int y = GetScreenHeight() - fontSize - padding * 2;
-    DrawRectangle(x - padding, y - padding, textWidth + padding * 2, fontSize + padding * 2, (Color){0, 0, 0, 180});
-    DrawText(LIBRETRO.core.osdMessage, x, y, fontSize, WHITE);
+    // MeasureTextEx honors embedded newlines (multi-line OSD messages), unlike
+    // the single-line MeasureText, so the background box wraps the whole block.
+    Font font = GetFontDefault();
+    float spacing = fontSize / 10.0f;
+    Vector2 textSize = MeasureTextEx(font, osd->msg, fontSize, spacing);
+
+    bool hasProgress = (osd->type == RETRO_MESSAGE_TYPE_PROGRESS);
+    int barHeight = hasProgress ? 6 : 0;
+    int barGap = hasProgress ? padding / 2 : 0;
+
+    int textH = (int)textSize.y;
+    int boxW = (int)textSize.x + padding * 2;
+    int boxH = textH + padding * 2 + barHeight + barGap;
+    int boxX = (GetScreenWidth() - boxW) / 2;
+    // Status messages are persistent readouts, so pin them to the top, out of
+    // the way of transient notifications anchored to the bottom.
+    int boxY = (osd->type == RETRO_MESSAGE_TYPE_STATUS)
+        ? padding
+        : GetScreenHeight() - boxH - padding;
+
+    // NOTIFICATION_ALT should read as visually distinct from a plain notice.
+    Color bg = (osd->type == RETRO_MESSAGE_TYPE_NOTIFICATION_ALT)
+        ? (Color){0, 40, 80, 200}
+        : (Color){0, 0, 0, 180};
+    DrawRectangle(boxX, boxY, boxW, boxH, bg);
+
+    // Tint the text by severity so errors and warnings stand out.
+    Color textColor = WHITE;
+    if (osd->level == RETRO_LOG_ERROR) {
+        textColor = (Color){255, 80, 80, 255};
+    } else if (osd->level == RETRO_LOG_WARN) {
+        textColor = (Color){255, 220, 90, 255};
+    }
+    Vector2 textPos = {(float)(boxX + padding), (float)(boxY + padding)};
+    DrawTextEx(font, osd->msg, textPos, fontSize, spacing, textColor);
+
+    if (hasProgress) {
+        int barX = boxX + padding;
+        int barY = boxY + padding + textH + barGap;
+        int barW = boxW - padding * 2;
+        DrawRectangle(barX, barY, barW, barHeight, (Color){80, 80, 80, 200});
+        if (osd->progress >= 0) {
+            // Determinate task: fill proportionally to 0-100. Clamp in case a
+            // core reports past 100 (progress is an int8_t, range -128..127).
+            int pct = osd->progress > 100 ? 100 : osd->progress;
+            int fill = barW * pct / 100;
+            DrawRectangle(barX, barY, fill, barHeight, WHITE);
+        } else {
+            // Indefinite task: a sweep that bounces left-right via a triangle
+            // wave, so it eases at the edges instead of snapping back.
+            int sweepW = barW / 4;
+            int travel = barW - sweepW;
+            float t = (float)(GetTime() - (double)(long)GetTime());  // 0..1
+            float ping = t < 0.5f ? t * 2.0f : (1.0f - t) * 2.0f;    // 0->1->0
+            int offset = travel > 0 ? (int)(ping * travel) : 0;
+            DrawRectangle(barX + offset, barY, sweepW, barHeight, WHITE);
+        }
+    }
     return true;
 }
 
@@ -2950,18 +3017,76 @@ static void DrawLibretro(void) {
 }
 
 /**
+ * Displays an on-screen display (OSD) message with full control over its
+ * appearance, mirroring the fields of RETRO_ENVIRONMENT_SET_MESSAGE_EXT.
+ *
+ * Honors type (notification/status/progress placement), priority (a lower-
+ * priority message won't replace a higher-priority one that's still visible),
+ * level (severity tint), progress (progress bar), and duration (milliseconds;
+ * 0 falls back to a readable default). The target field is ignored — this
+ * function only drives the OSD; callers wanting the log should TraceLog too.
+ *
+ * @param message The message descriptor. message->msg must not be NULL.
+ */
+static void SetLibretroMessageEx(const struct retro_message_ext *message) {
+    if (message == NULL || message->msg == NULL || message->msg[0] == '\0') {
+        return;
+    }
+
+    // Don't let a lower-priority message stomp one that's still on-screen; an
+    // expired message imposes no such constraint.
+    bool active = GetTime() <= LIBRETRO.osdEndTime;
+    if (active && message->priority < LIBRETRO.osd.priority) {
+        return;
+    }
+
+    // A non-positive duration means "use the frontend default" rather than
+    // "show for zero milliseconds", so clamp it to a readable default.
+    double duration = (double)message->duration / 1000.0;
+    if (duration <= 0.0) {
+        duration = 3.0;
+    }
+
+    // Capture the full descriptor, then fix up the fields we can't take
+    // verbatim: msg must point at our owned buffer.
+    LIBRETRO.osd = *message;
+    TextCopy(LIBRETRO.osdMessage, message->msg);
+    LIBRETRO.osd.msg = LIBRETRO.osdMessage;
+    LIBRETRO.osdEndTime = GetTime() + duration;
+
+    // progress is only meaningful for progress-type messages; 0-100 is a real
+    // percentage and -1 means indefinite.
+    if (message->type != RETRO_MESSAGE_TYPE_PROGRESS || message->progress < 0) {
+        LIBRETRO.osd.progress = -1;
+    }
+}
+
+/**
  * Displays an on-screen display (OSD) message.
- * @param msg      Message text to display.
+ * @param msg      Message text to display, or NULL to clear the current message.
  * @param duration How long to show the message, in seconds. */
-static void SetLibretroMessage(const char* msg, float duration) {
+static void SetLibretroMessage(const char* msg, double duration) {
     if (msg == NULL) {
-        LIBRETRO.core.osdMessage[0] = '\0';
-        LIBRETRO.core.osdEndTime = 0;
+        // Clear: reset to the lowest-priority notification defaults so the next
+        // message of any priority can take over.
+        LIBRETRO.osd = (struct retro_message_ext){0};
+        LIBRETRO.osd.msg = LIBRETRO.osdMessage;
+        LIBRETRO.osd.type = RETRO_MESSAGE_TYPE_NOTIFICATION;
+        LIBRETRO.osd.progress = -1;
+        LIBRETRO.osdMessage[0] = '\0';
+        LIBRETRO.osdEndTime = 0;
+        return;
     }
-    else {
-        TextCopy(LIBRETRO.core.osdMessage, msg);
-        LIBRETRO.core.osdEndTime = GetTime() + (double)duration;
-    }
+    // A transient notification at the lowest priority. SetLibretroMessageEx
+    // clamps a non-positive duration to a readable default.
+    struct retro_message_ext message = {0};
+    message.msg = msg;
+    message.duration = (unsigned)(duration * 1000.0 + 0.5);
+    message.level = RETRO_LOG_INFO;
+    message.target = RETRO_MESSAGE_TARGET_OSD;
+    message.type = RETRO_MESSAGE_TYPE_NOTIFICATION;
+    message.progress = -1;
+    SetLibretroMessageEx(&message);
 }
 
 /**
@@ -3176,8 +3301,8 @@ static void UnloadLibretroGame(void) {
     // Per-game runtime state that must not leak into the next game.
     LIBRETRO.core.rotation         = 0;
     LIBRETRO.core.gameTimeNSEC     = 0;
-    LIBRETRO.core.osdMessage[0]    = '\0';
-    LIBRETRO.core.osdEndTime       = 0.0;
+    // Note: the OSD message intentionally survives unload (it lives in LIBRETRO,
+    // not LIBRETRO.core) so a core's exit/error message stays on-screen.
     LIBRETRO.core.singleSampleCount = 0;
     LIBRETRO.core.audioDropWarnCount = 0;
 

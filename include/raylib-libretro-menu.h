@@ -615,11 +615,11 @@ static void LibretroMenuSaveStateClicked(nk_console* widget, void* user_data) {
         SaveFileData(TextFormat("%s/%s_%02d.sav", savesDir, GetLibretroContentName(), menu.saveSlotIndex + 1), saveData, (int)size);
         MemFree(saveData);
         LibretroFlushPersistentStorage();
-        SetLibretroMessage(TextFormat("Slot %d Saved", menu.saveSlotIndex + 1), 2.0f);
+        SetLibretroMessage(TextFormat("Slot %d Saved", menu.saveSlotIndex + 1), 2.0);
         menu.active = false;
     }
     else {
-        SetLibretroMessage("State Saved Failed", 2.0f);
+        SetLibretroMessage("State Saved Failed", 2.0);
     }
 }
 
@@ -649,10 +649,10 @@ static void LibretroMenuCheatChanged(nk_console* widget, void* user_data) {
         if (len + TextLength(line) < (int)sizeof(menu.cheatList)) {
             TextAppend(menu.cheatList, line, &len);
         }
-        SetLibretroMessage(TextFormat("Cheat %u applied", menu.cheatIndex + 1), 2.0f);
+        SetLibretroMessage(TextFormat("Cheat %u applied", menu.cheatIndex + 1), 2.0);
         menu.cheatIndex++;
     } else {
-        SetLibretroMessage("Cheat failed", 2.0f);
+        SetLibretroMessage("Cheat failed", 2.0);
     }
     menu.cheatBuffer[0] = '\0';
 }
@@ -664,7 +664,7 @@ static void LibretroMenuResetCheatsClicked(nk_console* widget, void* user_data) 
         menu.cheatIndex = 0;
         menu.cheatBuffer[0] = '\0';
         menu.cheatList[0] = '\0';
-        SetLibretroMessage("Cheats reset", 2.0f);
+        SetLibretroMessage("Cheats reset", 2.0);
     }
 }
 
@@ -985,25 +985,25 @@ static bool MenuLoadGame(const char* gamePath) {
     // Detect a workable core.
     const char* corePath = FindCoreForGame(gamePath);
     if (!corePath) {
-        SetLibretroMessage(TextFormat("No core found for %s", GetFileName(gamePath)), 2.0f);
+        SetLibretroMessage(TextFormat("No core found for %s", GetFileName(gamePath)), 2.0);
         return false;
     }
 
     // Load the core
     if (!MenuInitCore(corePath)) {
-        SetLibretroMessage("Failed to load core", 2.0f);
+        SetLibretroMessage("Failed to load core", 2.0);
         return false;
     }
 
     // Load the game (PhysFS-aware so .zip archives Just Work).
     if (!LoadLibretroGameFromPhysFS(gamePath)) {
         if (IsLibretroGameRequired()) {
-            SetLibretroMessage("Failed to load game", 2.0f);
+            SetLibretroMessage("Failed to load game", 2.0);
             return false;
         }
         // Core supports running without content; fall back to standalone.
         if (!LoadLibretroGame(NULL)) {
-            SetLibretroMessage("Failed to load core", 2.0f);
+            SetLibretroMessage("Failed to load core", 2.0);
             return false;
         }
     }
@@ -1038,11 +1038,11 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
         // A save-state load is a one-shot wall-clock discontinuity; drop the
         // accumulator backlog so the next frame doesn't burst to catch up.
         ResetLibretroTiming();
-        SetLibretroMessage(TextFormat("Slot %d Loaded", menu.saveSlotIndex + 1), 2.0f);
+        SetLibretroMessage(TextFormat("Slot %d Loaded", menu.saveSlotIndex + 1), 2.0);
         menu.active = false;
     }
     else {
-        SetLibretroMessage("Load State failed", 2.0f);
+        SetLibretroMessage("Load State failed", 2.0);
     }
 }
 
