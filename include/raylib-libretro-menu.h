@@ -77,7 +77,6 @@ typedef struct LibretroMenu {
     int themeSelectedIndex;
     float volumeSelected;
     bool rewindEnabled;
-    int analogToDpadIndex;
     nk_rune keyScreenshot;
     nk_rune keyRewind;
     nk_rune keyMenu;
@@ -677,7 +676,6 @@ static void MenuCommitSettings(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     NK_UNUSED(user_data);
     LibretroMenuApplyKeyboardPlayer1();
-    LIBRETRO.analogToDpadIndex = menu.analogToDpadIndex;
     SaveLibretroAllSettings();
 }
 
@@ -1267,7 +1265,7 @@ LibretroMenu* InitLibretroMenu(void) {
             #endif
             nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
             nk_console* analogCombo = nk_console_combobox(gameplayMenu, "Analog to D-Pad",
-                "None|Left Analog|Right Analog", '|', &menu.analogToDpadIndex);
+                "None|Left Analog|Right Analog", '|', &LIBRETRO.analogToDpadIndex);
             analogCombo->tooltip = "Map an analog stick to D-Pad inputs";
             nk_console_combobox(gameplayMenu, "Save Slot",
                 "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
@@ -1528,7 +1526,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", menu.volumeSelected);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "analogToDpad", menu.analogToDpadIndex);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "analogToDpad", LIBRETRO.analogToDpadIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchHaptics", menu.touchHapticsEnabled ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keyScreenshot", (int)menu.keyScreenshot);
@@ -1685,9 +1683,8 @@ static bool LoadLibretroMenuSettings(void) {
     SetLibretroVolume(menu.volumeSelected);
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
-    menu.analogToDpadIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "analogToDpad", 0);
-    if (menu.analogToDpadIndex < 0 || menu.analogToDpadIndex > 2) menu.analogToDpadIndex = 0;
-    LIBRETRO.analogToDpadIndex = menu.analogToDpadIndex;
+    LIBRETRO.analogToDpadIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "analogToDpad", 0);
+    if (LIBRETRO.analogToDpadIndex < 0 || LIBRETRO.analogToDpadIndex > 2) LIBRETRO.analogToDpadIndex = 0;
 #if defined(PLATFORM_WEB)
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 1) > 0;
 #else
