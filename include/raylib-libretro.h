@@ -232,6 +232,7 @@ typedef struct LibretroCoreData {
     enum retro_pixel_format pixelFormat;
     unsigned performanceLevel;
     bool loaded;
+    uint64_t serializationQuirks; /** Bitmask from RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS. */
 
     // The last performance counter registered. TODO: Make it a linked list.
     struct retro_perf_counter* perf_counter_last;
@@ -1245,8 +1246,13 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS not implemented");
-            return false;
+            const uint64_t* quirks = (const uint64_t*)data;
+            if (quirks == NULL) {
+                return false;
+            }
+            LIBRETRO.core.serializationQuirks = *quirks;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: 0x%llx", (unsigned long long)*quirks);
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: {
@@ -3849,6 +3855,12 @@ static void* GetLibretroSerializedData(unsigned int* size) {
     if (finalSize == 0) {
         return NULL;
     }
+
+    // For variable-size cores, re-query the size each call.
+    if (LIBRETRO.core.serializationQuirks & RETRO_SERIALIZATION_QUIRK_CORE_VARIABLE_SIZE) {
+        finalSize = LIBRETRO.core.symbols.retro_serialize_size();
+    }
+
     if (size != NULL) {
         *size = (unsigned int)finalSize;
     }
@@ -3856,6 +3868,11 @@ static void* GetLibretroSerializedData(unsigned int* size) {
     void* saveData = MemAlloc((unsigned int)finalSize);
     if (saveData == NULL) {
         return NULL;
+    }
+
+    // MUST_INITIALIZE: zero the buffer before serializing.
+    if (LIBRETRO.core.serializationQuirks & RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE) {
+        memset(saveData, 0, finalSize);
     }
 
     if (LIBRETRO.core.symbols.retro_serialize(saveData, finalSize)) {
