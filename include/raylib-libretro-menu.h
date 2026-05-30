@@ -124,6 +124,12 @@ typedef struct LibretroMenu {
     char cheatBuffer[256];
     char cheatList[1024];
     unsigned cheatIndex;
+    char aboutVersion[64];
+    char aboutBuildDate[32];
+    char aboutResolution[64];
+    char aboutCoreName[128];
+    char aboutCoreVersion[64];
+    char aboutCoreResolution[64];
     nk_rune keyboardP1[16]; // Indexed by RETRO_DEVICE_ID_JOYPAD_*
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
@@ -640,6 +646,31 @@ static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
     ToggleFullscreen();
     menu.fullscreen = IsWindowFullscreen();
 #endif
+}
+
+static void LibretroMenuUpdateAbout(void) {
+    snprintf(menu.aboutVersion,     sizeof(menu.aboutVersion),     "Version: 0.0.21");
+    snprintf(menu.aboutBuildDate,   sizeof(menu.aboutBuildDate),   "Build: " __DATE__);
+    snprintf(menu.aboutResolution,  sizeof(menu.aboutResolution),  "Window: %dx%d",
+        GetScreenWidth(), GetScreenHeight());
+    const char* coreName = GetLibretroName();
+    const char* coreVer  = GetLibretroVersion();
+    if (coreName && coreName[0]) {
+        snprintf(menu.aboutCoreName,    sizeof(menu.aboutCoreName),    "Core: %s", coreName);
+        snprintf(menu.aboutCoreVersion, sizeof(menu.aboutCoreVersion), "Core Version: %s", coreVer ? coreVer : "");
+        snprintf(menu.aboutCoreResolution, sizeof(menu.aboutCoreResolution), "Core Size: %ux%u",
+            GetLibretroWidth(), GetLibretroHeight());
+    } else {
+        snprintf(menu.aboutCoreName,       sizeof(menu.aboutCoreName),       "Core: (none)");
+        snprintf(menu.aboutCoreVersion,    sizeof(menu.aboutCoreVersion),    "");
+        snprintf(menu.aboutCoreResolution, sizeof(menu.aboutCoreResolution), "");
+    }
+}
+
+static void LibretroMenuAboutOpened(nk_console* widget, void* user_data) {
+    (void)widget;
+    (void)user_data;
+    LibretroMenuUpdateAbout();
 }
 
 static void LibretroMenuQuitClicked(nk_console* widget, void* user_data) {
@@ -1411,6 +1442,24 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_button_set_symbol(
                 nk_console_button_onclick(menu.optionsMenu, "Core Options", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
+        }
+    }
+
+    // About
+    {
+        LibretroMenuUpdateAbout();
+        nk_console* aboutMenu = nk_console_button(menu.console, "About");
+        nk_console_add_event(aboutMenu, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuAboutOpened);
+        {
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(aboutMenu, "About", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_UP);
+            nk_console_label(aboutMenu, menu.aboutVersion);
+            nk_console_label(aboutMenu, menu.aboutBuildDate);
+            nk_console_label(aboutMenu, menu.aboutResolution);
+            nk_console_label(aboutMenu, menu.aboutCoreName);
+            nk_console_label(aboutMenu, menu.aboutCoreVersion);
+            nk_console_label(aboutMenu, menu.aboutCoreResolution);
         }
     }
 
