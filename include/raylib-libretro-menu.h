@@ -1950,7 +1950,7 @@ void UpdateLibretroMenu(void) {
     float scaling = (GetScreenWidth() >= 3840) ? 5.0f :
             (GetScreenWidth() >= 2560) ? 4.0f :
             (GetScreenWidth() >= 1280) ? 3.0f :
-            (GetScreenWidth() >= 480) ? 2.0f : 1.0f;
+            (GetScreenWidth() >= 480) ? 2.0f : 2.0f; // Always use at least 2X scaling.
     SetNuklearScaling(menu.ctx, scaling);
 
     // Input & Update

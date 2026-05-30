@@ -3,9 +3,14 @@ project(raylib-libretro-android C)
 
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
-# Download libretro cores into jniLibs so AGP packages them into lib/<abi>/ in the APK.
-set(CORES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/main/jniLibs/${CMAKE_ANDROID_ARCH_ABI}")
+# Download libretro cores into assets/cores so AGP bundles them inside the APK.
+# Android can only dlopen() a core from a real filesystem path, so at first
+# launch the app copies these out of the read-only assets into its writable
+# data directory and loads them from there (see SetupAndroidEnvironment() in
+# bin/raylib-libretro.c). cores.list records the bundled cores for the app.
+set(CORES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/main/assets/cores")
 file(MAKE_DIRECTORY "${CORES_DIR}")
+set(CORE_NAMES "")
 foreach(URL IN ITEMS
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/fceumm_libretro_android.so.zip"
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/snes9x_libretro_android.so.zip"
@@ -14,6 +19,7 @@ foreach(URL IN ITEMS
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/picodrive_libretro_android.so.zip"
 )
     get_filename_component(ARCHIVE_NAME "${URL}" NAME)
+    get_filename_component(CORE_SO "${ARCHIVE_NAME}" NAME_WLE)  # strip .zip -> *.so
     set(ARCHIVE_PATH "${CMAKE_BINARY_DIR}/${ARCHIVE_NAME}")
     if (NOT EXISTS "${ARCHIVE_PATH}")
         message(STATUS "Downloading ${URL}")
@@ -32,8 +38,14 @@ foreach(URL IN ITEMS
     )
     if (NOT EXTRACT_RESULT EQUAL 0)
         message(WARNING "Failed to extract ${ARCHIVE_NAME}")
+        continue()
     endif()
+    list(APPEND CORE_NAMES "${CORE_SO}")
 endforeach()
+
+# Write the manifest of bundled cores the app reads on first launch.
+string(REPLACE ";" "\n" CORE_LIST "${CORE_NAMES}")
+file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/src/main/assets/cores.list" "${CORE_LIST}\n")
 
 # Build raylib for Android (uses EGL/native window instead of GLFW+X11)
 set(PLATFORM       Android CACHE STRING "" FORCE)
@@ -64,11 +76,20 @@ add_library(main SHARED
     ${ROOT}/vendor/physfs/src/physfs_archiver_zip.c
 )
 target_link_libraries(main PRIVATE raylib-libretro-static)
+# NativeActivity dlsym()s ANativeActivity_onCreate at load time. It lives in
+# android_native_app_glue.c (compiled into static libraylib.a), so the linker
+# must be told to keep it. raylib sets this -u flag in its own subdirectory
+# scope, which does not propagate up to this target. Without it, libmain.so is
+# missing the entry point and the APK crashes instantly with a blank screen.
+target_link_options(main PRIVATE -u ANativeActivity_onCreate)
 target_include_directories(main PRIVATE
     ${ROOT}/vendor/raygui/src
     ${ROOT}/vendor/raylib-app
     ${ROOT}/vendor/raylib-physfs
     ${ROOT}/vendor/physfs/src
+    # raylib sets this include in its own scope; add it here so libmain can
+    # reach <android_native_app_glue.h> for GetAndroidApp().
+    ${ANDROID_NDK}/sources/android/native_app_glue
 )
 target_compile_definitions(main PRIVATE
     PHYSFS_SUPPORTS_ZIP=1

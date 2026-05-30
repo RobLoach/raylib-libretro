@@ -1,8 +1,10 @@
 build
 build-*
+.gradle/
 .vscode
 cores
 install
 *.cfg
 android/app/src/main/jniLibs
+android/app/src/main/assets/cores.list
 system

@@ -1,0 +1,5 @@
+# Keep the Gradle wrapper intact across platforms: the jar must stay binary,
+# gradlew needs LF, and gradlew.bat needs CRLF.
+*.jar binary
+gradlew text eol=lf
+gradlew.bat text eol=crlf

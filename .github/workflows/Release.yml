@@ -4,6 +4,10 @@ on:
   release:
     types: [published]
 
+# Allow the default GITHUB_TOKEN to attach assets to the release.
+permissions:
+  contents: write
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
@@ -24,14 +28,10 @@ jobs:
           cd install
           zip -r ../raylib-libretro-linux-amd64.zip .
       - name: Upload
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: raylib-libretro-linux-amd64.zip
-          asset_name: raylib-libretro-linux-amd64.zip
-          asset_content_type: application/zip
+          files: raylib-libretro-linux-amd64.zip
+          fail_on_unmatched_files: true
 
   build-windows:
     runs-on: windows-latest
@@ -48,14 +48,10 @@ jobs:
       - name: Package
         run: Compress-Archive -Path install\* -DestinationPath raylib-libretro-windows-amd64.zip
       - name: Upload
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: raylib-libretro-windows-amd64.zip
-          asset_name: raylib-libretro-windows-amd64.zip
-          asset_content_type: application/zip
+          files: raylib-libretro-windows-amd64.zip
+          fail_on_unmatched_files: true
 
   build-macos:
     runs-on: macos-latest
@@ -74,14 +70,10 @@ jobs:
           cd install
           zip -r ../raylib-libretro-macos-arm64.zip .
       - name: Upload
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: raylib-libretro-macos-arm64.zip
-          asset_name: raylib-libretro-macos-arm64.zip
-          asset_content_type: application/zip
+          files: raylib-libretro-macos-arm64.zip
+          fail_on_unmatched_files: true
 
   build-android:
     runs-on: ubuntu-latest
@@ -94,10 +86,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install CMake
+      - name: Install SDK components
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" "ndk;27.3.13750724"
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "cmake;3.22.1" "ndk;27.3.13750724"
           echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
           echo "cmake.dir=$ANDROID_HOME/cmake/3.22.1" >> android/local.properties
       - name: Generate Gradle wrapper
@@ -105,16 +97,18 @@ jobs:
         run: gradle wrapper --gradle-version 8.6 --distribution-type bin
       - name: Build APK
         working-directory: android
-        run: ./gradlew assembleRelease
-      - name: Upload
-        uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: ./gradlew assembleRelease -PappVersionName="${TAG#v}" -PappVersionCode="$RUN_NUMBER"
+      # The action names the asset after the file, so rename to the release name.
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk raylib-libretro-android-arm64.apk
+      - name: Upload
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: android/app/build/outputs/apk/release/app-release.apk
-          asset_name: raylib-libretro-android-arm64.apk
-          asset_content_type: application/vnd.android.package-archive
+          files: raylib-libretro-android-arm64.apk
+          fail_on_unmatched_files: true
 
   build-web:
     runs-on: ubuntu-latest
@@ -139,14 +133,10 @@ jobs:
           cd install
           zip -r ../raylib-libretro-web-wasm32.zip .
       - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: raylib-libretro-web-wasm32.zip
-          asset_name: raylib-libretro-web-wasm32.zip
-          asset_content_type: application/zip
+          files: raylib-libretro-web-wasm32.zip
+          fail_on_unmatched_files: true
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
