@@ -91,17 +91,17 @@ static int GetLibretroTouchButtons(TouchControlsButton* btns, int w, int h) {
     float fsp = fbs * 0.82f;  // center-to-center spacing (< fbs = slight overlap)
     float fy = h - (2*fsp + fbs) - edge;
     float fx = w - (2*fsp + fbs) - w * 0.04f;
-    btns[n++] = (TouchControlsButton){{ fx + fsp,     fy,         fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_X, "X", DARKBLUE  };
-    btns[n++] = (TouchControlsButton){{ fx,            fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_Y, "Y", DARKGREEN };
-    btns[n++] = (TouchControlsButton){{ fx + 2*fsp,    fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_A, "A", MAROON    };
-    btns[n++] = (TouchControlsButton){{ fx + fsp,      fy + 2*fsp, fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_B, "B", GOLD      };
+    btns[n++] = (TouchControlsButton){{ fx + fsp,     fy,         fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_X, "", DARKBLUE  };
+    btns[n++] = (TouchControlsButton){{ fx,            fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_Y, "", DARKGREEN };
+    btns[n++] = (TouchControlsButton){{ fx + 2*fsp,    fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_A, "", MAROON    };
+    btns[n++] = (TouchControlsButton){{ fx + fsp,      fy + 2*fsp, fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_B, "", GOLD      };
 
     // Select / Start: bottom center with a small gap between them
     float selGap = ref * 0.01f;
     float cx = (w - (2*bs + selGap)) * 0.5f;
     float cy = h - bs - edge;
-    btns[n++] = (TouchControlsButton){{ cx,               cy, bs, bs }, RETRO_DEVICE_ID_JOYPAD_SELECT, "SEL", GRAY };
-    btns[n++] = (TouchControlsButton){{ cx + bs + selGap, cy, bs, bs }, RETRO_DEVICE_ID_JOYPAD_START,  "STA", GRAY };
+    btns[n++] = (TouchControlsButton){{ cx,               cy, bs, bs }, RETRO_DEVICE_ID_JOYPAD_SELECT, "SEL", DARKGRAY };
+    btns[n++] = (TouchControlsButton){{ cx + bs + selGap, cy, bs, bs }, RETRO_DEVICE_ID_JOYPAD_START,  "STA", DARKGRAY };
 
     // Shoulder buttons: both on the right, side by side above the face buttons
     float shGap = ref * 0.01f;
