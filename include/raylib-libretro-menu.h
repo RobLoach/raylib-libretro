@@ -1255,6 +1255,10 @@ LibretroMenu* InitLibretroMenu(void) {
                 nk_console_button_onclick(graphicsMenu, "Audio & Video", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
 
+            // Volume
+            nk_console* volume = nk_console_slider_float(graphicsMenu, "Volume", 0.0f, &menu.volumeSelected, 1.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.0f, 1.0f));
+            nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+
             nk_console* fullscreenCheckbox = nk_console_checkbox(graphicsMenu, "Fullscreen", &menu.fullscreen);
             nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
 
@@ -1284,13 +1288,12 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* textureFilter = nk_console_combobox(graphicsMenu, "Texture Filter", "None|Bilinear|Trilinear|Anisotropic 4x|Anisotropic 8x|Anisotropic 16x", '|', &menu.textureFilterIndex);
             nk_console_add_event_handler(textureFilter, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
+            nk_console* rotation = nk_console_combobox(graphicsMenu, "Rotation", "0'|90'|180'|270'", '|', &LIBRETRO.core.rotation);
+            rotation->tooltip = "Override the display rotation for the running game.";
+
             nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", "Mocha|Latte|Frappe|Macchiato|Dracula|Dark", '|', &menu.themeSelectedIndex);
             nk_console_add_event_handler(themeCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
-
-            // Volume
-            nk_console* volume = nk_console_slider_float(graphicsMenu, "Volume", 0.0f, &menu.volumeSelected, 1.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.0f, 1.0f));
-            nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
         }
 
         // Gameplay
@@ -1316,10 +1319,6 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_combobox(gameplayMenu, "Save Slot",
                 "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
                 '|', &menu.saveSlotIndex);
-            {
-                nk_console* rotation = nk_console_combobox(gameplayMenu, "Rotation", "0°|90°|180°|270°", '|', &LIBRETRO.core.rotation);
-                rotation->tooltip = "Override the display rotation for the running game.";
-            }
             nk_console_textedit(gameplayMenu, "Username", LIBRETRO.username, 128);
         }
 
