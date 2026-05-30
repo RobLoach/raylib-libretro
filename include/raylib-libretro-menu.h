@@ -1270,7 +1270,6 @@ LibretroMenu* InitLibretroMenu(void) {
             {
                 nk_console* rotation = nk_console_combobox(gameplayMenu, "Rotation", "0°|90°|180°|270°", '|', (int*)&LIBRETRO.core.rotation);
                 rotation->tooltip = "Override the display rotation for the running game.";
-                nk_console_add_event_handler(rotation, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             }
             nk_console_textedit(gameplayMenu, "Username", LIBRETRO.username, 128);
         }
