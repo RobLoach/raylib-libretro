@@ -1571,6 +1571,10 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
 static void LibretroMenuUpdateConfig(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return;
+    if (!IsWindowFullscreen()) {
+        rlconfig_set_int(menu.cfg, "raylib-libretro", "windowWidth", GetScreenWidth());
+        rlconfig_set_int(menu.cfg, "raylib-libretro", "windowHeight", GetScreenHeight());
+    }
     rlconfig_set_int(menu.cfg, "raylib-libretro", "fullscreen", (int)menu.fullscreen);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "vsync", (int)menu.vsync);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "fps", menu.fpsIndex);
@@ -1710,6 +1714,12 @@ static bool LoadLibretroMenuSettings(void) {
 #else
     if (savedFullscreen != (nk_bool)IsWindowFullscreen()) ToggleFullscreen();
 #endif
+
+    if (!savedFullscreen) {
+        int w = rlconfig_get_int(menu.cfg, "raylib-libretro", "windowWidth", 0);
+        int h = rlconfig_get_int(menu.cfg, "raylib-libretro", "windowHeight", 0);
+        if (w > 0 && h > 0) SetWindowSize(w, h);
+    }
 
     menu.vsync = (nk_bool)rlconfig_get_int(menu.cfg, "raylib-libretro", "vsync", (int)menu.vsync);
     menu.fpsIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "fps", menu.fpsIndex);
