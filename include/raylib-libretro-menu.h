@@ -1987,7 +1987,7 @@ void UpdateLibretroMenu(void) {
     SetNuklearScaling(menu.ctx, scaling);
 
     // Back gesture: swipe from the left edge rightward to navigate back.
-    {
+    if (menu.touchControls) {
         static bool swipeArmed = false;
         static Vector2 swipeStart = {0};
         static int swipeTouchId = -2;
