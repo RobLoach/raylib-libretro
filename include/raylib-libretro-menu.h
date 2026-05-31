@@ -1986,6 +1986,50 @@ void UpdateLibretroMenu(void) {
             (GetScreenWidth() >= 480) ? 2.0f : 2.0f; // Always use at least 2X scaling.
     SetNuklearScaling(menu.ctx, scaling);
 
+    // Back gesture: swipe from the left edge rightward to navigate back.
+    {
+        static bool swipeArmed = false;
+        static Vector2 swipeStart = {0};
+        static int swipeTouchId = -2;
+        int w = GetScreenWidth();
+        int h = GetScreenHeight();
+        float edgeZone  = w * 0.15f;  // left 15% triggers arm
+        float minTravel = w * 0.20f;  // must drag at least 20% to fire
+
+        int touchCount = GetTouchPointCount();
+
+        // Arm on the first touch that lands in the left edge zone.
+        if (!swipeArmed) {
+            for (int t = 0; t < touchCount; t++) {
+                Vector2 pos = GetTouchPosition(t);
+                if (pos.x < edgeZone && pos.y > 0 && pos.y < h) {
+                    swipeArmed   = true;
+                    swipeStart   = pos;
+                    swipeTouchId = GetTouchPointId(t);
+                    break;
+                }
+            }
+        }
+
+        // Track the armed touch and fire when it has moved far enough rightward.
+        if (swipeArmed) {
+            bool found = false;
+            for (int t = 0; t < touchCount; t++) {
+                if (GetTouchPointId(t) == swipeTouchId) {
+                    found = true;
+                    Vector2 pos = GetTouchPosition(t);
+                    if (pos.x - swipeStart.x >= minTravel) {
+                        nk_console* active = nk_console_active_parent(menu.console);
+                        if (active != NULL) nk_console_navigate_back(active);
+                        swipeArmed = false;
+                    }
+                    break;
+                }
+            }
+            if (!found) swipeArmed = false;
+        }
+    }
+
     // Input & Update
     nk_gamepad_update(nk_console_get_gamepads(menu.console));
     UpdateNuklear(menu.ctx);
