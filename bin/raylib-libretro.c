@@ -313,6 +313,10 @@ bool Init(void** userData, int argc, char** argv) {
 #if defined(__ANDROID__)
     // Fix up directories, install bundled cores, and request storage access.
     SetupAndroidEnvironment(data->menu);
+    // On Android the display size is known only after the native window attaches,
+    // which happens before Init() but after the App struct's width/height is used.
+    // Resizing here ensures the framebuffer matches the actual display resolution.
+    SetWindowSize(GetScreenWidth(), GetScreenHeight());
 #endif
 
     // Parse the command line arguments.
