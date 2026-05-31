@@ -1759,6 +1759,13 @@ static void LibretroMenuBuildOptionWidget(LibretroMenu* m, nk_console* parent, u
     }
 }
 
+static void LibretroMenuResetCoreOptionsClicked(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    ResetAllLibretroCoreOptions();
+    SetLibretroMessage("Core options reset to defaults", 2.0);
+}
+
 void BuildLibretroMenuOptions(LibretroMenu* m) {
     if (!m || !m->optionsMenu) return;
 
@@ -1828,6 +1835,11 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
             LibretroMenuBuildOptionWidget(m, categoryButton, i);
         }
     }
+
+    // "Reset to defaults" button at the bottom of the Core Options submenu.
+    nk_console* resetButton = nk_console_button_onclick(m->optionsMenu,
+        "Reset to defaults", &LibretroMenuResetCoreOptionsClicked);
+    nk_console_button_set_symbol(resetButton, NK_SYMBOL_TRIANGLE_LEFT);
 }
 
 static void LibretroMenuUpdateConfig(void) {
