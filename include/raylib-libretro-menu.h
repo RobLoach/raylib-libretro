@@ -125,11 +125,16 @@ typedef struct LibretroMenu {
     char cheatList[1024];
     unsigned cheatIndex;
     char aboutVersion[64];
-    char aboutBuildDate[32];
+    char aboutRenderer[48];
     char aboutResolution[64];
     char aboutCoreName[128];
     char aboutCoreVersion[64];
     char aboutCoreResolution[64];
+    char aboutCorePixelFormat[48];
+    char aboutCoreSampleRate[48];
+    char aboutCoreAspectRatio[48];
+    char aboutContent[160];
+    char aboutExtensions[256];
     nk_rune keyboardP1[16]; // Indexed by RETRO_DEVICE_ID_JOYPAD_*
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
@@ -181,6 +186,10 @@ static void LibretroFlushPersistentStorage(void) {
 #define RAYLIB_NUKLEAR_IMPLEMENTATION
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
 
+// rlGetVersion() for the About screen's renderer line. Header-only include
+// (no RLGL_IMPLEMENTATION); the symbol is provided by the linked raylib.
+#include "rlgl.h"
+
 #define NK_GAMEPAD_IMPLEMENTATION
 #define NK_GAMEPAD_RAYLIB
 #include "../vendor/nuklear_gamepad/nuklear_gamepad.h"
@@ -199,6 +208,27 @@ static void LibretroFlushPersistentStorage(void) {
 
 #ifndef RAYLIB_LIBRETRO_CFG_FILE
 #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
+#endif
+
+// App version. Defined by the build (CMake passes the project version); falls
+// back to "dev" for ad-hoc builds that include this header directly.
+#ifndef RAYLIB_LIBRETRO_VERSION
+#define RAYLIB_LIBRETRO_VERSION "dev"
+#endif
+
+// Compile-time platform name shown in the About screen.
+#if defined(__EMSCRIPTEN__) || defined(PLATFORM_WEB)
+#define RAYLIB_LIBRETRO_PLATFORM "Web"
+#elif defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+#define RAYLIB_LIBRETRO_PLATFORM "Android"
+#elif defined(_WIN32)
+#define RAYLIB_LIBRETRO_PLATFORM "Windows"
+#elif defined(__APPLE__)
+#define RAYLIB_LIBRETRO_PLATFORM "macOS"
+#elif defined(__linux__)
+#define RAYLIB_LIBRETRO_PLATFORM "Linux"
+#else
+#define RAYLIB_LIBRETRO_PLATFORM "Unknown"
 #endif
 
 // Number of increments a float settings slider divides its range into.
@@ -648,29 +678,83 @@ static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
 #endif
 }
 
+// Human-readable name for raylib's active rendering backend (rlgl.h enum).
+static const char* LibretroMenuRendererName(void) {
+    switch (rlGetVersion()) {
+        case RL_OPENGL_11:       return "OpenGL 1.1";
+        case RL_OPENGL_21:       return "OpenGL 2.1";
+        case RL_OPENGL_33:       return "OpenGL 3.3";
+        case RL_OPENGL_43:       return "OpenGL 4.3";
+        case RL_OPENGL_ES_20:    return "OpenGL ES 2.0";
+        case RL_OPENGL_ES_30:    return "OpenGL ES 3.0";
+        case RL_OPENGL_SOFTWARE: return "Software";
+        default:                 return "Unknown";
+    }
+}
+
+// Human-readable name for the core's framebuffer pixel format.
+static const char* LibretroMenuPixelFormatName(enum retro_pixel_format fmt) {
+    switch (fmt) {
+        case RETRO_PIXEL_FORMAT_0RGB1555: return "0RGB1555";
+        case RETRO_PIXEL_FORMAT_XRGB8888: return "XRGB8888";
+        case RETRO_PIXEL_FORMAT_RGB565:   return "RGB565";
+        default:                          return "Unknown";
+    }
+}
+
 static void LibretroMenuUpdateAbout(void) {
-    snprintf(menu.aboutVersion,     sizeof(menu.aboutVersion),     "Version: 0.0.21");
-    snprintf(menu.aboutBuildDate,   sizeof(menu.aboutBuildDate),   "Build: " __DATE__);
-    snprintf(menu.aboutResolution,  sizeof(menu.aboutResolution),  "Window: %dx%d",
+    // Frontend / runtime.
+    snprintf(menu.aboutVersion,     sizeof(menu.aboutVersion),     "raylib-libretro: %s", RAYLIB_LIBRETRO_VERSION);
+    snprintf(menu.aboutRenderer,    sizeof(menu.aboutRenderer),    "Renderer:        %s", LibretroMenuRendererName());
+    snprintf(menu.aboutResolution,  sizeof(menu.aboutResolution),  "Window:          %dx%d",
         GetScreenWidth(), GetScreenHeight());
+
+    // Core.
     const char* coreName = GetLibretroName();
     const char* coreVer  = GetLibretroVersion();
     if (coreName && coreName[0]) {
-        snprintf(menu.aboutCoreName,    sizeof(menu.aboutCoreName),    "Core: %s", coreName);
-        snprintf(menu.aboutCoreVersion, sizeof(menu.aboutCoreVersion), "Core Version: %s", coreVer ? coreVer : "");
-        snprintf(menu.aboutCoreResolution, sizeof(menu.aboutCoreResolution), "Core Size: %ux%u",
+        snprintf(menu.aboutCoreName,    sizeof(menu.aboutCoreName),    "Core:            %s", coreName);
+        snprintf(menu.aboutCoreVersion, sizeof(menu.aboutCoreVersion), "Core Version:    %s", coreVer ? coreVer : "");
+        snprintf(menu.aboutCoreResolution, sizeof(menu.aboutCoreResolution), "Core Size:       %ux%u",
             GetLibretroWidth(), GetLibretroHeight());
+        snprintf(menu.aboutCorePixelFormat, sizeof(menu.aboutCorePixelFormat), "Pixel Format:    %s",
+            LibretroMenuPixelFormatName(LIBRETRO.core.pixelFormat));
+        snprintf(menu.aboutCoreSampleRate, sizeof(menu.aboutCoreSampleRate), "Sample Rate:     %g Hz",
+            LIBRETRO.core.sampleRate);
+        float aspect = GetLibretroAspectRatio();
+        if (aspect > 0.0f) {
+            snprintf(menu.aboutCoreAspectRatio, sizeof(menu.aboutCoreAspectRatio), "Aspect Ratio:    %.3f", aspect);
+        } else {
+            snprintf(menu.aboutCoreAspectRatio, sizeof(menu.aboutCoreAspectRatio), "Aspect Ratio:    (auto)");
+        }
+        const char* exts = GetLibretroValidExtensions();
+        snprintf(menu.aboutExtensions, sizeof(menu.aboutExtensions), "Extensions:      %s",
+            (exts && exts[0]) ? exts : "(any)");
     } else {
-        snprintf(menu.aboutCoreName,       sizeof(menu.aboutCoreName),       "Core: (none)");
-        snprintf(menu.aboutCoreVersion,    sizeof(menu.aboutCoreVersion),    "");
-        snprintf(menu.aboutCoreResolution, sizeof(menu.aboutCoreResolution), "");
+        snprintf(menu.aboutCoreName, sizeof(menu.aboutCoreName), "Core:            (none)");
+        menu.aboutCoreVersion[0] = '\0';
+        menu.aboutCoreResolution[0] = '\0';
+        menu.aboutCorePixelFormat[0] = '\0';
+        menu.aboutCoreSampleRate[0] = '\0';
+        menu.aboutCoreAspectRatio[0] = '\0';
+        menu.aboutExtensions[0] = '\0';
+    }
+
+    // Content.
+    if (LIBRETRO.core.contentPath[0] != '\0') {
+        snprintf(menu.aboutContent, sizeof(menu.aboutContent), "Content:         %s",
+            GetFileName(LIBRETRO.core.contentPath));
+    } else {
+        menu.aboutContent[0] = '\0';
     }
 }
 
 static void LibretroMenuAboutOpened(nk_console* widget, void* user_data) {
-    (void)widget;
     (void)user_data;
     LibretroMenuUpdateAbout();
+    // Registering a CLICKED handler suppresses nk_console_button_render()'s
+    // default "navigate into submenu" behavior, so do it here after refreshing.
+    nk_console_set_active_parent(widget);
 }
 
 static void LibretroMenuQuitClicked(nk_console* widget, void* user_data) {
@@ -1454,12 +1538,31 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_button_set_symbol(
                 nk_console_button_onclick(aboutMenu, "About", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
-            nk_console_label(aboutMenu, menu.aboutVersion);
-            nk_console_label(aboutMenu, menu.aboutBuildDate);
-            nk_console_label(aboutMenu, menu.aboutResolution);
-            nk_console_label(aboutMenu, menu.aboutCoreName);
-            nk_console_label(aboutMenu, menu.aboutCoreVersion);
-            nk_console_label(aboutMenu, menu.aboutCoreResolution);
+
+            // System
+            nk_console* systemTree = nk_console_tree(aboutMenu, "System", nk_true);
+            nk_console_label(systemTree, menu.aboutVersion);
+            nk_console_label(systemTree, "Build:           " __DATE__);
+            nk_console_label(systemTree, "raylib:          " RAYLIB_VERSION);
+            nk_console_label(systemTree, menu.aboutRenderer);
+            nk_console_label(systemTree, "Platform:        " RAYLIB_LIBRETRO_PLATFORM);
+            nk_console_label(systemTree, menu.aboutResolution);
+
+            // Core
+            nk_console* coreTree = nk_console_tree(aboutMenu, "Core", nk_false);
+            nk_console_label(coreTree, menu.aboutCoreName);
+            nk_console_label(coreTree, menu.aboutCoreVersion);
+            nk_console_label(coreTree, menu.aboutCoreResolution);
+            nk_console_label(coreTree, menu.aboutCorePixelFormat);
+            nk_console_label(coreTree, menu.aboutCoreSampleRate);
+            nk_console_label(coreTree, menu.aboutCoreAspectRatio);
+            nk_console_label(coreTree, menu.aboutContent);
+            nk_console_label(coreTree, menu.aboutExtensions);
+
+            // License
+            nk_console* licenseTree = nk_console_tree(aboutMenu, "License", nk_false);
+            nk_console_label(licenseTree, "License:         zlib/libpng");
+            nk_console_label(licenseTree, "https://github.com/RobLoach/raylib-libretro");
         }
     }
 
