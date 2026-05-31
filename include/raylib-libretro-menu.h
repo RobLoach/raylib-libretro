@@ -1989,45 +1989,34 @@ void UpdateLibretroMenu(void) {
     // Back gesture: swipe from the left edge rightward to navigate back.
     if (menu.touchControls) {
         static bool swipeArmed = false;
-        static Vector2 swipeStart = {0};
-        static int swipeTouchId = -2;
+        static bool wasDragging = false;
         int w = GetScreenWidth();
-        int h = GetScreenHeight();
-        float edgeZone  = w * 0.15f;  // left 15% triggers arm
-        float minTravel = w * 0.20f;  // must drag at least 20% to fire
+        float edgeZone  = w * 0.15f;
+        float minTravel = w * 0.20f;
 
-        int touchCount = GetTouchPointCount();
+        bool isDragging = IsGestureDetected(GESTURE_DRAG);
 
-        // Arm on the first touch that lands in the left edge zone.
-        if (!swipeArmed) {
-            for (int t = 0; t < touchCount; t++) {
-                Vector2 pos = GetTouchPosition(t);
-                if (pos.x < edgeZone && pos.y > 0 && pos.y < h) {
-                    swipeArmed   = true;
-                    swipeStart   = pos;
-                    swipeTouchId = GetTouchPointId(t);
-                    break;
+        if (isDragging) {
+            if (!wasDragging) {
+                Vector2 pos = GetTouchPosition(0);
+                if (pos.x < edgeZone) {
+                    swipeArmed = true;
                 }
             }
-        }
 
-        // Track the armed touch and fire when it has moved far enough rightward.
-        if (swipeArmed) {
-            bool found = false;
-            for (int t = 0; t < touchCount; t++) {
-                if (GetTouchPointId(t) == swipeTouchId) {
-                    found = true;
-                    Vector2 pos = GetTouchPosition(t);
-                    if (pos.x - swipeStart.x >= minTravel) {
-                        nk_console* active = nk_console_active_parent(menu.console);
-                        if (active != NULL) nk_console_navigate_back(active);
-                        swipeArmed = false;
-                    }
-                    break;
+            if (swipeArmed) {
+                Vector2 drag = GetGestureDragVector();
+                if (drag.x >= minTravel) {
+                    nk_console* active = nk_console_active_parent(menu.console);
+                    if (active != NULL) nk_console_navigate_back(active);
+                    swipeArmed = false;
                 }
             }
-            if (!found) swipeArmed = false;
+        } else {
+            swipeArmed = false;
         }
+
+        wasDragging = isDragging;
     }
 
     // Input & Update
