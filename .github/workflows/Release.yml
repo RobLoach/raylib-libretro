@@ -33,6 +33,30 @@ jobs:
           files: raylib-libretro-linux-amd64.zip
           fail_on_unmatched_files: true
 
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y xorg-dev libglu1-mesa-dev
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Install
+        run: cmake --install build
+      - name: Package
+        run: |
+          cd install
+          zip -r ../raylib-libretro-linux-arm64.zip .
+      - name: Upload
+        uses: softprops/action-gh-release@v2
+        with:
+          files: raylib-libretro-linux-arm64.zip
+          fail_on_unmatched_files: true
+
   build-windows:
     runs-on: windows-latest
     steps:
@@ -73,6 +97,28 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: raylib-libretro-macos-arm64.zip
+          fail_on_unmatched_files: true
+
+  build-macos-x86_64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Install
+        run: cmake --install build
+      - name: Package
+        run: |
+          cd install
+          zip -r ../raylib-libretro-macos-x86_64.zip .
+      - name: Upload
+        uses: softprops/action-gh-release@v2
+        with:
+          files: raylib-libretro-macos-x86_64.zip
           fail_on_unmatched_files: true
 
   build-android:

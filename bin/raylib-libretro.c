@@ -313,6 +313,10 @@ bool Init(void** userData, int argc, char** argv) {
 #if defined(__ANDROID__)
     // Fix up directories, install bundled cores, and request storage access.
     SetupAndroidEnvironment(data->menu);
+    // On Android the display size is known only after the native window attaches,
+    // which happens before Init() but after the App struct's width/height is used.
+    // Resizing here ensures the framebuffer matches the actual display resolution.
+    SetWindowSize(GetScreenWidth(), GetScreenHeight());
 #endif
 
     // Parse the command line arguments.
@@ -340,10 +344,10 @@ bool Init(void** userData, int argc, char** argv) {
     if (corePath) {
         if (MenuInitCore(corePath) && LoadLibretroGameFromPhysFS(gameFile)) {
             BuildLibretroMenuOptions(data->menu);
-            data->menu->active = false;
+            HideLibretroMenu();
         }
     } else if (gameFile) {
-        data->menu->active = !MenuLoadGame(gameFile);
+        if (MenuLoadGame(gameFile)) HideLibretroMenu(); else ShowLibretroMenu();
     }
 
     return true;
@@ -355,7 +359,7 @@ bool Update(void* userData) {
     // Deferred menu open: apply after input has refreshed so the release event
     // that triggered the MENU touch button is gone before Nuklear processes input.
     if (data->pendingMenuOpen) {
-        data->menu->active = true;
+        ShowLibretroMenu();
         data->pendingMenuOpen = false;
     }
 
@@ -488,11 +492,11 @@ bool Update(void* userData) {
             if (IsLibretroCoreFile(droppedPath)) {
                 if (MenuInitCore(droppedPath)) {
                     BuildLibretroMenuOptions(data->menu);
-                    data->menu->active = true;
+                    ShowLibretroMenu();
                 }
             } else {
                 // MenuLoadGame autodetects a core for the dropped game via FindCoreForGame().
-                data->menu->active = !MenuLoadGame(droppedPath);
+                if (MenuLoadGame(droppedPath)) HideLibretroMenu(); else ShowLibretroMenu();
             }
         }
         UnloadDroppedFiles(dropped);

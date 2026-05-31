@@ -34,11 +34,10 @@ typedef enum LibretroShaderType {
     LIBRETRO_SHADER_NONE             = 0,    // Pass-through, no post-processing
     LIBRETRO_SHADER_CRT              = 1,    // CRT monitor: barrel distortion, scanlines
     LIBRETRO_SHADER_SCANLINES        = 2,    // Lightweight horizontal scanline overlay
-    LIBRETRO_SHADER_VIGNETTE         = 3,    // Darkened oval corners
-    LIBRETRO_SHADER_GRAYSCALE        = 4,    // Monochrome with optional tint
-    LIBRETRO_SHADER_NTSC             = 5,    // NTSC composite: chroma bleed, dot crawl
-    LIBRETRO_SHADER_XBRZ             = 6,    // xBRZ 4x edge-directed upscale
-    LIBRETRO_SHADER_TYPE_COUNT       = 7
+    LIBRETRO_SHADER_GRAYSCALE        = 3,    // Monochrome with optional tint
+    LIBRETRO_SHADER_NTSC             = 4,    // NTSC composite: chroma bleed, dot crawl
+    LIBRETRO_SHADER_XBRZ             = 5,    // xBRZ 4x edge-directed upscale
+    LIBRETRO_SHADER_TYPE_COUNT       = 6
 } LibretroShaderType;
 
 #define RAYLIB_LIBRETRO_SHADERS_MAX (LIBRETRO_SHADER_TYPE_COUNT - 1)
@@ -72,16 +71,6 @@ typedef struct ShaderScanlinesParams {
     int loc_time;
 } ShaderScanlinesParams;
 
-typedef struct ShaderVignetteParams {
-    float radius;        // Bright inner area radius (default: 0.75)
-    float softness;      // Falloff softness         (default: 0.45)
-    float opacity;       // Max corner darkening     (default: 0.6)
-    Vector3 tintColor;   // Shadow color             (default: {0, 0, 0})
-    int loc_radius;
-    int loc_softness;
-    int loc_opacity;
-    int loc_tintColor;
-} ShaderVignetteParams;
 
 typedef struct ShaderGrayscaleParams {
     float saturation;   /* 0.0 = full gray, 1.0 = original (default: 0.0)               */
@@ -122,7 +111,6 @@ typedef struct LibretroShaderState {
     union {
         ShaderCRTParams            crt;
         ShaderScanlinesParams      scanlines;
-        ShaderVignetteParams       vignette;
         ShaderGrayscaleParams      grayscale;
         ShaderNTSCParams           ntsc;
         ShaderXBRZParams           xbrz;
@@ -227,15 +215,6 @@ const char* GetLibretroShaderCode(LibretroShaderType type) {
 #include "raylib-libretro-shaders/scanlines-glsl100.h"
 #endif
         ;
-        case LIBRETRO_SHADER_VIGNETTE: return
-#if GLSL_VERSION == 330
-#include "raylib-libretro-shaders/vignette-glsl330.h"
-#elif GLSL_VERSION == 120
-#include "raylib-libretro-shaders/vignette-glsl120.h"
-#else
-#include "raylib-libretro-shaders/vignette-glsl100.h"
-#endif
-        ;
         case LIBRETRO_SHADER_GRAYSCALE: return
 #if GLSL_VERSION == 330
 #include "raylib-libretro-shaders/grayscale-glsl330.h"
@@ -289,12 +268,6 @@ LibretroShaderState GetLibretroShaderDefaults(LibretroShaderType type) {
             state.params.scanlines.opacity   = 0.5f;
             state.params.scanlines.offset    = 0.0f;
             state.params.scanlines.time      = 0.0f;
-            break;
-        case LIBRETRO_SHADER_VIGNETTE:
-            state.params.vignette.radius    = 0.75f;
-            state.params.vignette.softness  = 0.45f;
-            state.params.vignette.opacity   = 0.6f;
-            state.params.vignette.tintColor = (Vector3){ 0.0f, 0.0f, 0.0f };
             break;
         case LIBRETRO_SHADER_GRAYSCALE:
             state.params.grayscale.saturation   = 0.0f;
@@ -374,19 +347,6 @@ LibretroShaderState LoadLibretroShaderEx(LibretroShaderType type, const void *pa
             SetShaderValue(state.shader, p->loc_opacity,   &p->opacity,   SHADER_UNIFORM_FLOAT);
             SetShaderValue(state.shader, p->loc_offset,    &p->offset,    SHADER_UNIFORM_FLOAT);
             SetShaderValue(state.shader, p->loc_time,      &p->time,      SHADER_UNIFORM_FLOAT);
-        } break;
-
-        case LIBRETRO_SHADER_VIGNETTE: {
-            ShaderVignetteParams *p = &state.params.vignette;
-            if (params) *p = *(const ShaderVignetteParams *)params;
-            p->loc_radius    = GetShaderLocation(state.shader, "radius");
-            p->loc_softness  = GetShaderLocation(state.shader, "softness");
-            p->loc_opacity   = GetShaderLocation(state.shader, "opacity");
-            p->loc_tintColor = GetShaderLocation(state.shader, "tintColor");
-            SetShaderValue(state.shader, p->loc_radius,    &p->radius,    SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state.shader, p->loc_softness,  &p->softness,  SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state.shader, p->loc_opacity,   &p->opacity,   SHADER_UNIFORM_FLOAT);
-            SetShaderValue(state.shader, p->loc_tintColor, &p->tintColor, SHADER_UNIFORM_VEC3);
         } break;
 
         case LIBRETRO_SHADER_GRAYSCALE: {
@@ -471,16 +431,6 @@ void UpdateLibretroShader(LibretroShaderState *state, float dt) {
             SetShaderValue(state->shader, p->loc_time, &p->time, SHADER_UNIFORM_FLOAT);
         } break;
 
-        case LIBRETRO_SHADER_VIGNETTE: {
-            ShaderVignetteParams *p = &state->params.vignette;
-            if (state->paramsDirty) {
-                SetShaderValue(state->shader, p->loc_radius,    &p->radius,    SHADER_UNIFORM_FLOAT);
-                SetShaderValue(state->shader, p->loc_softness,  &p->softness,  SHADER_UNIFORM_FLOAT);
-                SetShaderValue(state->shader, p->loc_opacity,   &p->opacity,   SHADER_UNIFORM_FLOAT);
-                SetShaderValue(state->shader, p->loc_tintColor, &p->tintColor, SHADER_UNIFORM_VEC3);
-            }
-        } break;
-
         case LIBRETRO_SHADER_GRAYSCALE: {
             ShaderGrayscaleParams *p = &state->params.grayscale;
             if (state->paramsDirty) {
@@ -537,7 +487,6 @@ const char* GetLibretroShaderName(LibretroShaderType type) {
         case LIBRETRO_SHADER_NONE:            return "None";
         case LIBRETRO_SHADER_CRT:             return "CRT";
         case LIBRETRO_SHADER_SCANLINES:       return "Scanlines";
-        case LIBRETRO_SHADER_VIGNETTE:        return "Vignette";
         case LIBRETRO_SHADER_GRAYSCALE:       return "Grayscale";
         case LIBRETRO_SHADER_NTSC:            return "NTSC";
         case LIBRETRO_SHADER_XBRZ:            return "xBRZ";
