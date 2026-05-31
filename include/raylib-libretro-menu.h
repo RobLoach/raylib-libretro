@@ -108,8 +108,8 @@ typedef struct LibretroMenu {
     float fastForwardSpeed;
     nk_rune keySlowMotion;
     float slowMotionSpeed;
-    int optionSelectedIndices[128];       // per-option combobox index (matches LIBRETRO_MAX_CORE_VARIABLES)
-    nk_bool optionCheckboxValues[128];    // per-option checkbox state for enabled/disabled options
+    int optionSelectedIndices[LIBRETRO_MAX_CORE_VARIABLES];    // per-option combobox index
+    nk_bool optionCheckboxValues[LIBRETRO_MAX_CORE_VARIABLES]; // per-option checkbox state for enabled/disabled options
     char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -1382,6 +1382,7 @@ LibretroMenu* InitLibretroMenu(void) {
 
     // Settings
     nk_console* settings = nk_console_button(menu.console, "Settings");
+    nk_console_button_set_symbol(settings, NK_SYMBOL_HAMBURGER);
     nk_console_add_event(settings, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
     {
         // Back
@@ -1392,6 +1393,7 @@ LibretroMenu* InitLibretroMenu(void) {
         // Audio & Video
         {
             nk_console* graphicsMenu = nk_console_button(settings, "Audio & Video");
+            nk_console_button_set_symbol(graphicsMenu, NK_SYMBOL_TRIANGLE_RIGHT);
             nk_console_add_event(graphicsMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
                 nk_console_button_onclick(graphicsMenu, "Audio & Video", &nk_console_button_back),
@@ -1441,6 +1443,7 @@ LibretroMenu* InitLibretroMenu(void) {
         // Gameplay
         {
             nk_console* gameplayMenu = nk_console_button(settings, "Gameplay");
+            nk_console_button_set_symbol(gameplayMenu, NK_SYMBOL_TRIANGLE_RIGHT);
             nk_console_add_event(gameplayMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
                 nk_console_button_onclick(gameplayMenu, "Gameplay", &nk_console_button_back),
@@ -1467,6 +1470,7 @@ LibretroMenu* InitLibretroMenu(void) {
         // Keys
         {
             nk_console* keysMenu = nk_console_button(settings, "Keys");
+            nk_console_button_set_symbol(keysMenu, NK_SYMBOL_TRIANGLE_RIGHT);
             nk_console_add_event(keysMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
                 nk_console_button_onclick(keysMenu, "Keys", &nk_console_button_back),
@@ -1497,6 +1501,7 @@ LibretroMenu* InitLibretroMenu(void) {
         // Keyboard Controls (Player 1)
         {
             nk_console* kbMenu = nk_console_button(settings, "Keyboard Controls");
+            nk_console_button_set_symbol(kbMenu, NK_SYMBOL_TRIANGLE_RIGHT);
             nk_console_add_event(kbMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
                 nk_console_button_onclick(kbMenu, "Keyboard Controls", &nk_console_button_back),
@@ -1522,6 +1527,7 @@ LibretroMenu* InitLibretroMenu(void) {
         // Directories
         {
             nk_console* dirMenu = nk_console_button(settings, "Directories");
+            nk_console_button_set_symbol(dirMenu, NK_SYMBOL_TRIANGLE_RIGHT);
             nk_console_add_event(dirMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
                 nk_console_button_onclick(dirMenu, "Directories", &nk_console_button_back),
@@ -1549,6 +1555,7 @@ LibretroMenu* InitLibretroMenu(void) {
         // Core Options (nested inside Settings)
         menu.optionsMenu = nk_console_button(settings, "Core Options");
         nk_console_add_event(menu.optionsMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+        nk_console_button_set_symbol(menu.optionsMenu, NK_SYMBOL_TRIANGLE_RIGHT);
         {
             nk_console_button_set_symbol(
                 nk_console_button_onclick(menu.optionsMenu, "Core Options", &nk_console_button_back),
@@ -1626,6 +1633,20 @@ static void LibretroMenuGetNthToken(const char* str, int n, char* out, int outSi
     if (out && outSize > 0) out[0] = '\0';
 }
 
+// Boolean-ish option tokens. libretro cores express on/off options with a
+// handful of conventional value pairs; recognising both sides lets us render
+// any of them as a checkbox while writing back the core's actual token.
+static bool LibretroMenuTokenIsTruthy(const char* tok) {
+    return TextIsEqual(tok, "enabled") || TextIsEqual(tok, "on") ||
+           TextIsEqual(tok, "true")    || TextIsEqual(tok, "yes") ||
+           TextIsEqual(tok, "1");
+}
+static bool LibretroMenuTokenIsFalsy(const char* tok) {
+    return TextIsEqual(tok, "disabled") || TextIsEqual(tok, "off") ||
+           TextIsEqual(tok, "false")    || TextIsEqual(tok, "no")  ||
+           TextIsEqual(tok, "0");
+}
+
 // Called when a core option combobox selection changes.
 // user_data is the option index cast to (void*).
 static void LibretroMenuOptionChanged(nk_console* widget, void* user_data) {
@@ -1640,13 +1661,23 @@ static void LibretroMenuOptionChanged(nk_console* widget, void* user_data) {
     }
 }
 
-// Called when a core option enabled/disabled checkbox changes.
-// user_data is the option index cast to (void*).
+// Called when a core option boolean checkbox changes.
+// user_data is the option index cast to (void*). Writes back the actual token
+// the core declared (e.g. "on"/"off", "enabled"/"disabled") rather than
+// assuming a fixed pair, so non-"enabled|disabled" booleans work too.
 static void LibretroMenuOptionCheckboxChanged(nk_console* widget, void* user_data) {
     (void)widget;
     unsigned i = (unsigned)(uintptr_t)user_data;
-    const char* value = menu.optionCheckboxValues[i] ? "enabled" : "disabled";
-    SetLibretroCoreOption(LIBRETRO.core.variableKeys[i], value);
+    char tok0[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+    char tok1[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+    LibretroMenuGetNthToken(LIBRETRO.core.variableValuesList[i], 0, tok0, sizeof(tok0));
+    LibretroMenuGetNthToken(LIBRETRO.core.variableValuesList[i], 1, tok1, sizeof(tok1));
+    // Map checked->truthy token, unchecked->falsy token, regardless of order.
+    bool tok0Truthy = LibretroMenuTokenIsTruthy(tok0);
+    const char* truthy = tok0Truthy ? tok0 : tok1;
+    const char* falsy  = tok0Truthy ? tok1 : tok0;
+    SetLibretroCoreOption(LIBRETRO.core.variableKeys[i],
+                          menu.optionCheckboxValues[i] ? truthy : falsy);
 }
 
 static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
@@ -1666,12 +1697,66 @@ static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
     return 0;
 }
 
-// Returns true if the only values are "enabled" and "disabled" (in either order).
-static bool LibretroMenuIsEnabledDisabledOption(const char* valuesList) {
+// Returns true if the values are exactly a boolean pair (one truthy, one falsy
+// token in either order) — e.g. "enabled|disabled", "off|on", "true|false".
+static bool LibretroMenuIsBooleanOption(const char* valuesList) {
     if (!valuesList || !*valuesList) return false;
-    return TextIsEqual(valuesList, "enabled|disabled") ||
-           TextIsEqual(valuesList, "disabled|enabled") ||
-           TextIsEqual(valuesList, "off|on");
+    char tok0[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+    char tok1[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+    char tok2[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+    LibretroMenuGetNthToken(valuesList, 0, tok0, sizeof(tok0));
+    LibretroMenuGetNthToken(valuesList, 1, tok1, sizeof(tok1));
+    LibretroMenuGetNthToken(valuesList, 2, tok2, sizeof(tok2));
+    if (tok1[0] == '\0' || tok2[0] != '\0') return false; // not exactly two values
+    return (LibretroMenuTokenIsTruthy(tok0) && LibretroMenuTokenIsFalsy(tok1)) ||
+           (LibretroMenuTokenIsFalsy(tok0)  && LibretroMenuTokenIsTruthy(tok1));
+}
+
+// Returns the registered category index for option i, or -1 if it has no
+// category (or references a category the core never declared — treated flat).
+static int LibretroMenuOptionCategory(unsigned i) {
+    if (LIBRETRO.core.variableCategoryKeys[i][0] == '\0') return -1;
+    for (unsigned c = 0; c < LIBRETRO.core.categoryCount; c++) {
+        if (TextIsEqual(LIBRETRO.core.variableCategoryKeys[i], LIBRETRO.core.categoryKeys[c])) {
+            return (int)c;
+        }
+    }
+    return -1;
+}
+
+// Build the checkbox/combobox widget for option i under the given parent node.
+static void LibretroMenuBuildOptionWidget(LibretroMenu* m, nk_console* parent, unsigned i) {
+    const char* label = TextLength(LIBRETRO.core.variableLabels[i]) > 0
+        ? LIBRETRO.core.variableLabels[i]
+        : LIBRETRO.core.variableKeys[i];
+
+    nk_console* widget;
+
+    if (LibretroMenuIsBooleanOption(LIBRETRO.core.variableValuesList[i])) {
+        m->optionCheckboxValues[i] = (nk_bool)LibretroMenuTokenIsTruthy(LIBRETRO.core.variableValues[i]);
+        widget = nk_console_checkbox(parent, label, &m->optionCheckboxValues[i]);
+        nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
+                                     LibretroMenuOptionCheckboxChanged,
+                                     (void*)(uintptr_t)i, NULL);
+    } else {
+        m->optionSelectedIndices[i] = LibretroMenuFindTokenIndex(
+            LIBRETRO.core.variableValuesList[i], LIBRETRO.core.variableValues[i]);
+
+        const char* displayStr = TextLength(LIBRETRO.core.variableDisplayList[i]) > 0
+            ? LIBRETRO.core.variableDisplayList[i]
+            : LIBRETRO.core.variableValuesList[i];
+
+        widget = nk_console_combobox(parent, label,
+                                     displayStr, '|',
+                                     &m->optionSelectedIndices[i]);
+        nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
+                                     LibretroMenuOptionChanged,
+                                     (void*)(uintptr_t)i, NULL);
+    }
+
+    if (TextLength(LIBRETRO.core.variableTooltips[i]) > 0) {
+        widget->tooltip = LIBRETRO.core.variableTooltips[i];
+    }
 }
 
 void BuildLibretroMenuOptions(LibretroMenu* m) {
@@ -1709,72 +1794,38 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
         nk_console_button_onclick(m->optionsMenu, "Core Options", &nk_console_button_back),
         NK_SYMBOL_TRIANGLE_UP);
 
-    // Build a tree node per category (v2 only); options without a category go flat.
-    nk_console* categoryTrees[LIBRETRO_MAX_CORE_CATEGORIES] = {0};
-    if (LIBRETRO.core.categoryCount > 0) {
-        for (unsigned c = 0; c < LIBRETRO.core.categoryCount; c++) {
-            // Only create the tree if at least one visible option references it.
-            bool hasVisible = false;
-            for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
-                if (!LIBRETRO.core.variableVisible[i]) continue;
-                if (TextLength(LIBRETRO.core.variableValuesList[i]) == 0) continue;
-                if (TextIsEqual(LIBRETRO.core.variableCategoryKeys[i], LIBRETRO.core.categoryKeys[c])) {
-                    hasVisible = true;
-                    break;
-                }
-            }
-            if (hasVisible) {
-                categoryTrees[c] = nk_console_tree(m->optionsMenu, LIBRETRO.core.categoryLabels[c], nk_false);
-            }
-        }
-    }
-
+    // Uncategorized options first, directly under Core Options, so they appear
+    // above the per-category submenus rather than below them.
     for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
         if (TextLength(LIBRETRO.core.variableValuesList[i]) == 0) continue;
         if (!LIBRETRO.core.variableVisible[i]) continue;
+        if (LibretroMenuOptionCategory(i) >= 0) continue; // belongs to a category submenu
+        LibretroMenuBuildOptionWidget(m, m->optionsMenu, i);
+    }
 
-        const char* label = TextLength(LIBRETRO.core.variableLabels[i]) > 0
-            ? LIBRETRO.core.variableLabels[i]
-            : LIBRETRO.core.variableKeys[i];
-
-        // Find the parent: a category tree node if one exists, otherwise the options menu.
-        nk_console* parent = m->optionsMenu;
-        if (LIBRETRO.core.variableCategoryKeys[i][0] != '\0') {
-            for (unsigned c = 0; c < LIBRETRO.core.categoryCount; c++) {
-                if (TextIsEqual(LIBRETRO.core.variableCategoryKeys[i], LIBRETRO.core.categoryKeys[c])
-                        && categoryTrees[c] != NULL) {
-                    parent = categoryTrees[c];
-                    break;
-                }
-            }
+    // Then a submenu button per category (v2 only), each holding its options.
+    for (unsigned c = 0; c < LIBRETRO.core.categoryCount; c++) {
+        // Skip categories with no visible options.
+        bool hasVisible = false;
+        for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
+            if (!LIBRETRO.core.variableVisible[i]) continue;
+            if (TextLength(LIBRETRO.core.variableValuesList[i]) == 0) continue;
+            if (LibretroMenuOptionCategory(i) == (int)c) { hasVisible = true; break; }
         }
+        if (!hasVisible) continue;
 
-        nk_console* widget;
+        nk_console* categoryButton = nk_console_button(m->optionsMenu, LIBRETRO.core.categoryLabels[c]);
+        nk_console_button_set_symbol(categoryButton, NK_SYMBOL_TRIANGLE_RIGHT);
+        // Back button header so each category submenu can return to Core Options.
+        nk_console_button_set_symbol(
+            nk_console_button_onclick(categoryButton, LIBRETRO.core.categoryLabels[c], &nk_console_button_back),
+            NK_SYMBOL_TRIANGLE_UP);
 
-        if (LibretroMenuIsEnabledDisabledOption(LIBRETRO.core.variableValuesList[i])) {
-            m->optionCheckboxValues[i] = (nk_bool)TextIsEqual(LIBRETRO.core.variableValues[i], "enabled");
-            widget = nk_console_checkbox(parent, label, &m->optionCheckboxValues[i]);
-            nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
-                                         LibretroMenuOptionCheckboxChanged,
-                                         (void*)(uintptr_t)i, NULL);
-        } else {
-            m->optionSelectedIndices[i] = LibretroMenuFindTokenIndex(
-                LIBRETRO.core.variableValuesList[i], LIBRETRO.core.variableValues[i]);
-
-            const char* displayStr = TextLength(LIBRETRO.core.variableDisplayList[i]) > 0
-                ? LIBRETRO.core.variableDisplayList[i]
-                : LIBRETRO.core.variableValuesList[i];
-
-            widget = nk_console_combobox(parent, label,
-                                         displayStr, '|',
-                                         &m->optionSelectedIndices[i]);
-            nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
-                                         LibretroMenuOptionChanged,
-                                         (void*)(uintptr_t)i, NULL);
-        }
-
-        if (TextLength(LIBRETRO.core.variableTooltips[i]) > 0) {
-            widget->tooltip = LIBRETRO.core.variableTooltips[i];
+        for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
+            if (TextLength(LIBRETRO.core.variableValuesList[i]) == 0) continue;
+            if (!LIBRETRO.core.variableVisible[i]) continue;
+            if (LibretroMenuOptionCategory(i) != (int)c) continue;
+            LibretroMenuBuildOptionWidget(m, categoryButton, i);
         }
     }
 }
