@@ -834,10 +834,10 @@ static void LibretroMenuCheatChanged(nk_console* widget, void* user_data) {
         if (len + TextLength(line) < (int)sizeof(menu.cheatList)) {
             TextAppend(menu.cheatList, line, &len);
         }
-        SetLibretroMessage(TextFormat("Cheat %u applied", menu.cheatIndex + 1), 2.0);
+        nk_console_show_message(menu.console, TextFormat("Cheat %u applied", menu.cheatIndex + 1));
         menu.cheatIndex++;
     } else {
-        SetLibretroMessage("Cheat failed", 2.0);
+        nk_console_show_message(menu.console, "Failed to apply cheat");
     }
     menu.cheatBuffer[0] = '\0';
 }
@@ -849,7 +849,7 @@ static void LibretroMenuResetCheatsClicked(nk_console* widget, void* user_data) 
         menu.cheatIndex = 0;
         menu.cheatBuffer[0] = '\0';
         menu.cheatList[0] = '\0';
-        SetLibretroMessage("Cheats reset", 2.0);
+        nk_console_show_message(menu.console, "Cheats have been reset");
     }
 }
 
@@ -1170,25 +1170,25 @@ static bool MenuLoadGame(const char* gamePath) {
     // Detect a workable core.
     const char* corePath = FindCoreForGame(gamePath);
     if (!corePath) {
-        SetLibretroMessage(TextFormat("No core found for %s", GetFileName(gamePath)), 2.0);
+        nk_console_show_message(menu.console, TextFormat("No core found for %s", GetFileName(gamePath)));
         return false;
     }
 
     // Load the core
     if (!MenuInitCore(corePath)) {
-        SetLibretroMessage("Failed to load core", 2.0);
+        nk_console_show_message(menu.console, "Failed to load core");
         return false;
     }
 
     // Load the game (PhysFS-aware so .zip archives Just Work).
     if (!LoadLibretroGameFromPhysFS(gamePath)) {
         if (IsLibretroGameRequired()) {
-            SetLibretroMessage("Failed to load game", 2.0);
+            nk_console_show_message(menu.console, "Failed to load game");
             return false;
         }
         // Core supports running without content; fall back to standalone.
         if (!LoadLibretroGame(NULL)) {
-            SetLibretroMessage("Failed to load core", 2.0);
+            nk_console_show_message(menu.console, "Failed to load core");
             return false;
         }
     }
@@ -1697,6 +1697,24 @@ static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
     return 0;
 }
 
+// Returns true if value is an exact token in the pipe-delimited list (e.g.
+// "a|b|c"). Unlike LibretroMenuFindTokenIndex, this distinguishes "not present"
+// from "present at index 0", so it can validate a saved option value.
+static bool LibretroMenuValueInList(const char* valuesList, const char* value) {
+    const char* p = valuesList;
+    while (p && *p) {
+        const char* pipe = p;
+        while (*pipe && *pipe != '|') pipe++;
+        int len = (int)(pipe - p);
+        char tok[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
+        if (len < LIBRETRO_CORE_VARIABLE_VALUE_LEN) memcpy(tok, p, (size_t)len);
+        if (TextIsEqual(tok, value)) return true;
+        if (!*pipe) break;
+        p = pipe + 1;
+    }
+    return false;
+}
+
 // Returns true if the values are exactly a boolean pair (one truthy, one falsy
 // token in either order) — e.g. "enabled|disabled", "off|on", "true|false".
 static bool LibretroMenuIsBooleanOption(const char* valuesList) {
@@ -1760,10 +1778,11 @@ static void LibretroMenuBuildOptionWidget(LibretroMenu* m, nk_console* parent, u
 }
 
 static void LibretroMenuResetCoreOptionsClicked(nk_console* widget, void* user_data) {
-    NK_UNUSED(widget);
     NK_UNUSED(user_data);
     ResetAllLibretroCoreOptions();
-    SetLibretroMessage("Core options reset to defaults", 2.0);
+    LIBRETRO.core.variablesVisibilityDirty = true;
+    nk_console_show_message(nk_console_get_top(widget), "Core options have been reset to defaults");
+    nk_console_navigate_back(widget->parent);
 }
 
 void BuildLibretroMenuOptions(LibretroMenu* m) {
@@ -1837,6 +1856,7 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
     }
 
     // "Reset to defaults" button at the bottom of the Core Options submenu.
+    nk_console_rule_horizontal(m->optionsMenu, nk_rgba(0,0,0,0), nk_false);
     nk_console* resetButton = nk_console_button_onclick(m->optionsMenu,
         "Reset to defaults", &LibretroMenuResetCoreOptionsClicked);
     nk_console_button_set_symbol(resetButton, NK_SYMBOL_TRIANGLE_LEFT);
@@ -1940,7 +1960,19 @@ bool LoadLibretroCoreOptions(void) {
     int loaded = 0;
     for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
         const char *val = rlconfig_get(menu.cfg, coreName, LIBRETRO.core.variableKeys[i]);
-        if (val && SetLibretroCoreOption(LIBRETRO.core.variableKeys[i], val)) loaded++;
+        if (!val) continue;
+        // Reject a saved value the core no longer offers (e.g. a value renamed
+        // or removed by a core update) rather than feeding the core an invalid
+        // option string. The value already holds its default from registration,
+        // so skipping leaves it correct. An empty values list means the core
+        // declared no choices to validate against, so apply the saved value as-is.
+        const char *valuesList = LIBRETRO.core.variableValuesList[i];
+        if (valuesList && valuesList[0] && !LibretroMenuValueInList(valuesList, val)) {
+            TraceLog(LOG_WARNING, "LIBRETRO: Ignoring saved value '%s' for '%s'; not offered by core, using default '%s'",
+                val, LIBRETRO.core.variableKeys[i], LIBRETRO.core.variableDefaults[i]);
+            continue;
+        }
+        if (SetLibretroCoreOption(LIBRETRO.core.variableKeys[i], val)) loaded++;
     }
     TraceLog(LOG_INFO, "LIBRETRO: Loaded %d core option(s) from %s", loaded, RAYLIB_LIBRETRO_CFG_FILE);
     return loaded > 0;
