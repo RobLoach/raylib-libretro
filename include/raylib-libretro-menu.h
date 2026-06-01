@@ -1788,33 +1788,68 @@ static void LibretroMenuResetCoreOptionsClicked(nk_console* widget, void* user_d
     nk_console_navigate_back(widget->parent);
 }
 
+// Append an extension token to the pipe-separated list if it is not already
+// present and there is room. Returns the updated list length.
+static unsigned int LibretroMenuAddExtension(char* list, unsigned int len, size_t cap,
+                                             const char* tok, unsigned int tokLen) {
+    if (tokLen == 0) return len;
+
+    // Skip if the token already exists as a whole entry in the list.
+    for (const char* p = list; *p != '\0'; ) {
+        const char* end = p;
+        while (*end != '\0' && *end != '|') end++;
+        if ((unsigned int)(end - p) == tokLen) {
+            unsigned int k = 0;
+            while (k < tokLen && p[k] == tok[k]) k++;
+            if (k == tokLen) return len;
+        }
+        p = (*end == '|') ? end + 1 : end;
+    }
+
+    // +2 reserves the '|' separator and the null terminator.
+    if (len + tokLen + 2 >= cap) return len;
+    if (len > 0) list[len++] = '|';
+    memcpy(list + len, tok, tokLen);
+    len += tokLen;
+    list[len] = '\0';
+    return len;
+}
+
 static void LibretroMenuUpdateLoadGameFilter(LibretroMenu* m) {
     if (!m || !m->loadGameWidget) return;
 
-    // Collect extensions from all cached cores into a pipe-separated list.
+    // Collect the unique set of extensions from every cached core. Cores
+    // commonly share extensions (zip, bin, cue, ...), so dedup the tokens —
+    // otherwise duplicates eat into the buffer and distinct extensions from
+    // later cores get dropped once it fills.
     char allExts[1024] = {0};
+    unsigned int allLen = 0;
     int coreCount = rlconfig_get_int(m->cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
     for (int i = 0; i < coreCount; i++) {
         const char* exts = rlconfig_get(m->cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_extensions", i));
         if (!exts || exts[0] == '\0') continue;
-        unsigned int curLen = TextLength(allExts);
-        unsigned int addLen = TextLength(exts);
-        if (curLen + addLen + 2 >= sizeof(allExts)) continue;
-        if (curLen > 0) allExts[curLen++] = '|';
-        TextCopy(allExts + curLen, exts);
+        // Split this core's "ext1|ext2|..." list and add each token once.
+        for (const char* tok = exts; *tok != '\0'; ) {
+            const char* end = tok;
+            while (*end != '\0' && *end != '|') end++;
+            allLen = LibretroMenuAddExtension(allExts, allLen, sizeof(allExts), tok, (unsigned int)(end - tok));
+            tok = (*end == '|') ? end + 1 : end;
+        }
     }
 
-    if (allExts[0] != '\0') {
-        char filter[1200];
-        GetLibretroFileExtensionPattern(allExts, filter, sizeof(filter) - 5);
-        int len = (int)TextLength(filter);
-        if (len > 0 && len < (int)sizeof(filter) - 5) {
-            TextCopy(filter + len, ";.zip");
-        }
-        nk_console_file_set_filter(m->loadGameWidget, filter);
-    } else {
+    // Archives are browsable regardless of core; add "zip" to the set (deduped,
+    // in case a core already declared it).
+    allLen = LibretroMenuAddExtension(allExts, allLen, sizeof(allExts), "zip", 3);
+
+    if (allLen == 0) {
         nk_console_file_set_filter(m->loadGameWidget, NULL);
+        return;
     }
+
+    // "a|b" expands to ".a;.b" (under 2x), so this can never truncate.
+    char filter[sizeof(allExts) * 2];
+    GetLibretroFileExtensionPattern(allExts, filter, sizeof(filter));
+    nk_console_file_set_filter(m->loadGameWidget, filter);
 }
 
 void BuildLibretroMenuOptions(LibretroMenu* m) {
