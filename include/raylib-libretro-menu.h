@@ -1516,40 +1516,23 @@ LibretroMenu* InitLibretroMenu(void) {
                 "None|Select + Start|L1 + R1|L2 + R2|L3 + R3|Down + Select",
                 '|', &menu.menuComboIndex);
             menuCombo->tooltip = "Controller button combination to toggle the menu";
-            nk_console_key(keysMenu, "Screenshot", &menu.keyScreenshot);
-            nk_console_input_gamepad(keysMenu, "Screenshot (GP)", 0, NULL, &menu.gamepadScreenshot);
-            nk_console_key(keysMenu, "Rewind", &menu.keyRewind);
-            nk_console_input_gamepad(keysMenu, "Rewind (GP)", 0, NULL, &menu.gamepadRewind);
-            nk_console_key(keysMenu, "Menu", &menu.keyMenu);
-            nk_console_input_gamepad(keysMenu, "Menu (GP)", 0, NULL, &menu.gamepadMenu);
-            nk_console_key(keysMenu, "Save State", &menu.keySaveState);
-            nk_console_input_gamepad(keysMenu, "Save State (GP)", 0, NULL, &menu.gamepadSaveState);
-            nk_console_key(keysMenu, "Load State", &menu.keyLoadState);
-            nk_console_input_gamepad(keysMenu, "Load State (GP)", 0, NULL, &menu.gamepadLoadState);
-            nk_console_key(keysMenu, "Prev Slot", &menu.keyPrevSlot);
-            nk_console_input_gamepad(keysMenu, "Prev Slot (GP)", 0, NULL, &menu.gamepadPrevSlot);
-            nk_console_key(keysMenu, "Next Slot", &menu.keyNextSlot);
-            nk_console_input_gamepad(keysMenu, "Next Slot (GP)", 0, NULL, &menu.gamepadNextSlot);
-            nk_console_key(keysMenu, "Fullscreen", &menu.keyFullscreen);
-            nk_console_input_gamepad(keysMenu, "Fullscreen (GP)", 0, NULL, &menu.gamepadFullscreen);
-            nk_console_key(keysMenu, "Previous Shader", &menu.keyPrevShader);
-            nk_console_input_gamepad(keysMenu, "Prev Shader (GP)", 0, NULL, &menu.gamepadPrevShader);
-            nk_console_key(keysMenu, "Next Shader", &menu.keyNextShader);
-            nk_console_input_gamepad(keysMenu, "Next Shader (GP)", 0, NULL, &menu.gamepadNextShader);
-            nk_console_key(keysMenu, "Reset", &menu.keyReset);
-            nk_console_input_gamepad(keysMenu, "Reset (GP)", 0, NULL, &menu.gamepadReset);
-            nk_console_key(keysMenu, "Quit", &menu.keyQuit);
-            nk_console_input_gamepad(keysMenu, "Quit (GP)", 0, NULL, &menu.gamepadQuit);
-            nk_console_key(keysMenu, "Volume Up", &menu.keyVolumeUp);
-            nk_console_input_gamepad(keysMenu, "Volume Up (GP)", 0, NULL, &menu.gamepadVolumeUp);
-            nk_console_key(keysMenu, "Volume Down", &menu.keyVolumeDown);
-            nk_console_input_gamepad(keysMenu, "Volume Down (GP)", 0, NULL, &menu.gamepadVolumeDown);
-            nk_console_key(keysMenu, "Mute", &menu.keyMute);
-            nk_console_input_gamepad(keysMenu, "Mute (GP)", 0, NULL, &menu.gamepadMute);
-            nk_console_key(keysMenu, "Fast Forward", &menu.keyFastForward);
-            nk_console_input_gamepad(keysMenu, "Fast Forward (GP)", 0, NULL, &menu.gamepadFastForward);
-            nk_console_key(keysMenu, "Slow Motion", &menu.keySlowMotion);
-            nk_console_input_gamepad(keysMenu, "Slow Motion (GP)", 0, NULL, &menu.gamepadSlowMotion);
+            nk_console_input(keysMenu, "Screenshot", -1, NULL, &menu.gamepadScreenshot, &menu.keyScreenshot, NULL);
+            nk_console_input(keysMenu, "Rewind", -1, NULL, &menu.gamepadRewind, &menu.keyRewind, NULL);
+            nk_console_input(keysMenu, "Menu", -1, NULL, &menu.gamepadMenu, &menu.keyMenu, NULL);
+            nk_console_input(keysMenu, "Save State", -1, NULL, &menu.gamepadSaveState, &menu.keySaveState, NULL);
+            nk_console_input(keysMenu, "Load State", -1, NULL, &menu.gamepadLoadState, &menu.keyLoadState, NULL);
+            nk_console_input(keysMenu, "Prev Slot", -1, NULL, &menu.gamepadPrevSlot, &menu.keyPrevSlot, NULL);
+            nk_console_input(keysMenu, "Next Slot", -1, NULL, &menu.gamepadNextSlot, &menu.keyNextSlot, NULL);
+            nk_console_input(keysMenu, "Fullscreen", -1, NULL, &menu.gamepadFullscreen, &menu.keyFullscreen, NULL);
+            nk_console_input(keysMenu, "Previous Shader", -1, NULL, &menu.gamepadPrevShader, &menu.keyPrevShader, NULL);
+            nk_console_input(keysMenu, "Next Shader", -1, NULL, &menu.gamepadNextShader, &menu.keyNextShader, NULL);
+            nk_console_input(keysMenu, "Reset", -1, NULL, &menu.gamepadReset, &menu.keyReset, NULL);
+            nk_console_input(keysMenu, "Quit", -1, NULL, &menu.gamepadQuit, &menu.keyQuit, NULL);
+            nk_console_input(keysMenu, "Volume Up", -1, NULL, &menu.gamepadVolumeUp, &menu.keyVolumeUp, NULL);
+            nk_console_input(keysMenu, "Volume Down", -1, NULL, &menu.gamepadVolumeDown, &menu.keyVolumeDown, NULL);
+            nk_console_input(keysMenu, "Mute", -1, NULL, &menu.gamepadMute, &menu.keyMute, NULL);
+            nk_console_input(keysMenu, "Fast Forward", -1, NULL, &menu.gamepadFastForward, &menu.keyFastForward, NULL);
+            nk_console_input(keysMenu, "Slow Motion", -1, NULL, &menu.gamepadSlowMotion, &menu.keySlowMotion, NULL);
         }
 
         // Keyboard Controls (Player 1)
