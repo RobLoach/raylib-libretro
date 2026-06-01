@@ -185,17 +185,23 @@ static void LibretroFlushPersistentStorage(void) {
 }
 
 EM_JS(void, LibretroMenuEmscriptenOpenFilePicker, (void), {
-    var input = document.createElement('input');
+    // Leverage an input element to pick a file.
+    let input = document.createElement('input');
     input.type = 'file';
     input.onchange = function(e) {
-        var file = e.target.files[0];
+        let file = e.target.files[0];
         if (!file) return;
-        var reader = new FileReader();
+
+        // Read in the file
+        let reader = new FileReader();
         reader.onload = function() {
-            var uint8Array = new Uint8Array(reader.result);
+            // Save the file to the internal file system.
+            let uint8Array = new Uint8Array(reader.result);
             FS.writeFile(file.name, uint8Array);
-            var lengthBytes = lengthBytesUTF8(file.name) + 1;
-            var ptr = _malloc(lengthBytes);
+
+            // Grab the filename, and ask raylib-libreto to load it.
+            let lengthBytes = lengthBytesUTF8(file.name) + 1;
+            let ptr = _malloc(lengthBytes);
             stringToUTF8(file.name, ptr, lengthBytes);
             Module._LoadLibretroGameFromJS(ptr);
             _free(ptr);
@@ -206,14 +212,14 @@ EM_JS(void, LibretroMenuEmscriptenOpenFilePicker, (void), {
 });
 
 static void LibretroMenuEmscriptenLoadGameClicked(nk_console* widget, void* user_data) {
-    (void)widget;
     (void)user_data;
+    (void)widget;
+    TraceLog(LOG_INFO, "LIBRETRO: Opening the file dialog");
     LibretroMenuEmscriptenOpenFilePicker();
 }
-
 #else
 #define LibretroFlushPersistentStorage() ((void)0)
-#endif
+#endif /* __EMSCRIPTEN__ */
 
 #define RAYLIB_NUKLEAR_IMPLEMENTATION
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
