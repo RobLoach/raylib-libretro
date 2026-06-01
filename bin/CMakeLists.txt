@@ -21,6 +21,7 @@ target_include_directories(raylib-libretro PUBLIC
     ../vendor/physfs/src
 )
 target_compile_definitions(raylib-libretro PRIVATE
+    RAYLIB_LIBRETRO_VERSION="${PROJECT_VERSION}"
     PHYSFS_SUPPORTS_ZIP=1
     PHYSFS_SUPPORTS_7Z=0
     PHYSFS_SUPPORTS_GRP=0

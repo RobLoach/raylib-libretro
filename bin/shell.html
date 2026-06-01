@@ -27,12 +27,16 @@
         background-color: black;
         overflow: hidden;
         overscroll-behavior: none;
-        box-sizing: border-box; /* Ensure padding/border doesn't affect size */
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
-canvas.emscripten {
+      canvas.emscripten {
         display: block;
-        width: 100%;
-        height: 100%;
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
         border: 0;
         background-color: black;
         outline: none;
@@ -40,14 +44,13 @@ canvas.emscripten {
         -webkit-tap-highlight-color: transparent;
         -webkit-user-select: none;
         user-select: none;
-        box-sizing: border-box; /* Ensure padding/border doesn't affect size */
-        image-rendering: pixelated; /* nearest-neighbor scaling — no bilinear blur on retro content */
-        image-rendering: crisp-edges; /* Firefox fallback */
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
       }
     </style>
   </head>
   <body>
-<canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+<canvas class="emscripten" id="canvas" width="1024" height="768" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
     <script>
 // Prevent the browser from intercepting drag-and-drop so the dropped
       // file reaches the canvas listener installed by emscripten/GLFW.
@@ -57,22 +60,6 @@ canvas.emscripten {
 
       // Parse ?game= and ?core= query parameters to auto-load URLs on startup.
       var _urlParams = new URLSearchParams(window.location.search);
-
-      // Keep canvas pixel dimensions in sync with the viewport so raylib's
-      // GetScreenWidth/Height, touch layout, and shader resolution uniforms
-      // all see the correct size after a browser resize.
-      function syncCanvasSize() {
-        var canvas = document.getElementById('canvas');
-        var w = window.innerWidth  | 0;
-        var h = window.innerHeight | 0;
-        if (canvas.width !== w || canvas.height !== h) {
-          canvas.width  = w;
-          canvas.height = h;
-        }
-      }
-      window.addEventListener('resize', syncCanvasSize);
-      document.addEventListener('fullscreenchange', syncCanvasSize);
-      syncCanvasSize();
 
       // Handle fullscreen key directly in JS — requestFullscreen() must be
       // called from a user-gesture event handler, not the rAF-driven C loop.
@@ -179,9 +166,6 @@ canvas.emscripten {
           }
         }],
         postRun: [function () {
-          // Re-sync canvas to viewport after module init sets its own size.
-          syncCanvasSize();
-        }, function () {
           // Hand off any background ?game= download to the running app.
           // LoadLibretroGameFromJS picks LoadLibretroGameFromPhysFS (when a core
           // was loaded via ?core=) or MenuLoadGame (autodetects from ROM
