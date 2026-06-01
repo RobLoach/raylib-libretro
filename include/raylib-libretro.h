@@ -71,7 +71,7 @@ static const char* GetLibretroContentName(void);
 static const char* GetLibretroVersion(void);
 static unsigned GetLibretroWidth(void);
 static unsigned GetLibretroHeight(void);
-static unsigned GetLibretroRotation(void);
+static int GetLibretroRotation(void);
 static Texture2D GetLibretroTexture(void);
 static bool IsLibretroGameRequired(void);
 static bool ResetLibretro(void);
@@ -85,6 +85,8 @@ static void SetLibretroSpeed(float speed);
 static float GetLibretroSpeed(void);
 static bool SetLibretroCoreOption(const char* key, const char* value);
 static const char* GetLibretroCoreOption(const char* key);
+static bool ResetLibretroCoreOption(const char* key);
+static void ResetAllLibretroCoreOptions(void);
 static void* GetLibretroSerializedData(unsigned int* size);
 static unsigned int GetLibretroSerializedSize(void);
 static bool SetLibretroSerializedData(void* data, unsigned int size);
@@ -161,6 +163,8 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #define LIBRETRO_CORE_VARIABLE_LABEL_LEN 512
 #define LIBRETRO_CORE_VARIABLE_VALUES_LEN 512
 #define LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN 256
+#define LIBRETRO_MAX_CORE_CATEGORIES     64
+#define LIBRETRO_CORE_CATEGORY_KEY_LEN   64
 
 /**
  * The amount of controller ports with rumble support.
@@ -285,18 +289,23 @@ typedef struct LibretroCoreData {
     // TODO: Switch these to MemAlloc'ed strings.
     char variableKeys[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_KEY_LEN];
     char variableValues[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUE_LEN];
+    char variableDefaults[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUE_LEN];
     char variableLabels[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_LABEL_LEN];
     char variableValuesList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
     char variableDisplayList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
     char variableTooltips[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN];
+    char variableCategoryKeys[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_CATEGORY_KEY_LEN];
     bool variableVisible[LIBRETRO_MAX_CORE_VARIABLES];
     unsigned variableCount;
+    char categoryKeys[LIBRETRO_MAX_CORE_CATEGORIES][LIBRETRO_CORE_CATEGORY_KEY_LEN];
+    char categoryLabels[LIBRETRO_MAX_CORE_CATEGORIES][LIBRETRO_CORE_VARIABLE_LABEL_LEN];
+    unsigned categoryCount;
     unsigned variableOptionsVersion; // 0=legacy SET_VARIABLES, 1=SET_CORE_OPTIONS, 2=SET_CORE_OPTIONS_V2
     bool variablesDirty; // Whether or not the variables have been changed since last RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE call.
     bool variablesVisibilityDirty; // Whether option visibility changed and the menu should rebuild.
 
     // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
-    unsigned rotation;
+    int rotation;
 
     // Single-sample audio accumulation buffer (avoids static locals).
     int16_t singleSampleBuffer[LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
@@ -392,7 +401,8 @@ static LibretroData LIBRETRO = {
 };
 
 static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
-    const char *label, const char *valuesList, const char *displayList, const char *tooltip) {
+    const char *label, const char *valuesList, const char *displayList,
+    const char *tooltip, const char *categoryKey) {
     for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
         if (TextIsEqual(LIBRETRO.core.variableKeys[i], key)) {
             return; // Already registered; don't overwrite user-set value.
@@ -403,12 +413,14 @@ static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
         return;
     }
     unsigned n = LIBRETRO.core.variableCount;
-    TextCopy(LIBRETRO.core.variableKeys[n],        key);
-    TextCopy(LIBRETRO.core.variableValues[n],      defaultValue  ? defaultValue  : "");
-    TextCopy(LIBRETRO.core.variableLabels[n],      label         ? label         : "");
-    TextCopy(LIBRETRO.core.variableValuesList[n],  valuesList    ? valuesList    : "");
-    TextCopy(LIBRETRO.core.variableDisplayList[n], displayList   ? displayList   : "");
-    TextCopy(LIBRETRO.core.variableTooltips[n],    tooltip       ? tooltip       : "");
+    TextCopy(LIBRETRO.core.variableKeys[n],         key);
+    TextCopy(LIBRETRO.core.variableValues[n],       defaultValue  ? defaultValue  : "");
+    TextCopy(LIBRETRO.core.variableDefaults[n],     defaultValue  ? defaultValue  : "");
+    TextCopy(LIBRETRO.core.variableLabels[n],       label         ? label         : "");
+    TextCopy(LIBRETRO.core.variableValuesList[n],   valuesList    ? valuesList    : "");
+    TextCopy(LIBRETRO.core.variableDisplayList[n],  displayList   ? displayList   : "");
+    TextCopy(LIBRETRO.core.variableTooltips[n],     tooltip       ? tooltip       : "");
+    TextCopy(LIBRETRO.core.variableCategoryKeys[n], categoryKey   ? categoryKey   : "");
     LIBRETRO.core.variableVisible[n] = true;
     LIBRETRO.core.variableCount++;
     // A new option appeared: cores that register variables after the menu has
@@ -448,6 +460,32 @@ static bool SetLibretroCoreOption(const char *key, const char *value) {
  * @return Current value string, or NULL if the key is not found. */
 static const char *GetLibretroCoreOption(const char *key) {
     return LibretroGetCoreVariable(key);
+}
+
+/**
+ * Reset a single core option to its default value.
+ * @param key Option key to reset.
+ * @return true if the key was found and reset; false if unknown. */
+static bool ResetLibretroCoreOption(const char *key) {
+    for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
+        if (TextIsEqual(LIBRETRO.core.variableKeys[i], key)) {
+            snprintf(LIBRETRO.core.variableValues[i], LIBRETRO_CORE_VARIABLE_VALUE_LEN,
+                "%s", LIBRETRO.core.variableDefaults[i]);
+            LIBRETRO.core.variablesDirty = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Reset all core options to their default values. */
+static void ResetAllLibretroCoreOptions(void) {
+    for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
+        snprintf(LIBRETRO.core.variableValues[i], LIBRETRO_CORE_VARIABLE_VALUE_LEN,
+            "%s", LIBRETRO.core.variableDefaults[i]);
+    }
+    LIBRETRO.core.variablesDirty = true;
 }
 
 /**
@@ -754,8 +792,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (data == NULL) {
                 return false;
             }
-            LIBRETRO.core.rotation = *(const unsigned *)data;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_ROTATION: %u (%u°)", LIBRETRO.core.rotation, LIBRETRO.core.rotation * 90);
+            LIBRETRO.core.rotation = (int)*(const unsigned *)data;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_ROTATION: %d (%d°)", LIBRETRO.core.rotation, LIBRETRO.core.rotation * 90);
             return true;
         }
 
@@ -783,7 +821,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (message->msg == NULL || message->msg[0] == '\0') {
                 return true;
             }
-            
+
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE: %s (%i frames)", message->msg, message->frames);
 
             // Route through SetLibretroMessage so osd metadata (msg pointer, type,
@@ -945,7 +983,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                         memcpy(defaultVal, opts, len);
                     }
                 }
-                LibretroInitCoreVariable(var->key, defaultVal, label, valuesList, valuesList, "");
+                LibretroInitCoreVariable(var->key, defaultVal, label, valuesList, valuesList, "", "");
             }
             return true;
         }
@@ -1407,7 +1445,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
 
                 LibretroInitCoreVariable(opts->key, def ? def : "",
                     opts->desc, valuesList, displayList,
-                    opts->info ? opts->info : "");
+                    opts->info ? opts->info : "", "");
             }
             return true;
         }
@@ -1578,6 +1616,18 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             LIBRETRO.core.variableOptionsVersion = 2;
+
+            // Store category metadata for BuildLibretroMenuOptions to use
+            LIBRETRO.core.categoryCount = 0;
+            if (opts->categories) {
+                const struct retro_core_option_v2_category *cat = opts->categories;
+                for (; cat->key != NULL && LIBRETRO.core.categoryCount < LIBRETRO_MAX_CORE_CATEGORIES; cat++) {
+                    TextCopy(LIBRETRO.core.categoryKeys[LIBRETRO.core.categoryCount],   cat->key);
+                    TextCopy(LIBRETRO.core.categoryLabels[LIBRETRO.core.categoryCount], cat->desc ? cat->desc : cat->key);
+                    LIBRETRO.core.categoryCount++;
+                }
+            }
+
             const struct retro_core_option_v2_definition *def = opts->definitions;
             for (; def->key != NULL; def++) {
                 const char *defaultVal = def->default_value;
@@ -1612,7 +1662,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 }
 
                 LibretroInitCoreVariable(def->key, defaultVal ? defaultVal : "",
-                    label, valuesList, displayList, tooltip);
+                    label, valuesList, displayList, tooltip,
+                    (def->category_key && def->category_key[0]) ? def->category_key : "");
             }
             return true;
         }
@@ -2852,12 +2903,12 @@ static bool InitLibretro(const char* core) {
  * @param posX Horizontal screen position.
  * @param posY Vertical screen position.
  * @param tint Color tint applied to the framebuffer texture.
+ *
+ * @see DrawTexture()
  */
 static void DrawLibretroTexture(int posX, int posY, Color tint) {
-    if (LIBRETRO.core.loaded == false) {
-        return;
-    }
-    DrawTexture(LIBRETRO.core.texture, posX, posY, tint);
+    Rectangle destRec = {(float)posX, (float)posY, (float)GetLibretroWidth(), (float)GetLibretroHeight()};
+    DrawLibretroPro(destRec, tint);
 }
 
 /**
@@ -2866,10 +2917,7 @@ static void DrawLibretroTexture(int posX, int posY, Color tint) {
  * @param tint Color tint applied to the framebuffer texture.
  */
 static void DrawLibretroV(Vector2 position, Color tint) {
-    if (LIBRETRO.core.loaded == false) {
-        return;
-    }
-    DrawTextureV(LIBRETRO.core.texture, position, tint);
+    DrawLibretroTexture((int)position.x, (int)position.y, tint);
 }
 
 /**
@@ -2883,7 +2931,9 @@ static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color 
     if (LIBRETRO.core.loaded == false) {
         return;
     }
-    DrawTextureEx(LIBRETRO.core.texture, position, rotation, scale, tint);
+    Rectangle source = {0, 0, (float)LIBRETRO.core.width, (float)LIBRETRO.core.height};
+    Rectangle dest = {position.x, position.y, (float)LIBRETRO.core.width * scale, (float)LIBRETRO.core.height * scale};
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, (Vector2){0, 0}, rotation + (float)(LIBRETRO.core.rotation * 90), tint);
 }
 
 /**
@@ -2895,9 +2945,14 @@ static void DrawLibretroPro(Rectangle destRec, Color tint) {
     if (LIBRETRO.core.loaded == false) {
         return;
     }
-    Rectangle source = {0, 0, LIBRETRO.core.width, LIBRETRO.core.height};
-    Vector2 origin = {0, 0};
-    DrawTexturePro(LIBRETRO.core.texture, source, destRec, origin, 0, tint);
+    float rotDeg = (float)(LIBRETRO.core.rotation * 90);
+    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
+    float destW = swap ? destRec.height : destRec.width;
+    float destH = swap ? destRec.width : destRec.height;
+    Rectangle source = {0, 0, (float)LIBRETRO.core.width, (float)LIBRETRO.core.height};
+    Rectangle dest = {destRec.x + destRec.width / 2.0f, destRec.y + destRec.height / 2.0f, destW, destH};
+    Vector2 origin = {destW / 2.0f, destH / 2.0f};
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotDeg, tint);
 }
 
 /**
@@ -2986,7 +3041,6 @@ static void DrawLibretroTint(Color tint) {
         return;
     }
 
-    float rotationDeg = (float)LIBRETRO.core.rotation * 90.0f;
     bool swapDims = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
 
     // Find the aspect ratio.
@@ -3017,7 +3071,7 @@ static void DrawLibretroTint(Color tint) {
     Rectangle source = {0, 0, LIBRETRO.core.width, LIBRETRO.core.height};
     Rectangle dest = {cx, cy, (float)destW, (float)destH};
     Vector2 origin = {destW / 2.0f, destH / 2.0f};
-    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotationDeg, tint);
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, (float)(LIBRETRO.core.rotation * 90), tint);
 }
 
 /**
@@ -3037,7 +3091,7 @@ static void DrawLibretro(void) {
  * 0 falls back to a readable default). The target field is ignored — this
  * function only drives the OSD; callers wanting the log should TraceLog too.
  *
- * @param message The message descriptor. message->msg must not be NULL.
+ * @param message The message descriptor.
  */
 static void SetLibretroMessageEx(const struct retro_message_ext *message) {
     if (message == NULL || message->msg == NULL || message->msg[0] == '\0') {
@@ -3169,7 +3223,7 @@ static bool IsLibretroDynamicRateControlEnabled(void) {
  * Get the current display rotation index (0=0°, 1=90°, 2=180°, 3=270°).
  * @return Rotation index.
  */
-static unsigned GetLibretroRotation(void) {
+static int GetLibretroRotation(void) {
     return LIBRETRO.core.rotation;
 }
 
@@ -3178,6 +3232,10 @@ static unsigned GetLibretroRotation(void) {
  * @return Width in pixels
  */
 static unsigned GetLibretroWidth(void) {
+    if (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3) {
+        return LIBRETRO.core.height;
+    }
+
     return LIBRETRO.core.width;
 }
 
@@ -3186,6 +3244,9 @@ static unsigned GetLibretroWidth(void) {
  * @return Height in pixels.
  */
 static unsigned GetLibretroHeight(void) {
+    if (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3) {
+        return LIBRETRO.core.width;
+    }
     return LIBRETRO.core.height;
 }
 

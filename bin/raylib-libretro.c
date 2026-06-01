@@ -56,6 +56,13 @@
 #define RAYLIB_LIBRETRO_LOGO_IMPLEMENTATION
 #include "../include/raylib-libretro-logo.h"
 
+#if defined(__ANDROID__)
+#include <jni.h>
+#include <android_native_app_glue.h>
+// Provided by raylib's Android backend (rcore_android.c); not in raylib.h.
+extern struct android_app *GetAndroidApp(void);
+#endif
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten/html5.h>
 
@@ -130,6 +137,143 @@ typedef struct {
     bool pendingMenuOpen;
 } AppData;
 
+#if defined(__ANDROID__)
+// Copy a single bundled core out of the read-only APK assets into the writable
+// data directory so it can be dlopen()'d. No-op if it was already copied.
+static void AndroidCopyCore(const char* coreName, const char* destDir) {
+    char destPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char assetPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    TextCopy(destPath, TextFormat("%s/%s", destDir, coreName));
+    TextCopy(assetPath, TextFormat("cores/%s", coreName));
+
+    if (FileExists(destPath)) return;  // already installed on a previous launch
+
+    int size = 0;
+    unsigned char* data = LoadFileData(assetPath, &size);  // reads from APK assets
+    if (data == NULL || size <= 0) {
+        TraceLog(LOG_WARNING, "ANDROID: Bundled core missing from assets: %s", assetPath);
+        return;
+    }
+    if (SaveFileData(destPath, data, size)) {
+        TraceLog(LOG_INFO, "ANDROID: Installed core %s", destPath);
+    } else {
+        TraceLog(LOG_ERROR, "ANDROID: Failed to install core %s", destPath);
+    }
+    UnloadFileData(data);
+}
+
+// On API 30+ ROM browsing across shared storage needs All-Files Access, which
+// can only be granted from a system settings screen. Open it once if we don't
+// already hold the permission. Older devices rely on legacy external storage.
+static void AndroidRequestStorageAccess(struct android_app* app) {
+    JavaVM* vm = app->activity->vm;
+    JNIEnv* env = NULL;
+    (*vm)->AttachCurrentThread(vm, &env, NULL);
+
+    jclass versionClass = (*env)->FindClass(env, "android/os/Build$VERSION");
+    jfieldID sdkIntField = (*env)->GetStaticFieldID(env, versionClass, "SDK_INT", "I");
+    jint sdkInt = (*env)->GetStaticIntField(env, versionClass, sdkIntField);
+
+    if (sdkInt >= 30) {
+        jclass environmentClass = (*env)->FindClass(env, "android/os/Environment");
+        jmethodID isManager = (*env)->GetStaticMethodID(env, environmentClass,
+            "isExternalStorageManager", "()Z");
+        jboolean granted = isManager ? (*env)->CallStaticBooleanMethod(env, environmentClass, isManager) : JNI_TRUE;
+
+        if (!granted) {
+            // Uri uri = Uri.parse("package:<applicationId>");
+            jclass activityClass = (*env)->GetObjectClass(env, app->activity->clazz);
+            jmethodID getPackageName = (*env)->GetMethodID(env, activityClass,
+                "getPackageName", "()Ljava/lang/String;");
+            jstring packageName = (jstring)(*env)->CallObjectMethod(env, app->activity->clazz, getPackageName);
+            const char* packageUtf = (*env)->GetStringUTFChars(env, packageName, NULL);
+            jstring uriString = (*env)->NewStringUTF(env, TextFormat("package:%s", packageUtf));
+            (*env)->ReleaseStringUTFChars(env, packageName, packageUtf);
+
+            jclass uriClass = (*env)->FindClass(env, "android/net/Uri");
+            jmethodID uriParse = (*env)->GetStaticMethodID(env, uriClass, "parse",
+                "(Ljava/lang/String;)Landroid/net/Uri;");
+            jobject uri = (*env)->CallStaticObjectMethod(env, uriClass, uriParse, uriString);
+
+            // Intent intent = new Intent(ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, uri);
+            jclass settingsClass = (*env)->FindClass(env, "android/provider/Settings");
+            jfieldID actionField = (*env)->GetStaticFieldID(env, settingsClass,
+                "ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION", "Ljava/lang/String;");
+            jstring action = (jstring)(*env)->GetStaticObjectField(env, settingsClass, actionField);
+
+            jclass intentClass = (*env)->FindClass(env, "android/content/Intent");
+            jmethodID intentInit = (*env)->GetMethodID(env, intentClass, "<init>",
+                "(Ljava/lang/String;Landroid/net/Uri;)V");
+            jobject intent = (*env)->NewObject(env, intentClass, intentInit, action, uri);
+
+            jmethodID startActivity = (*env)->GetMethodID(env, activityClass, "startActivity",
+                "(Landroid/content/Intent;)V");
+            (*env)->CallVoidMethod(env, app->activity->clazz, startActivity, intent);
+
+            TraceLog(LOG_INFO, "ANDROID: Requested All-Files Access for ROM browsing");
+        }
+    }
+
+    // Don't let a missing class/method on an odd ROM crash the app.
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    (*vm)->DetachCurrentThread(vm);
+}
+
+// The desktop defaults (relative "cores"/"saves"/"system") are unusable on
+// Android, where the working directory is "/". Point them at writable absolute
+// paths, install the bundled cores so the menu can find them, and request the
+// storage access needed to browse for ROMs.
+static void SetupAndroidEnvironment(LibretroMenu* menu) {
+    struct android_app* app = GetAndroidApp();
+    if (app == NULL || app->activity == NULL || app->activity->internalDataPath == NULL) {
+        TraceLog(LOG_WARNING, "ANDROID: No activity data path; skipping environment setup");
+        return;
+    }
+    const char* dataDir = app->activity->internalDataPath;
+    const char* externalDir = app->activity->externalDataPath;
+
+    // Only override values still at the relative desktop defaults — an absolute
+    // path means the user (or a saved config) already chose a directory.
+    if (menu->coreDirectory[0]   != '/') TextCopy(menu->coreDirectory,   TextFormat("%s/cores", dataDir));
+    if (menu->saveDirectory[0]   != '/') TextCopy(menu->saveDirectory,   TextFormat("%s/saves", dataDir));
+    if (menu->systemDirectory[0] != '/') TextCopy(menu->systemDirectory, TextFormat("%s/system", dataDir));
+    if (menu->fileBrowserStartDirectory[0] == '\0' && externalDir != NULL) {
+        TextCopy(menu->fileBrowserStartDirectory, externalDir);
+    }
+
+    MakeDirectory(menu->coreDirectory);
+    MakeDirectory(menu->saveDirectory);
+    MakeDirectory(menu->systemDirectory);
+
+    // Install each core listed in the build-generated assets/cores.list.
+    char* list = LoadFileText("cores.list");
+    if (list != NULL) {
+        int count = 0;
+        const char** lines = TextSplit(list, '\n', &count);
+        for (int i = 0; i < count; i++) {
+            char coreName[256];
+            TextCopy(coreName, lines[i]);
+            int len = TextLength(coreName);
+            if (len > 0 && coreName[len - 1] == '\r') coreName[len - 1] = '\0';
+            if (coreName[0] == '\0') continue;
+            AndroidCopyCore(coreName, menu->coreDirectory);
+        }
+        UnloadFileText(list);
+    } else {
+        TraceLog(LOG_WARNING, "ANDROID: cores.list missing; no bundled cores to install");
+    }
+
+    // Re-apply the directories and rescan now that the cores are on disk.
+    LibretroApplyDirectories();
+    ScanLibretroCoreDirectory();
+    if (menu->loadGameWidget != NULL && menu->fileBrowserStartDirectory[0] != '\0') {
+        nk_console_file_set_directory(menu->loadGameWidget, menu->fileBrowserStartDirectory);
+    }
+
+    AndroidRequestStorageAccess(app);
+}
+#endif  // __ANDROID__
+
 bool Init(void** userData, int argc, char** argv) {
     Image logo = GetLibretroLogo();
     SetWindowIcon(logo);
@@ -166,6 +310,15 @@ bool Init(void** userData, int argc, char** argv) {
         return false;
     }
 
+#if defined(__ANDROID__)
+    // Fix up directories, install bundled cores, and request storage access.
+    SetupAndroidEnvironment(data->menu);
+    // On Android the display size is known only after the native window attaches,
+    // which happens before Init() but after the App struct's width/height is used.
+    // Resizing here ensures the framebuffer matches the actual display resolution.
+    SetWindowSize(GetScreenWidth(), GetScreenHeight());
+#endif
+
     // Parse the command line arguments.
     // -L/--libretro <core> sets the core; the first non-flag argument is the game file.
     const char* corePath = NULL;
@@ -191,10 +344,10 @@ bool Init(void** userData, int argc, char** argv) {
     if (corePath) {
         if (MenuInitCore(corePath) && LoadLibretroGameFromPhysFS(gameFile)) {
             BuildLibretroMenuOptions(data->menu);
-            data->menu->active = false;
+            HideLibretroMenu();
         }
     } else if (gameFile) {
-        data->menu->active = !MenuLoadGame(gameFile);
+        if (MenuLoadGame(gameFile)) HideLibretroMenu(); else ShowLibretroMenu();
     }
 
     return true;
@@ -206,7 +359,7 @@ bool Update(void* userData) {
     // Deferred menu open: apply after input has refreshed so the release event
     // that triggered the MENU touch button is gone before Nuklear processes input.
     if (data->pendingMenuOpen) {
-        data->menu->active = true;
+        ShowLibretroMenu();
         data->pendingMenuOpen = false;
     }
 
@@ -339,11 +492,11 @@ bool Update(void* userData) {
             if (IsLibretroCoreFile(droppedPath)) {
                 if (MenuInitCore(droppedPath)) {
                     BuildLibretroMenuOptions(data->menu);
-                    data->menu->active = true;
+                    ShowLibretroMenu();
                 }
             } else {
                 // MenuLoadGame autodetects a core for the dropped game via FindCoreForGame().
-                data->menu->active = !MenuLoadGame(droppedPath);
+                if (MenuLoadGame(droppedPath)) HideLibretroMenu(); else ShowLibretroMenu();
             }
         }
         UnloadDroppedFiles(dropped);
@@ -517,8 +670,8 @@ void Close(void* userData) {
 App Main() {
     return (App){
         .title = "raylib-libretro",
-        .width = 1280,
-        .height = 720,
+        .width = 1024,
+        .height = 768,
         .init = Init,
         .update = Update,
         .draw = Draw,

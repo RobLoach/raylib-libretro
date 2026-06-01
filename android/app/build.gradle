@@ -11,8 +11,10 @@ android {
         applicationId 'com.raylib.libretro'
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName '0.0.19'
+        // The release workflow overrides these via -PappVersionCode / -PappVersionName
+        // (derived from the git tag and run number). Defaults are for local builds.
+        versionCode project.hasProperty('appVersionCode') ? project.property('appVersionCode').toString().toInteger() : 1
+        versionName project.hasProperty('appVersionName') ? project.property('appVersionName').toString() : '0.0.19'
 
         externalNativeBuild {
             cmake {
@@ -27,6 +29,12 @@ android {
             path 'CMakeLists.txt'
             version '3.22.1'
         }
+    }
+
+    // Cores ship as assets; keep the .so files uncompressed so the app can
+    // read and copy them out of the APK without inflating on every access.
+    androidResources {
+        noCompress 'so'
     }
 
     buildTypes {
