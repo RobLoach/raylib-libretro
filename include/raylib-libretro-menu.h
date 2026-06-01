@@ -2265,6 +2265,11 @@ void UpdateLibretroMenu(void) {
             (GetScreenWidth() >= 480) ? 2.0f : 2.0f; // Always use at least 2X scaling.
     SetNuklearScaling(menu.ctx, scaling);
 
+    // Back gesture: swipe from left to right to navigate back.
+    if (menu.touchControls && GetGestureDetected() == GESTURE_SWIPE_RIGHT) {
+        nk_console_navigate_back(nk_console_active_parent(menu.console));
+    }
+
     // Input & Update
     nk_gamepad_update(nk_console_get_gamepads(menu.console));
     UpdateNuklear(menu.ctx);
