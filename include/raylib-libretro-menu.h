@@ -2265,37 +2265,9 @@ void UpdateLibretroMenu(void) {
             (GetScreenWidth() >= 480) ? 2.0f : 2.0f; // Always use at least 2X scaling.
     SetNuklearScaling(menu.ctx, scaling);
 
-    // Back gesture: swipe from the left edge rightward to navigate back.
-    if (menu.touchControls) {
-        static bool swipeArmed = false;
-        static bool wasDragging = false;
-        int w = GetScreenWidth();
-        float edgeZone  = w * 0.15f;
-        float minTravel = w * 0.20f;
-
-        bool isDragging = IsGestureDetected(GESTURE_DRAG);
-
-        if (isDragging) {
-            if (!wasDragging) {
-                Vector2 pos = GetTouchPosition(0);
-                if (pos.x < edgeZone) {
-                    swipeArmed = true;
-                }
-            }
-
-            if (swipeArmed) {
-                Vector2 drag = GetGestureDragVector();
-                if (drag.x >= minTravel) {
-                    nk_console* active = nk_console_active_parent(menu.console);
-                    if (active != NULL) nk_console_navigate_back(active);
-                    swipeArmed = false;
-                }
-            }
-        } else {
-            swipeArmed = false;
-        }
-
-        wasDragging = isDragging;
+    // Back gesture: swipe from left to right to navigate back.
+    if (menu.touchControls && GetGestureDetected() == GESTURE_SWIPE_RIGHT) {
+        nk_console_navigate_back(nk_console_active_parent(menu.console));
     }
 
     // Input & Update
