@@ -231,6 +231,8 @@ static void AndroidRequestStorageAccess(struct android_app* app) {
     (*vm)->DetachCurrentThread(vm);
 }
 
+static void AndroidEnableImmersiveMode(struct android_app* app);
+
 // The desktop defaults (relative "cores"/"saves"/"system") are unusable on
 // Android, where the working directory is "/". Point them at writable absolute
 // paths, install the bundled cores so the menu can find them, and request the
@@ -283,6 +285,56 @@ static void SetupAndroidEnvironment(LibretroMenu* menu) {
     }
 
     AndroidRequestStorageAccess(app);
+    AndroidEnableImmersiveMode(app);
+}
+
+// Enable immersive fullscreen mode: hide navigation and status bars so the
+// game gets the entire display. Called once at startup; IMMERSIVE_STICKY means
+// the bars stay hidden until the user explicitly swipes them back.
+static void AndroidEnableImmersiveMode(struct android_app* app) {
+    JavaVM* vm = app->activity->vm;
+    JNIEnv* env = NULL;
+    (*vm)->AttachCurrentThread(vm, &env, NULL);
+
+    jobject activity = app->activity->clazz;
+    jclass activityClass = (*env)->GetObjectClass(env, activity);
+
+    jmethodID getWindow = (*env)->GetMethodID(env, activityClass, "getWindow", "()Landroid/view/Window;");
+    jobject window = (*env)->CallObjectMethod(env, activity, getWindow);
+    jclass windowClass = (*env)->GetObjectClass(env, window);
+
+    jmethodID getDecorView = (*env)->GetMethodID(env, windowClass, "getDecorView", "()Landroid/view/View;");
+    jobject decorView = (*env)->CallObjectMethod(env, window, getDecorView);
+    jclass viewClass = (*env)->GetObjectClass(env, decorView);
+
+    jmethodID setSystemUiVisibility = (*env)->GetMethodID(env, viewClass, "setSystemUiVisibility", "(I)V");
+    jint flags =
+        0x00000002 |  // SYSTEM_UI_FLAG_HIDE_NAVIGATION
+        0x00000004 |  // SYSTEM_UI_FLAG_FULLSCREEN
+        0x00001000 |  // SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        0x00000100 |  // SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        0x00000200 |  // SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        0x00000400;   // SYSTEM_UI_FLAG_LAYOUT_STABLE
+    (*env)->CallVoidMethod(env, decorView, setSystemUiVisibility, flags);
+
+    // On Android P (API 28+), render into the display cutout (notch) area.
+    jclass versionClass = (*env)->FindClass(env, "android/os/Build$VERSION");
+    jfieldID sdkIntField = (*env)->GetStaticFieldID(env, versionClass, "SDK_INT", "I");
+    jint sdkInt = (*env)->GetStaticIntField(env, versionClass, sdkIntField);
+    if (sdkInt >= 28) {
+        jmethodID getAttributes = (*env)->GetMethodID(env, windowClass, "getAttributes",
+            "()Landroid/view/WindowManager$LayoutParams;");
+        jobject attrs = (*env)->CallObjectMethod(env, window, getAttributes);
+        jclass attrsClass = (*env)->GetObjectClass(env, attrs);
+        jfieldID cutoutField = (*env)->GetFieldID(env, attrsClass, "layoutInDisplayCutoutMode", "I");
+        (*env)->SetIntField(env, attrs, cutoutField, 1);  // LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        jmethodID setAttributes = (*env)->GetMethodID(env, windowClass, "setAttributes",
+            "(Landroid/view/WindowManager$LayoutParams;)V");
+        (*env)->CallVoidMethod(env, window, setAttributes, attrs);
+    }
+
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    (*vm)->DetachCurrentThread(vm);
 }
 #endif  // __ANDROID__
 
@@ -323,12 +375,7 @@ bool Init(void** userData, int argc, char** argv) {
     }
 
 #if defined(__ANDROID__)
-    // Fix up directories, install bundled cores, and request storage access.
     SetupAndroidEnvironment(data->menu);
-    // On Android the display size is known only after the native window attaches,
-    // which happens before Init() but after the App struct's width/height is used.
-    // Resizing here ensures the framebuffer matches the actual display resolution.
-    SetWindowSize(GetScreenWidth(), GetScreenHeight());
 #endif
 
     // Parse the command line arguments.
@@ -682,8 +729,13 @@ void Close(void* userData) {
 App Main() {
     return (App){
         .title = "raylib-libretro",
+#if defined(__ANDROID__)
+        .width = 0,   // use full display resolution on Android
+        .height = 0,
+#else
         .width = 1024,
         .height = 768,
+#endif
         .init = Init,
         .update = Update,
         .draw = Draw,
