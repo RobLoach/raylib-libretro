@@ -33,10 +33,12 @@
       }
       canvas.emscripten {
         display: block;
-        max-width: 100%;
-        max-height: 100%;
-        width: auto;
-        height: auto;
+        /* Fill the viewport as a pre-JS default; applyCanvasResize() below sets
+           exact inline pixel sizes once the runtime is up. The backing store is
+           sized to physical pixels (CSS size × devicePixelRatio), so the canvas
+           renders 1:1 with the device and needs no image-rendering hint. */
+        width: 100%;
+        height: 100%;
         border: 0;
         background-color: black;
         outline: none;
@@ -44,15 +46,31 @@
         -webkit-tap-highlight-color: transparent;
         -webkit-user-select: none;
         user-select: none;
-        image-rendering: pixelated;
-        image-rendering: crisp-edges;
       }
     </style>
   </head>
   <body>
 <canvas class="emscripten" id="canvas" width="1024" height="768" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
     <script>
-// Prevent the browser from intercepting drag-and-drop so the dropped
+// Track every AudioContext the app creates so the first user gesture can
+      // resume it. iOS Safari and Chrome's autoplay policy start audio contexts
+      // suspended, so the emulator is silent until the user interacts. We wrap
+      // the constructor (rather than poke raylib/miniaudio internals) before the
+      // WASM module runs, so it's version-independent and catches every context.
+      var _audioContexts = [];
+      ['AudioContext', 'webkitAudioContext'].forEach(function (name) {
+        var Orig = window[name];
+        if (!Orig) return;
+        window[name] = new Proxy(Orig, {
+          construct: function (target, ctorArgs) {
+            var ctx = Reflect.construct(target, ctorArgs, target);
+            _audioContexts.push(ctx);
+            return ctx;
+          }
+        });
+      });
+
+      // Prevent the browser from intercepting drag-and-drop so the dropped
       // file reaches the canvas listener installed by emscripten/GLFW.
       ['dragenter', 'dragover', 'drop'].forEach(function (type) {
         window.addEventListener(type, function (e) { e.preventDefault(); }, false);
@@ -72,6 +90,75 @@
             document.exitFullscreen();
           }
         }
+      });
+
+      // Cap the backing-store scale: phones report devicePixelRatio 2-3, and a
+      // full-viewport framebuffer (plus any post-process shader) at 3x costs ~9x
+      // the fill rate of 1x — enough to drop framerate and drain battery. 2x is
+      // still crisp on mobile.
+      var MAX_PIXEL_RATIO = 2;
+
+      // HiDPI canvas sizing. raylib's web backend sizes the canvas backing store
+      // to window.innerWidth/innerHeight in CSS pixels (devicePixelRatio is
+      // ignored), so on Retina / fractional-scaling displays the frame is
+      // rendered at a low resolution and upscaled — the "weird scaling". We
+      // display the canvas at the CSS viewport size but set its backing store to
+      // (capped) physical pixels via ResizeCanvasFromJS (-> SetWindowSize), so the
+      // WebGL framebuffer and GetScreenWidth/Height match the device.
+      function applyCanvasResize() {
+        var canvas = Module.canvas;
+        if (!canvas) return;
+        var dpr  = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
+        var cssW = window.innerWidth, cssH = window.innerHeight;
+        // Display at CSS size (correct on-screen size).
+        canvas.style.width  = cssW + 'px';
+        canvas.style.height = cssH + 'px';
+        // Backing store at physical px -> crisp GL framebuffer.
+        var pxW = Math.round(cssW * dpr), pxH = Math.round(cssH * dpr);
+        if (Module.calledRun && Module.ccall) {
+          Module.ccall('ResizeCanvasFromJS', null, ['number', 'number'], [pxW, pxH]);
+        }
+      }
+      // raylib's built-in resize callback also fires on 'resize' and would reset
+      // the backing store to CSS pixels; re-applying on requestAnimationFrame
+      // makes ours run last within the frame (and coalesces resize bursts).
+      var _resizeQueued = false;
+      function queueCanvasResize() {
+        if (_resizeQueued) return;
+        _resizeQueued = true;
+        requestAnimationFrame(function () { _resizeQueued = false; applyCanvasResize(); });
+      }
+      window.addEventListener('resize', queueCanvasResize);
+      window.addEventListener('orientationchange', queueCanvasResize);
+
+      // Screen Wake Lock: keep the phone from dimming/locking mid-game. The lock
+      // is released by the browser when the tab is hidden, so re-acquire it when
+      // the page becomes visible again. Non-fatal where unsupported.
+      var _wakeLock = null;
+      function requestWakeLock() {
+        if (!('wakeLock' in navigator) || _wakeLock) return;
+        navigator.wakeLock.request('screen').then(function (lock) {
+          _wakeLock = lock;
+          lock.addEventListener('release', function () { _wakeLock = null; });
+        }).catch(function () { /* denied or not visible; ignore */ });
+      }
+
+      // First user gesture: resume any suspended audio context and grab the wake
+      // lock (both require a gesture on mobile). Runs once, then detaches.
+      function onFirstGesture() {
+        _audioContexts.forEach(function (ctx) {
+          if (ctx && ctx.state === 'suspended' && ctx.resume) ctx.resume().catch(function () {});
+        });
+        requestWakeLock();
+        ['pointerdown', 'touchend', 'keydown'].forEach(function (type) {
+          window.removeEventListener(type, onFirstGesture);
+        });
+      }
+      ['pointerdown', 'touchend', 'keydown'].forEach(function (type) {
+        window.addEventListener(type, onFirstGesture, { passive: true });
+      });
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') requestWakeLock();
       });
 
       var Module = {
@@ -166,6 +253,11 @@
           }
         }],
         postRun: [function () {
+          // Size the canvas backing store to physical pixels now that the
+          // runtime (and ResizeCanvasFromJS) is available, so the first visible
+          // frame is already at device resolution.
+          queueCanvasResize();
+        }, function () {
           // Hand off any background ?game= download to the running app.
           // LoadLibretroGameFromJS picks LoadLibretroGameFromPhysFS (when a core
           // was loaded via ?core=) or MenuLoadGame (autodetects from ROM

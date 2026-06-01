@@ -79,6 +79,18 @@ bool LoadLibretroGameFromJS(const char* gameFile) {
     return MenuLoadGame(gameFile);
 }
 
+// Called from shell.html on load/resize with physical-pixel dimensions
+// (CSS size × devicePixelRatio) so the WebGL framebuffer matches the device
+// resolution. raylib's own resize callback only sizes the canvas to CSS pixels,
+// leaving HiDPI displays blurry/jagged; this overrides that with the true pixel
+// size. SetWindowSize resizes the canvas backing store and GL viewport on web.
+EMSCRIPTEN_KEEPALIVE
+void ResizeCanvasFromJS(int width, int height) {
+    if (width > 0 && height > 0) {
+        SetWindowSize(width, height);
+    }
+}
+
 #endif
 
 #define REWIND_CAPTURES_PER_SECOND 30
