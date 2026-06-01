@@ -85,6 +85,8 @@ static void SetLibretroSpeed(float speed);
 static float GetLibretroSpeed(void);
 static bool SetLibretroCoreOption(const char* key, const char* value);
 static const char* GetLibretroCoreOption(const char* key);
+static bool ResetLibretroCoreOption(const char* key);
+static void ResetAllLibretroCoreOptions(void);
 static void* GetLibretroSerializedData(unsigned int* size);
 static unsigned int GetLibretroSerializedSize(void);
 static bool SetLibretroSerializedData(void* data, unsigned int size);
@@ -287,6 +289,7 @@ typedef struct LibretroCoreData {
     // TODO: Switch these to MemAlloc'ed strings.
     char variableKeys[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_KEY_LEN];
     char variableValues[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUE_LEN];
+    char variableDefaults[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUE_LEN];
     char variableLabels[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_LABEL_LEN];
     char variableValuesList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
     char variableDisplayList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
@@ -412,6 +415,7 @@ static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
     unsigned n = LIBRETRO.core.variableCount;
     TextCopy(LIBRETRO.core.variableKeys[n],         key);
     TextCopy(LIBRETRO.core.variableValues[n],       defaultValue  ? defaultValue  : "");
+    TextCopy(LIBRETRO.core.variableDefaults[n],     defaultValue  ? defaultValue  : "");
     TextCopy(LIBRETRO.core.variableLabels[n],       label         ? label         : "");
     TextCopy(LIBRETRO.core.variableValuesList[n],   valuesList    ? valuesList    : "");
     TextCopy(LIBRETRO.core.variableDisplayList[n],  displayList   ? displayList   : "");
@@ -456,6 +460,32 @@ static bool SetLibretroCoreOption(const char *key, const char *value) {
  * @return Current value string, or NULL if the key is not found. */
 static const char *GetLibretroCoreOption(const char *key) {
     return LibretroGetCoreVariable(key);
+}
+
+/**
+ * Reset a single core option to its default value.
+ * @param key Option key to reset.
+ * @return true if the key was found and reset; false if unknown. */
+static bool ResetLibretroCoreOption(const char *key) {
+    for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
+        if (TextIsEqual(LIBRETRO.core.variableKeys[i], key)) {
+            snprintf(LIBRETRO.core.variableValues[i], LIBRETRO_CORE_VARIABLE_VALUE_LEN,
+                "%s", LIBRETRO.core.variableDefaults[i]);
+            LIBRETRO.core.variablesDirty = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Reset all core options to their default values. */
+static void ResetAllLibretroCoreOptions(void) {
+    for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
+        snprintf(LIBRETRO.core.variableValues[i], LIBRETRO_CORE_VARIABLE_VALUE_LEN,
+            "%s", LIBRETRO.core.variableDefaults[i]);
+    }
+    LIBRETRO.core.variablesDirty = true;
 }
 
 /**
