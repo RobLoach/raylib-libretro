@@ -446,7 +446,7 @@ bool Update(void* userData) {
 
         if (IsLibretroGameReady()) {
             KeyboardKey rewindKey = NuklearKeyToKeyboardKey(data->menu->keyRewind);
-            rewinding = data->menu->rewindEnabled && IsKeyDown(rewindKey);
+            rewinding = data->menu->rewindEnabled && (IsKeyDown(rewindKey) || LibretroHotkeyGPDown(data->menu->gamepadRewind));
 
             // Capture and playback both run at REWIND_CAPTURES_PER_SECOND.
             if (data->menu->rewindEnabled) {
@@ -489,7 +489,7 @@ bool Update(void* userData) {
                             RewindBufferPush(&data->rewind, state, size);
                         }
                     }
-                    if (IsKeyReleased(rewindKey)) {
+                    if (IsKeyReleased(rewindKey) || LibretroHotkeyGPReleased(data->menu->gamepadRewind)) {
                         SetLibretroMessage(NULL, 0.0);
                     }
                 } else if (data->rewind.count > 0) {
@@ -499,8 +499,8 @@ bool Update(void* userData) {
                 // Fast Forward
                 KeyboardKey key = NuklearKeyToKeyboardKey(data->menu->keyFastForward);
                 KeyboardKey slowMotionKey = NuklearKeyToKeyboardKey(data->menu->keySlowMotion);
-                if (IsKeyDown(key)) {
-                    if (IsKeyPressed(key)) {
+                if (IsKeyDown(key) || LibretroHotkeyGPDown(data->menu->gamepadFastForward)) {
+                    if (IsKeyPressed(key) || LibretroHotkeyGPPressed(data->menu->gamepadFastForward)) {
                         // Halve the volume during fast-forward to soften the
                         // sped-up audio and ring-buffer overrun crackle.
                         SetLibretroVolume(data->menu->volumeSelected * 0.5f);
@@ -510,20 +510,20 @@ bool Update(void* userData) {
                     // The time accumulator in UpdateLibretro() scales by LIBRETRO.speed,
                     // so the single UpdateLibretro() call below runs the extra ticks.
                 }
-                else if (IsKeyReleased(key)) {
+                else if (IsKeyReleased(key) || LibretroHotkeyGPReleased(data->menu->gamepadFastForward)) {
                     SetLibretroVolume(data->menu->volumeSelected);
                     SetLibretroSpeed(1.0f);
                     SetLibretroMessage(NULL, 0.0);
                 }
 
                 // Slow Motion
-                else if (IsKeyDown(slowMotionKey)) {
-                    if (IsKeyPressed(slowMotionKey)) {
+                else if (IsKeyDown(slowMotionKey) || LibretroHotkeyGPDown(data->menu->gamepadSlowMotion)) {
+                    if (IsKeyPressed(slowMotionKey) || LibretroHotkeyGPPressed(data->menu->gamepadSlowMotion)) {
                         SetLibretroSpeed(data->menu->slowMotionSpeed);
                         SetLibretroMessage("Slow Motion", 1.0);
                     }
                 }
-                else if (IsKeyReleased(slowMotionKey)) {
+                else if (IsKeyReleased(slowMotionKey) || LibretroHotkeyGPReleased(data->menu->gamepadSlowMotion)) {
                     SetLibretroSpeed(1.0f);
                     SetLibretroMessage(NULL, 0.0);
                 }
@@ -576,7 +576,7 @@ bool Update(void* userData) {
     if (!menu.active) {
 
         // Screenshot
-        if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyScreenshot))) {
+        if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyScreenshot)) || LibretroHotkeyGPReleased(menu.gamepadScreenshot)) {
             const char* screenshotsDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
             bool taken = false;
             for (int i = 1; i < 1000; i++) {
@@ -595,20 +595,20 @@ bool Update(void* userData) {
 
         // FullScreen toggle key won't work in Emscripten.
     #ifndef __EMSCRIPTEN__
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyFullscreen))) {
+        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyFullscreen)) || LibretroHotkeyGPReleased(menu.gamepadFullscreen)) {
             LibretroMenuFullscreenChanged(menu.console, NULL);
         }
     #endif
 
         // Cycle Shader Reverse
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyPrevShader))) {
+        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyPrevShader)) || LibretroHotkeyGPReleased(menu.gamepadPrevShader)) {
             CycleLibretroShaderReverse();
             SetLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0);
             menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
         }
 
         // Cycle Shader Next
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyNextShader))) {
+        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyNextShader)) || LibretroHotkeyGPReleased(menu.gamepadNextShader)) {
             CycleLibretroShader();
             SetLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0);
             // TODO: For some reason, cycling the shader doens't update the menu label.
@@ -616,29 +616,29 @@ bool Update(void* userData) {
         }
 
         // Save State
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keySaveState))) {
+        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keySaveState)) || LibretroHotkeyGPReleased(menu.gamepadSaveState)) {
             LibretroMenuSaveStateClicked(menu.console, NULL);
         }
 
         // Load State
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyLoadState))) {
+        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyLoadState)) || LibretroHotkeyGPReleased(menu.gamepadLoadState)) {
             LibretroMenuLoadStateClicked(menu.console, NULL);
         }
 
         // Prev Slot
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyPrevSlot))) {
+        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyPrevSlot)) || LibretroHotkeyGPReleased(menu.gamepadPrevSlot)) {
             menu.saveSlotIndex = (menu.saveSlotIndex - 1 + 10) % 10;
             SetLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 2.0);
         }
 
         // Next Slot
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyNextSlot)) ) {
+        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyNextSlot)) || LibretroHotkeyGPReleased(menu.gamepadNextSlot)) {
             menu.saveSlotIndex = (menu.saveSlotIndex + 1) % 10;
             SetLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 2.0);
         }
 
         // Reset
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyReset))) {
+        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyReset)) || LibretroHotkeyGPReleased(menu.gamepadReset)) {
             if (IsLibretroGameReady()) {
                 ResetLibretro();
                 SetLibretroMessage("Reset", 2.0);
@@ -646,7 +646,7 @@ bool Update(void* userData) {
         }
 
         // Volume Up
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyVolumeUp))) {
+        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyVolumeUp)) || LibretroHotkeyGPReleased(menu.gamepadVolumeUp)) {
             float vol = GetLibretroVolume() + 0.1f;
             SetLibretroVolume(vol);
             vol = GetLibretroVolume();
@@ -655,7 +655,7 @@ bool Update(void* userData) {
         }
 
         // Volume Down
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyVolumeDown))) {
+        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyVolumeDown)) || LibretroHotkeyGPReleased(menu.gamepadVolumeDown)) {
             float vol = GetLibretroVolume() - 0.1f;
             SetLibretroVolume(vol);
             vol = GetLibretroVolume();
@@ -664,7 +664,7 @@ bool Update(void* userData) {
         }
 
         // Mute
-        else if (IsKeyPressed(NuklearKeyToKeyboardKey(menu.keyMute))) {
+        else if (IsKeyPressed(NuklearKeyToKeyboardKey(menu.keyMute)) || LibretroHotkeyGPReleased(menu.gamepadMute)) {
             if (!data->muted) {
                 SetLibretroVolume(0.0f);
                 data->muted = true;

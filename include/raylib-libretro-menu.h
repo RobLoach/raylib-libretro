@@ -108,6 +108,23 @@ typedef struct LibretroMenu {
     float fastForwardSpeed;
     nk_rune keySlowMotion;
     float slowMotionSpeed;
+    enum nk_gamepad_button gamepadScreenshot;
+    enum nk_gamepad_button gamepadRewind;
+    enum nk_gamepad_button gamepadMenu;
+    enum nk_gamepad_button gamepadSaveState;
+    enum nk_gamepad_button gamepadLoadState;
+    enum nk_gamepad_button gamepadPrevSlot;
+    enum nk_gamepad_button gamepadNextSlot;
+    enum nk_gamepad_button gamepadFullscreen;
+    enum nk_gamepad_button gamepadPrevShader;
+    enum nk_gamepad_button gamepadNextShader;
+    enum nk_gamepad_button gamepadReset;
+    enum nk_gamepad_button gamepadQuit;
+    enum nk_gamepad_button gamepadVolumeUp;
+    enum nk_gamepad_button gamepadVolumeDown;
+    enum nk_gamepad_button gamepadMute;
+    enum nk_gamepad_button gamepadFastForward;
+    enum nk_gamepad_button gamepadSlowMotion;
     int optionSelectedIndices[LIBRETRO_MAX_CORE_VARIABLES];    // per-option combobox index
     nk_bool optionCheckboxValues[LIBRETRO_MAX_CORE_VARIABLES]; // per-option checkbox state for enabled/disabled options
     char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -1263,6 +1280,23 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.menuComboIndex = LIBRETRO_MENU_COMBO_SELECT_START;
     menu.keySlowMotion = (nk_rune)'G';
     menu.slowMotionSpeed = 0.5f;
+    menu.gamepadScreenshot  = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadRewind      = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadMenu        = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadSaveState   = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadLoadState   = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadPrevSlot    = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadNextSlot    = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadFullscreen  = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadPrevShader  = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadNextShader  = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadReset       = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadQuit        = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadVolumeUp    = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadVolumeDown  = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadMute        = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadFastForward = NK_GAMEPAD_BUTTON_INVALID;
+    menu.gamepadSlowMotion  = NK_GAMEPAD_BUTTON_INVALID;
     menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]      = (nk_rune)'Z';
     menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]      = (nk_rune)'A';
     menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT] = (nk_rune)NK_KEY_SHIFT;
@@ -1483,22 +1517,39 @@ LibretroMenu* InitLibretroMenu(void) {
                 '|', &menu.menuComboIndex);
             menuCombo->tooltip = "Controller button combination to toggle the menu";
             nk_console_key(keysMenu, "Screenshot", &menu.keyScreenshot);
+            nk_console_input_gamepad(keysMenu, "Screenshot (GP)", 0, NULL, &menu.gamepadScreenshot);
             nk_console_key(keysMenu, "Rewind", &menu.keyRewind);
+            nk_console_input_gamepad(keysMenu, "Rewind (GP)", 0, NULL, &menu.gamepadRewind);
             nk_console_key(keysMenu, "Menu", &menu.keyMenu);
+            nk_console_input_gamepad(keysMenu, "Menu (GP)", 0, NULL, &menu.gamepadMenu);
             nk_console_key(keysMenu, "Save State", &menu.keySaveState);
+            nk_console_input_gamepad(keysMenu, "Save State (GP)", 0, NULL, &menu.gamepadSaveState);
             nk_console_key(keysMenu, "Load State", &menu.keyLoadState);
+            nk_console_input_gamepad(keysMenu, "Load State (GP)", 0, NULL, &menu.gamepadLoadState);
             nk_console_key(keysMenu, "Prev Slot", &menu.keyPrevSlot);
+            nk_console_input_gamepad(keysMenu, "Prev Slot (GP)", 0, NULL, &menu.gamepadPrevSlot);
             nk_console_key(keysMenu, "Next Slot", &menu.keyNextSlot);
+            nk_console_input_gamepad(keysMenu, "Next Slot (GP)", 0, NULL, &menu.gamepadNextSlot);
             nk_console_key(keysMenu, "Fullscreen", &menu.keyFullscreen);
+            nk_console_input_gamepad(keysMenu, "Fullscreen (GP)", 0, NULL, &menu.gamepadFullscreen);
             nk_console_key(keysMenu, "Previous Shader", &menu.keyPrevShader);
+            nk_console_input_gamepad(keysMenu, "Prev Shader (GP)", 0, NULL, &menu.gamepadPrevShader);
             nk_console_key(keysMenu, "Next Shader", &menu.keyNextShader);
+            nk_console_input_gamepad(keysMenu, "Next Shader (GP)", 0, NULL, &menu.gamepadNextShader);
             nk_console_key(keysMenu, "Reset", &menu.keyReset);
+            nk_console_input_gamepad(keysMenu, "Reset (GP)", 0, NULL, &menu.gamepadReset);
             nk_console_key(keysMenu, "Quit", &menu.keyQuit);
+            nk_console_input_gamepad(keysMenu, "Quit (GP)", 0, NULL, &menu.gamepadQuit);
             nk_console_key(keysMenu, "Volume Up", &menu.keyVolumeUp);
+            nk_console_input_gamepad(keysMenu, "Volume Up (GP)", 0, NULL, &menu.gamepadVolumeUp);
             nk_console_key(keysMenu, "Volume Down", &menu.keyVolumeDown);
+            nk_console_input_gamepad(keysMenu, "Volume Down (GP)", 0, NULL, &menu.gamepadVolumeDown);
             nk_console_key(keysMenu, "Mute", &menu.keyMute);
+            nk_console_input_gamepad(keysMenu, "Mute (GP)", 0, NULL, &menu.gamepadMute);
             nk_console_key(keysMenu, "Fast Forward", &menu.keyFastForward);
+            nk_console_input_gamepad(keysMenu, "Fast Forward (GP)", 0, NULL, &menu.gamepadFastForward);
             nk_console_key(keysMenu, "Slow Motion", &menu.keySlowMotion);
+            nk_console_input_gamepad(keysMenu, "Slow Motion (GP)", 0, NULL, &menu.gamepadSlowMotion);
         }
 
         // Keyboard Controls (Player 1)
@@ -1975,6 +2026,23 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_float(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "slowMotionSpeed", menu.slowMotionSpeed);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadScreenshot",  (int)menu.gamepadScreenshot);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadRewind",      (int)menu.gamepadRewind);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadMenu",        (int)menu.gamepadMenu);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadSaveState",   (int)menu.gamepadSaveState);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadLoadState",   (int)menu.gamepadLoadState);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadPrevSlot",    (int)menu.gamepadPrevSlot);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadNextSlot",    (int)menu.gamepadNextSlot);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadFullscreen",  (int)menu.gamepadFullscreen);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadPrevShader",  (int)menu.gamepadPrevShader);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadNextShader",  (int)menu.gamepadNextShader);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadReset",       (int)menu.gamepadReset);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadQuit",        (int)menu.gamepadQuit);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadVolumeUp",    (int)menu.gamepadVolumeUp);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadVolumeDown",  (int)menu.gamepadVolumeDown);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadMute",        (int)menu.gamepadMute);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadFastForward", (int)menu.gamepadFastForward);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadSlowMotion",  (int)menu.gamepadSlowMotion);
     rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(menu.coreDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(menu.saveDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(menu.coreAssetsDirectory));
@@ -2168,6 +2236,23 @@ static bool LoadLibretroMenuSettings(void) {
     if (menu.slowMotionSpeed > 0.95f) menu.slowMotionSpeed /= 10.0f;
     if (menu.slowMotionSpeed < 0.1f) menu.slowMotionSpeed = 0.1f;
     if (menu.slowMotionSpeed > 0.9f) menu.slowMotionSpeed = 0.9f;
+    menu.gamepadScreenshot  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadScreenshot",  (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadRewind      = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadRewind",      (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadMenu        = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadMenu",        (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadSaveState   = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadSaveState",   (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadLoadState   = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadLoadState",   (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadPrevSlot    = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadPrevSlot",    (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadNextSlot    = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadNextSlot",    (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadFullscreen  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadFullscreen",  (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadPrevShader  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadPrevShader",  (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadNextShader  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadNextShader",  (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadReset       = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadReset",       (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadQuit        = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadQuit",        (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadVolumeUp    = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadVolumeUp",    (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadVolumeDown  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadVolumeDown",  (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadMute        = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadMute",        (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadFastForward = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadFastForward", (int)NK_GAMEPAD_BUTTON_INVALID);
+    menu.gamepadSlowMotion  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadSlowMotion",  (int)NK_GAMEPAD_BUTTON_INVALID);
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
     if (coreDirectory) TextCopy(menu.coreDirectory, coreDirectory);
@@ -2259,6 +2344,16 @@ static void UpdateLibretroMenuVisibility(void) {
     if (menu.cheatsMenuButton) menu.cheatsMenuButton->visible = gameReady;
 }
 
+static nk_bool LibretroHotkeyGPReleased(enum nk_gamepad_button btn) {
+    return btn != NK_GAMEPAD_BUTTON_INVALID && nk_gamepad_is_button_released(&menu.gamepads, -1, btn);
+}
+static nk_bool LibretroHotkeyGPDown(enum nk_gamepad_button btn) {
+    return btn != NK_GAMEPAD_BUTTON_INVALID && nk_gamepad_is_button_down(&menu.gamepads, -1, btn);
+}
+static nk_bool LibretroHotkeyGPPressed(enum nk_gamepad_button btn) {
+    return btn != NK_GAMEPAD_BUTTON_INVALID && nk_gamepad_is_button_pressed(&menu.gamepads, -1, btn);
+}
+
 void UpdateLibretroMenu(void) {
     if (menu.ctx == NULL) {
         return;
@@ -2280,7 +2375,7 @@ void UpdateLibretroMenu(void) {
     }
 
     // Menu Key
-    if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyMenu)) && !menu.active) {
+    if ((IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyMenu)) || LibretroHotkeyGPReleased(menu.gamepadMenu)) && !menu.active) {
         ShowLibretroMenu();
     }
 
