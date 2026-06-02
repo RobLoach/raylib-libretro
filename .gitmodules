@@ -8,6 +8,11 @@
     url = https://github.com/raysan5/raylib.git
     ignore = dirty
     branch = master
+[submodule "vendor/nuklear_console"]
+	path = vendor/nuklear_console
+	url = https://github.com/RobLoach/nuklear_console.git
+    ignore = dirty
+    branch = master
 [submodule "vendor/nuklear_gamepad"]
 	path = vendor/nuklear_gamepad
 	url = https://github.com/RobLoach/nuklear_gamepad.git
@@ -41,6 +46,3 @@
 	url = https://github.com/icculus/physfs.git
     ignore = dirty
     branch = main
-[submodule "vendor/nuklear_console"]
-	path = vendor/nuklear_console
-	url = https://github.com/RobLoach/nuklear_console.git
