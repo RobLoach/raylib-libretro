@@ -73,9 +73,11 @@ extern struct android_app *GetAndroidApp(void);
 EMSCRIPTEN_KEEPALIVE
 bool LoadLibretroGameFromJS(const char* gameFile) {
     if (gameFile == NULL || gameFile[0] == '\0') return false;
-    if (IsLibretroReady()) {
-        return LoadLibretroGameFromPhysFS(gameFile);
-    }
+    // Save the SRAM, and close the game prior to loading the new one.
+    MenuSaveGameSRAM();
+    CloseLibretro();
+
+    // Load the game through the menu system.
     return MenuLoadGame(gameFile);
 }
 

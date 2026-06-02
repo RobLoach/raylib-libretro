@@ -200,9 +200,43 @@ static void LibretroFlushPersistentStorage(void) {
         });
     });
 }
+
+EM_JS(void, LibretroMenuEmscriptenOpenFilePicker, (void), {
+    // Leverage an input element to pick a file.
+    let input = document.createElement('input');
+    input.type = 'file';
+    input.onchange = function(e) {
+        let file = e.target.files[0];
+        if (!file) return;
+
+        // Read in the file
+        let reader = new FileReader();
+        reader.onload = function() {
+            // Save the file to the internal file system.
+            let uint8Array = new Uint8Array(reader.result);
+            FS.writeFile(file.name, uint8Array);
+
+            // Grab the filename, and ask raylib-libreto to load it.
+            let lengthBytes = lengthBytesUTF8(file.name) + 1;
+            let ptr = _malloc(lengthBytes);
+            stringToUTF8(file.name, ptr, lengthBytes);
+            Module._LoadLibretroGameFromJS(ptr);
+            _free(ptr);
+        };
+        reader.readAsArrayBuffer(file);
+    };
+    input.click();
+});
+
+static void LibretroMenuEmscriptenLoadGameClicked(nk_console* widget, void* user_data) {
+    (void)user_data;
+    (void)widget;
+    TraceLog(LOG_INFO, "LIBRETRO: Opening the file dialog");
+    LibretroMenuEmscriptenOpenFilePicker();
+}
 #else
 #define LibretroFlushPersistentStorage() ((void)0)
-#endif
+#endif /* __EMSCRIPTEN__ */
 
 #define RAYLIB_NUKLEAR_IMPLEMENTATION
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
@@ -921,9 +955,11 @@ static void MenuCoreDirChanged(nk_console* widget, void* user_data) {
 
 static void MenuContentDirChanged(nk_console* widget, void* user_data) {
     MenuDirChanged(widget, user_data);
+#ifndef __EMSCRIPTEN__
     if (menu.loadGameWidget && menu.fileBrowserStartDirectory[0] != '\0') {
         nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
     }
+#endif
 }
 
 #define LIBRETRO_CORE_CACHE_SECTION "core_cache"
@@ -1406,11 +1442,15 @@ LibretroMenu* InitLibretroMenu(void) {
     }
 
     // Load Game
+#ifdef __EMSCRIPTEN__
+    menu.loadGameWidget = nk_console_button_onclick(menu.console, "Load Game", &LibretroMenuEmscriptenLoadGameClicked);
+#else
     menu.loadGameWidget = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
     nk_console_add_event_handler(menu.loadGameWidget, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
     if (menu.fileBrowserStartDirectory[0] != '\0') {
         nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
     }
+#endif
     LibretroMenuUpdateLoadGameFilter(&menu);
 
     // Close Game
@@ -1850,6 +1890,10 @@ static unsigned int LibretroMenuAddExtension(char* list, unsigned int len, size_
 }
 
 static void LibretroMenuUpdateLoadGameFilter(LibretroMenu* m) {
+#ifdef __EMSCRIPTEN__
+    (void)m;
+    return;
+#endif
     if (!m || !m->loadGameWidget) return;
 
     // Collect the unique set of extensions from every cached core. Cores
