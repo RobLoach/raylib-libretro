@@ -677,6 +677,11 @@ bool Update(void* userData) {
                 SetLibretroMessage(TextFormat("Volume: %d%%", (int)(data->menu->volumeSelected * 10.0f + 0.5f) * 10), 1.0);
             }
         }
+
+        // Quit (keyboard is handled by SetExitKey; this covers the gamepad binding).
+        else if (LibretroHotkeyGPReleased(menu.gamepadQuit)) {
+            menu.shouldQuit = true;
+        }
     }
 
     return true;

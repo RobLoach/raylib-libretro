@@ -1298,7 +1298,7 @@ static void LibretroMenuUpdateLoadGameFilter(LibretroMenu* m);
  * Maps each hot key in the Keys settings to the menu fields.
  */
 typedef struct LibretroMenuHotkey {
-    const char* name; /** The name of the hot key. */
+    const char* name; /** The name of the hot key, as shown in the menu. */
     enum nk_gamepad_button* gamepad; /** The gamepad button that's currently assigned. */
     nk_rune* key; /** The keyboard key that's currently assigned. */
     nk_rune default_key; /** The initial keyboard binding that will be set. Gamepad button defaults are ignored. */
@@ -1632,23 +1632,10 @@ LibretroMenu* InitLibretroMenu(void) {
                 "None|Select + Start|L1 + R1|L2 + R2|L3 + R3|Down + Select",
                 '|', &menu.menuComboIndex);
             menuCombo->tooltip = "Controller button combination to toggle the menu";
-            LibretroMenuAddHotkey(keysMenu, "Screenshot", &menu.gamepadScreenshot, &menu.keyScreenshot);
-            LibretroMenuAddHotkey(keysMenu, "Rewind", &menu.gamepadRewind, &menu.keyRewind);
-            LibretroMenuAddHotkey(keysMenu, "Menu", &menu.gamepadMenu, &menu.keyMenu);
-            LibretroMenuAddHotkey(keysMenu, "Save State", &menu.gamepadSaveState, &menu.keySaveState);
-            LibretroMenuAddHotkey(keysMenu, "Load State", &menu.gamepadLoadState, &menu.keyLoadState);
-            LibretroMenuAddHotkey(keysMenu, "Prev Slot", &menu.gamepadPrevSlot, &menu.keyPrevSlot);
-            LibretroMenuAddHotkey(keysMenu, "Next Slot", &menu.gamepadNextSlot, &menu.keyNextSlot);
-            LibretroMenuAddHotkey(keysMenu, "Fullscreen", &menu.gamepadFullscreen, &menu.keyFullscreen);
-            LibretroMenuAddHotkey(keysMenu, "Previous Shader", &menu.gamepadPrevShader, &menu.keyPrevShader);
-            LibretroMenuAddHotkey(keysMenu, "Next Shader", &menu.gamepadNextShader, &menu.keyNextShader);
-            LibretroMenuAddHotkey(keysMenu, "Reset", &menu.gamepadReset, &menu.keyReset);
-            LibretroMenuAddHotkey(keysMenu, "Quit", &menu.gamepadQuit, &menu.keyQuit);
-            LibretroMenuAddHotkey(keysMenu, "Volume Up", &menu.gamepadVolumeUp, &menu.keyVolumeUp);
-            LibretroMenuAddHotkey(keysMenu, "Volume Down", &menu.gamepadVolumeDown, &menu.keyVolumeDown);
-            LibretroMenuAddHotkey(keysMenu, "Mute", &menu.gamepadMute, &menu.keyMute);
-            LibretroMenuAddHotkey(keysMenu, "Fast Forward", &menu.gamepadFastForward, &menu.keyFastForward);
-            LibretroMenuAddHotkey(keysMenu, "Slow Motion", &menu.gamepadSlowMotion, &menu.keySlowMotion);
+            for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
+                const LibretroMenuHotkey* hk = &LibretroMenuHotkeys[i];
+                LibretroMenuAddHotkey(keysMenu, hk->name, hk->gamepad, hk->key);
+            }
         }
 
         // Keyboard Controls (Player 1)
@@ -2108,44 +2095,19 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchHaptics", menu.touchHapticsEnabled ? 1 : 0);
 
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyScreenshot", (int)menu.keyScreenshot);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyRewind", (int)menu.keyRewind);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyMenu", (int)menu.keyMenu);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keySaveState", (int)menu.keySaveState);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyLoadState", (int)menu.keyLoadState);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyPrevSlot",  (int)menu.keyPrevSlot);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyNextSlot",  (int)menu.keyNextSlot);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "saveSlot", menu.saveSlotIndex);
     rlconfig_set(menu.cfg, "raylib-libretro", "username", LIBRETRO.username);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyFullscreen", (int)menu.keyFullscreen);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyReset",       (int)menu.keyReset);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyQuit",       (int)menu.keyQuit);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyMute",        (int)menu.keyMute);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "slowMotionSpeed", menu.slowMotionSpeed);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadScreenshot",  (int)menu.gamepadScreenshot);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadRewind",      (int)menu.gamepadRewind);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadMenu",        (int)menu.gamepadMenu);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadSaveState",   (int)menu.gamepadSaveState);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadLoadState",   (int)menu.gamepadLoadState);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadPrevSlot",    (int)menu.gamepadPrevSlot);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadNextSlot",    (int)menu.gamepadNextSlot);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadFullscreen",  (int)menu.gamepadFullscreen);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadPrevShader",  (int)menu.gamepadPrevShader);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadNextShader",  (int)menu.gamepadNextShader);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadReset",       (int)menu.gamepadReset);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadQuit",        (int)menu.gamepadQuit);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadVolumeUp",    (int)menu.gamepadVolumeUp);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadVolumeDown",  (int)menu.gamepadVolumeDown);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadMute",        (int)menu.gamepadMute);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadFastForward", (int)menu.gamepadFastForward);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "gamepadSlowMotion",  (int)menu.gamepadSlowMotion);
+
+    // Hotkey bindings (keyboard + gamepad), keyed by name as "key<Name>"/"gamepad<Name>".
+    for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
+        const LibretroMenuHotkey* hk = &LibretroMenuHotkeys[i];
+        const char* shortName = TextReplace(hk->name, " ", "");
+        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("key%s", shortName), (int)*hk->key);
+        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("gamepad%s", shortName), (int)*hk->gamepad);
+    }
+
     rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(menu.coreDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(menu.saveDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(menu.coreAssetsDirectory));
@@ -2309,53 +2271,28 @@ static bool LoadLibretroMenuSettings(void) {
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 0) > 0;
 #endif
     menu.touchHapticsEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchHaptics", 1) > 0;
-    menu.keyScreenshot = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyScreenshot", (int)menu.keyScreenshot);
-    menu.keyRewind     = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyRewind",     (int)menu.keyRewind);
-    menu.keyMenu       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyMenu",       (int)menu.keyMenu);
-    menu.keySaveState  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keySaveState",  (int)menu.keySaveState);
-    menu.keyLoadState  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyLoadState",  (int)menu.keyLoadState);
-    menu.keyPrevSlot   = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyPrevSlot",   (int)menu.keyPrevSlot);
-    menu.keyNextSlot   = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextSlot",   (int)menu.keyNextSlot);
     menu.saveSlotIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "saveSlot", 0);
     if (menu.saveSlotIndex < 0 || menu.saveSlotIndex > 9) menu.saveSlotIndex = 0;
     const char* username = rlconfig_get(menu.cfg, "raylib-libretro", "username");
     if (username) TextCopy(LIBRETRO.username, username);
-    menu.keyFullscreen = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFullscreen", (int)menu.keyFullscreen);
-    menu.keyPrevShader = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyPrevShader", (int)menu.keyPrevShader);
-    menu.keyNextShader  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyNextShader",  (int)menu.keyNextShader);
-    menu.keyReset       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyReset",       (int)menu.keyReset);
-    menu.keyQuit       = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyQuit",       (int)menu.keyQuit);
+
+    // Hotkey bindings (keyboard + gamepad), keyed by name as "key<Name>"/"gamepad<Name>".
+    for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
+        const LibretroMenuHotkey* hk = &LibretroMenuHotkeys[i];
+        const char* shortName = TextReplace(hk->name, " ", "");
+        *hk->key = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("key%s", shortName), (int)*hk->key);
+        *hk->gamepad = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("gamepad%s", shortName), (int)*hk->gamepad);
+    }
     SetExitKey(LibretroHotkeyToKeyboardKey(menu.keyQuit));
-    menu.keyVolumeUp    = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeUp",    (int)menu.keyVolumeUp);
-    menu.keyVolumeDown  = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyVolumeDown",  (int)menu.keyVolumeDown);
-    menu.keyMute        = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyMute",        (int)menu.keyMute);
-    menu.keyFastForward = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keyFastForward", (int)menu.keyFastForward);
+
     menu.fastForwardSpeed = rlconfig_get_float(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
     if (menu.fastForwardSpeed < 1.1f) menu.fastForwardSpeed = 1.1f;
     if (menu.fastForwardSpeed > 10.0f) menu.fastForwardSpeed = 10.0f;
-    menu.keySlowMotion = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", "keySlowMotion", (int)menu.keySlowMotion);
     menu.slowMotionSpeed = rlconfig_get_float(menu.cfg, "raylib-libretro", "slowMotionSpeed", menu.slowMotionSpeed);
     // Migrate the legacy x10 integer storage (1..9) to the 0.1..0.9 float scale.
     if (menu.slowMotionSpeed > 0.95f) menu.slowMotionSpeed /= 10.0f;
     if (menu.slowMotionSpeed < 0.1f) menu.slowMotionSpeed = 0.1f;
     if (menu.slowMotionSpeed > 0.9f) menu.slowMotionSpeed = 0.9f;
-    menu.gamepadScreenshot  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadScreenshot",  (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadRewind      = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadRewind",      (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadMenu        = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadMenu",        (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadSaveState   = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadSaveState",   (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadLoadState   = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadLoadState",   (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadPrevSlot    = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadPrevSlot",    (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadNextSlot    = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadNextSlot",    (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadFullscreen  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadFullscreen",  (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadPrevShader  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadPrevShader",  (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadNextShader  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadNextShader",  (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadReset       = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadReset",       (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadQuit        = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadQuit",        (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadVolumeUp    = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadVolumeUp",    (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadVolumeDown  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadVolumeDown",  (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadMute        = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadMute",        (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadFastForward = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadFastForward", (int)NK_GAMEPAD_BUTTON_INVALID);
-    menu.gamepadSlowMotion  = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", "gamepadSlowMotion",  (int)NK_GAMEPAD_BUTTON_INVALID);
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
     if (coreDirectory) TextCopy(menu.coreDirectory, coreDirectory);
