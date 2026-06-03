@@ -77,6 +77,58 @@ jobs:
           files: raylib-libretro-${{ github.ref_name }}-windows-amd64.zip
           fail_on_unmatched_files: true
 
+  build-windows-arm64:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Install
+        run: cmake --install build --config Release
+      - name: Package
+        run: Compress-Archive -Path install\* -DestinationPath raylib-libretro-${{ github.ref_name }}-windows-arm64.zip
+      - name: Upload
+        uses: softprops/action-gh-release@v3
+        with:
+          files: raylib-libretro-${{ github.ref_name }}-windows-arm64.zip
+          fail_on_unmatched_files: true
+
+  build-linux-armv7:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=armv7 \
+            -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
+            -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
+            -DPLATFORM=DRM
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Install
+        run: cmake --install build
+      - name: Package
+        run: |
+          cd install
+          zip -r ../raylib-libretro-${{ github.ref_name }}-linux-armv7.zip .
+      - name: Upload
+        uses: softprops/action-gh-release@v3
+        with:
+          files: raylib-libretro-${{ github.ref_name }}-linux-armv7.zip
+          fail_on_unmatched_files: true
+
   build-macos:
     runs-on: macos-latest
     steps:
