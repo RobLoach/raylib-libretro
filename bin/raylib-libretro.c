@@ -586,7 +586,7 @@ bool Update(void* userData) {
             for (int i = 1; i < 1000; i++) {
                 const char* screenshotName = TextFormat("%s/%s-%i.png", screenshotsDir, baseName, i);
                 if (!FileExists(screenshotName)) {
-                    Image screenshot = LoadImageFromScreen();
+                    Image screenshot = LoadImageFromTexture(GetLibretroTexture());
                     ExportImage(screenshot, screenshotName);
                     UnloadImage(screenshot);
                     SetLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0);
