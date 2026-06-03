@@ -299,6 +299,8 @@ if ("${PLATFORM}" STREQUAL "Web")
         "${CMAKE_CURRENT_BINARY_DIR}/index.data"
         "${CMAKE_CURRENT_BINARY_DIR}/index.js"
         "${CMAKE_CURRENT_BINARY_DIR}/index.wasm"
+        "${CMAKE_CURRENT_BINARY_DIR}/embed.js"
+        "${CMAKE_CURRENT_BINARY_DIR}/embed-example.html"
         DESTINATION .
     )
     # PWA assets: manifest, service worker and icons (referenced by shell.html)

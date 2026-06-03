@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>raylib-libretro &mdash; embed example</title>
+  <style>
+    body { margin: 0; padding: 2rem 1rem; font: 16px/1.5 system-ui, sans-serif; color: #222;
+           max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.05rem; margin-top: 2.5rem; }
+    pre { background: #f4f4f4; padding: .75rem 1rem; border-radius: 6px; overflow: auto;
+          font-size: 13px; }
+    code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+    p.note { color: #666; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>raylib-libretro embed example</h1>
+  <p class="note">
+    This page exercises every usage form of <code>embed.js</code>. Serve it from the same
+    directory as the built <code>index.js</code> / <code>index.wasm</code> / <code>index.data</code>
+    (and <code>cores/</code>), e.g. <code>python3 -m http.server</code> in the install dir.
+    Drop a ROM named <code>game.nes</code> next to this file, or pass
+    <code>?game=&lt;url&gt;&amp;core=&lt;name&gt;</code> in this page's URL.
+  </p>
+
+  <!-- ============================================================= -->
+  <h2>1. Marker element</h2>
+  <pre><code>&lt;div data-raylib-libretro data-game="game.nes"&gt;&lt;/div&gt;
+&lt;script src="embed.js"&gt;&lt;/script&gt;</code></pre>
+  <div data-raylib-libretro data-game="game.nes" data-poster=""></div>
+
+  <!-- ============================================================= -->
+  <h2>2. Programmatic API</h2>
+  <pre><code>RaylibLibretro.embed('#game2', { game: 'game.nes', core: 'fceumm' });</code></pre>
+  <div id="game2" style="max-width: 600px;"></div>
+
+  <!-- ============================================================= -->
+  <h2>3. Self-configuring single tag</h2>
+  <p class="note">
+    The most minimal form &mdash; one tag, placed where you want the game. (Shown as code here so
+    it doesn't add a third instance; only one emulator can run per page.)
+  </p>
+  <pre><code>&lt;script src="embed.js" data-game="https://example.com/mario.nes"&gt;&lt;/script&gt;</code></pre>
+
+  <!-- Loader -->
+  <script src="embed.js"></script>
+  <script>
+    // Drive the programmatic embed, honoring ?game= / ?core= overrides for easy testing.
+    var params = new URLSearchParams(location.search);
+    RaylibLibretro.embed('#game2', {
+      game: params.get('game') || 'game.nes',
+      core: params.get('core') || undefined
+    });
+  </script>
+</body>
+</html>
