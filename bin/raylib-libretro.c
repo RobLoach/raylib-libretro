@@ -580,11 +580,15 @@ bool Update(void* userData) {
         // Screenshot
         if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.keyScreenshot)) || LibretroHotkeyGPReleased(menu.gamepadScreenshot)) {
             const char* screenshotsDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
+            const char* contentName = GetLibretroContentName();
+            const char* baseName = (contentName && contentName[0] != '\0') ? contentName : "screenshot";
             bool taken = false;
             for (int i = 1; i < 1000; i++) {
-                const char* screenshotName = TextFormat("%s/screenshot-%i.png", screenshotsDir, i);
+                const char* screenshotName = TextFormat("%s/%s-%i.png", screenshotsDir, baseName, i);
                 if (!FileExists(screenshotName)) {
-                    TakeScreenshot(screenshotName);
+                    Image screenshot = LoadImageFromScreen();
+                    ExportImage(screenshot, screenshotName);
+                    UnloadImage(screenshot);
                     SetLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0);
                     taken = true;
                     break;
