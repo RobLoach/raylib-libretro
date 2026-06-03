@@ -356,7 +356,7 @@ typedef struct LibretroData {
     double speedAccumulator;
     int textureFilter; // TextureFilter
     int analogToDpadIndex; // 0=None, 1=Left Analog, 2=Right Analog
-    int keyboardPlayer1[16];
+    int keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
     char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -398,7 +398,25 @@ extern "C" {
 static LibretroData LIBRETRO = {
     .volume = 1.0f,
     .speed = 1.0f,
-    .username = "raylib"
+    .username = "raylib",
+    .keyboardPlayer1 = {
+        [RETRO_DEVICE_ID_JOYPAD_B]      = KEY_Z,
+        [RETRO_DEVICE_ID_JOYPAD_Y]      = KEY_A,
+        [RETRO_DEVICE_ID_JOYPAD_SELECT] = KEY_RIGHT_SHIFT,
+        [RETRO_DEVICE_ID_JOYPAD_START]  = KEY_ENTER,
+        [RETRO_DEVICE_ID_JOYPAD_UP]     = KEY_UP,
+        [RETRO_DEVICE_ID_JOYPAD_DOWN]   = KEY_DOWN,
+        [RETRO_DEVICE_ID_JOYPAD_LEFT]   = KEY_LEFT,
+        [RETRO_DEVICE_ID_JOYPAD_RIGHT]  = KEY_RIGHT,
+        [RETRO_DEVICE_ID_JOYPAD_A]      = KEY_X,
+        [RETRO_DEVICE_ID_JOYPAD_X]      = KEY_S,
+        [RETRO_DEVICE_ID_JOYPAD_L]      = KEY_Q,
+        [RETRO_DEVICE_ID_JOYPAD_R]      = KEY_W,
+        [RETRO_DEVICE_ID_JOYPAD_L2]     = KEY_E,
+        [RETRO_DEVICE_ID_JOYPAD_R2]     = KEY_R,
+        [RETRO_DEVICE_ID_JOYPAD_L3]     = KEY_D,
+        [RETRO_DEVICE_ID_JOYPAD_R3]     = KEY_F,
+    }
 };
 
 static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
