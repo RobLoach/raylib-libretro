@@ -12,7 +12,7 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Install Dependencies
@@ -28,7 +28,7 @@ jobs:
           cd install
           zip -r ../raylib-libretro-${{ github.ref_name }}-linux-amd64.zip .
       - name: Upload
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: raylib-libretro-${{ github.ref_name }}-linux-amd64.zip
           fail_on_unmatched_files: true
@@ -36,7 +36,7 @@ jobs:
   build-linux-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Install Dependencies
@@ -52,7 +52,7 @@ jobs:
           cd install
           zip -r ../raylib-libretro-${{ github.ref_name }}-linux-arm64.zip .
       - name: Upload
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: raylib-libretro-${{ github.ref_name }}-linux-arm64.zip
           fail_on_unmatched_files: true
@@ -60,7 +60,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Configure
@@ -72,7 +72,7 @@ jobs:
       - name: Package
         run: Compress-Archive -Path install\* -DestinationPath raylib-libretro-${{ github.ref_name }}-windows-amd64.zip
       - name: Upload
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: raylib-libretro-${{ github.ref_name }}-windows-amd64.zip
           fail_on_unmatched_files: true
@@ -80,7 +80,7 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Configure
@@ -94,7 +94,7 @@ jobs:
           cd install
           zip -r ../raylib-libretro-${{ github.ref_name }}-macos-arm64.zip .
       - name: Upload
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: raylib-libretro-${{ github.ref_name }}-macos-arm64.zip
           fail_on_unmatched_files: true
@@ -102,7 +102,7 @@ jobs:
   build-macos-x86_64:
     runs-on: macos-13
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Configure
@@ -116,7 +116,7 @@ jobs:
           cd install
           zip -r ../raylib-libretro-${{ github.ref_name }}-macos-x86_64.zip .
       - name: Upload
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: raylib-libretro-${{ github.ref_name }}-macos-x86_64.zip
           fail_on_unmatched_files: true
@@ -124,7 +124,7 @@ jobs:
   build-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Setup Java
@@ -151,7 +151,7 @@ jobs:
       - name: Rename APK
         run: cp android/app/build/outputs/apk/release/app-release.apk raylib-libretro-${{ github.ref_name }}-android-arm64.apk
       - name: Upload
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: raylib-libretro-${{ github.ref_name }}-android-arm64.apk
           fail_on_unmatched_files: true
@@ -163,7 +163,7 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Install Emscripten
@@ -181,7 +181,7 @@ jobs:
           cd install
           zip -r ../raylib-libretro-${{ github.ref_name }}-web-wasm32.zip .
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: raylib-libretro-${{ github.ref_name }}-web-wasm32.zip
           fail_on_unmatched_files: true
