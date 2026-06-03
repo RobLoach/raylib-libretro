@@ -33,6 +33,52 @@ raylib-libretro -L ~/.config/retroarch/cores/fceumm_libretro.so smb.zip
 raylib-libretro smb.nes
 ```
 
+## Embed in a website
+
+Add the emulator to any web page with a single `<script>` tag — it loads the frontend and
+your game inline, with a click-to-play poster by default. The script and the WebAssembly
+build are published to GitHub Pages on every release.
+
+```html
+<script src="https://robloach.github.io/raylib-libretro/embed.js"
+        data-game="https://example.com/mario.nes"></script>
+```
+
+Place the tag where you want the game to appear. Other ways to use it:
+
+```html
+<!-- Marker element (scanned on load) -->
+<div data-raylib-libretro data-game="mario.nes" data-core="fceumm"></div>
+<script src="https://robloach.github.io/raylib-libretro/embed.js"></script>
+
+<!-- Programmatic -->
+<div id="game"></div>
+<script src="https://robloach.github.io/raylib-libretro/embed.js"></script>
+<script>RaylibLibretro.embed('#game', { game: 'mario.nes', core: 'fceumm' });</script>
+```
+
+### Options
+
+Set as `data-*` attributes or in the `embed()` options object:
+
+| Option      | Description |
+| ----------- | ----------- |
+| `game`      | ROM URL (required to play). Must be reachable via CORS. |
+| `core`      | Bundled core name (`fceumm`, `snes9x`, `gambatte`, `mgba`, `picodrive`) or a core URL. Omit to autodetect from the ROM extension. |
+| `autostart` | Load immediately instead of showing the click-to-play poster. |
+| `poster`    | Placeholder image URL shown before play. |
+| `aspect`    | Container aspect ratio (`4:3` default, `3:2`, `1.5`, …). |
+| `base`      | Asset base URL (where `index.js`/`.wasm`/`.data` live). Defaults to wherever `embed.js` is served from, so self-hosting just works. |
+
+### Notes
+
+- **CORS:** the game ROM (and self-hosted assets) must be served with
+  `Access-Control-Allow-Origin`. GitHub Pages already does.
+- **One instance per page:** the WebAssembly runtime uses a global module, so only one
+  embedded game can run per page. Saves persist per host-page origin via IndexedDB.
+- See [`bin/embed-example.html`](bin/embed-example.html) for a working demo, and self-host by
+  serving the `-web-wasm32` release zip (which includes `embed.js`) from your own site.
+
 ## Compile
 
 [CMake](https://cmake.org) is used to build raylib-libretro...
