@@ -108,6 +108,8 @@ static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize,
     const char* contentPath, bool persistent);
 static void SetLibretroDynamicRateControl(bool enabled);
 static bool IsLibretroDynamicRateControlEnabled(void);
+static bool SetLibretroPortDevice(unsigned port, unsigned device);
+static unsigned GetLibretroPortDevice(unsigned port);
 
 static void LibretroPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
@@ -165,6 +167,13 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
  * The amount of controller ports with rumble support.
  */
 #define RAYLIB_LIBRETRO_RUMBLE_PORTS 4
+
+// RETRO_DEVICE_JOYPAD_MULTITAP: four joypads multiplexed through one port.
+// The input_state index (0-3) selects the sub-controller; the frontend maps
+// it to physical gamepad (port * 4 + index).
+#ifndef RETRO_DEVICE_JOYPAD_MULTITAP
+#define RETRO_DEVICE_JOYPAD_MULTITAP RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_JOYPAD, 1)
+#endif
 
 // Dynamic loading methods.
 #define LoadLibretroMethodHandle(V, S) do {\
@@ -331,6 +340,10 @@ typedef struct LibretroCoreData {
 
     // Virtual joypad state injected by touch controls (port 0 only).
     bool virtualJoypadState[16];
+
+    // Per-port device type (RETRO_DEVICE_JOYPAD, RETRO_DEVICE_JOYPAD_MULTITAP, etc.).
+    // Default: RETRO_DEVICE_JOYPAD for all ports.
+    unsigned portDeviceMap[16];
 
     // Memory map from RETRO_ENVIRONMENT_SET_MEMORY_MAPS (owned copy).
     struct retro_memory_descriptor *memoryMapDescriptors;
@@ -2077,7 +2090,8 @@ static void LibretroInputPoll(void) {
 }
 
 static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index, unsigned id) {
-    switch (device) {
+    // Mask to the base device type as required by the libretro spec.
+    switch (device & RETRO_DEVICE_MASK) {
         case RETRO_DEVICE_KEYBOARD: {
             int raylibKey = LibretroRetroKeyToKeyboardKey(id);
             if (raylibKey > 0) {
@@ -2086,13 +2100,19 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
             return 0;
         }
         case RETRO_DEVICE_JOYPAD: {
+            // Multitap: each index (0-3) on a port maps to a separate physical gamepad.
+            // Physical pad = port * 4 + index. Standard joypad always uses index 0.
+            bool isMultitap = (LIBRETRO.core.portDeviceMap[port] == RETRO_DEVICE_JOYPAD_MULTITAP)
+                              || (device == RETRO_DEVICE_JOYPAD_MULTITAP);
+            unsigned physicalPad = isMultitap ? (port * 4 + index) : port;
+
             // Return a bitmask of all buttons when requested.
             if (id == RETRO_DEVICE_ID_JOYPAD_MASK) {
                 int16_t mask = 0;
-                bool gpAvail = IsGamepadAvailable((int)port);
+                bool gpAvail = IsGamepadAvailable((int)physicalPad);
                 for (int btn = 0; btn < 16; btn++) {
                     bool pressed = false;
-                    if (port == 0) {
+                    if (physicalPad == 0) {
                         if (btn < 16 && LIBRETRO.core.virtualJoypadState[btn]) {
                             pressed = true;
                         } else if (gpAvail) {
@@ -2112,15 +2132,15 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                             }
                         }
                     } else if (gpAvail) {
-                        pressed = IsGamepadButtonDown((int)port, LibretroRetroJoypadButtonToGamepadButton(btn));
+                        pressed = IsGamepadButtonDown((int)physicalPad, LibretroRetroJoypadButtonToGamepadButton(btn));
                     }
                     if (pressed) mask |= (1 << btn);
                 }
                 return mask;
             }
 
-            // Port 0: gamepad if available, otherwise keyboard.
-            if (port == 0) {
+            // Physical pad 0: virtual joypad (touch) then gamepad then keyboard.
+            if (physicalPad == 0) {
                 if (id < 16 && LIBRETRO.core.virtualJoypadState[id]) {
                     return 1;
                 }
@@ -2142,12 +2162,12 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                 return (raylibKey > 0) ? (int)IsKeyDown(raylibKey) : 0;
             }
 
-            // Port 1+: map to gamepad (port 1 → gamepad 1, port 2 → gamepad 2, ...).
-            if (!IsGamepadAvailable(port)) {
+            // Physical pad 1+: map directly to that gamepad index.
+            if (!IsGamepadAvailable((int)physicalPad)) {
                 return 0;
             }
             int gamepadButton = LibretroRetroJoypadButtonToGamepadButton(id);
-            return (int)IsGamepadButtonDown(port, gamepadButton);
+            return (int)IsGamepadButtonDown((int)physicalPad, gamepadButton);
         }
 
         case RETRO_DEVICE_MOUSE: {
@@ -3157,6 +3177,38 @@ static bool IsLibretroDynamicRateControlEnabled(void) {
 }
 
 /**
+ * Set the input device type for a controller port and notify the core.
+ * Use RETRO_DEVICE_JOYPAD_MULTITAP to enable multitap on a port; the
+ * input_state index then selects which sub-controller (0-3) is queried,
+ * mapping to physical gamepad (port * 4 + index).
+ * @param port Controller port (0-15).
+ * @param device Device type (e.g. RETRO_DEVICE_JOYPAD, RETRO_DEVICE_JOYPAD_MULTITAP).
+ * @return true on success, false if port is out of range or core not loaded.
+ */
+static bool SetLibretroPortDevice(unsigned port, unsigned device) {
+    if (port >= 16) {
+        return false;
+    }
+    LIBRETRO.core.portDeviceMap[port] = device;
+    if (IsLibretroReady() && LIBRETRO.core.symbols.retro_set_controller_port_device != NULL) {
+        LIBRETRO.core.symbols.retro_set_controller_port_device(port, device);
+    }
+    return true;
+}
+
+/**
+ * Get the input device type currently assigned to a controller port.
+ * @param port Controller port (0-15).
+ * @return Device type, or RETRO_DEVICE_NONE if port is out of range.
+ */
+static unsigned GetLibretroPortDevice(unsigned port) {
+    if (port >= 16) {
+        return RETRO_DEVICE_NONE;
+    }
+    return LIBRETRO.core.portDeviceMap[port];
+}
+
+/**
  * Get the current display rotation index (0=0°, 1=90°, 2=180°, 3=270°).
  * @return Rotation index.
  */
@@ -3385,6 +3437,9 @@ static void CloseLibretro(void) {
     // Non-zero defaults.
     LIBRETRO.core.drcAdjustment = 1.0f;
     LIBRETRO.core.drcEnabled = true;
+    for (int i = 0; i < 16; i++) {
+        LIBRETRO.core.portDeviceMap[i] = RETRO_DEVICE_JOYPAD;
+    }
 }
 
 /**
