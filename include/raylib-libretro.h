@@ -73,6 +73,7 @@ static unsigned GetLibretroWidth(void);
 static unsigned GetLibretroHeight(void);
 static int GetLibretroRotation(void);
 static Texture2D GetLibretroTexture(void);
+static Image LoadImageFromLibretro();
 static bool IsLibretroGameRequired(void);
 static bool ResetLibretro(void);
 static bool SetLibretroCheat(unsigned index, bool enabled, const char* code);
@@ -3264,6 +3265,36 @@ static float GetLibretroAspectRatio(void) {
  */
 static Texture2D GetLibretroTexture(void) {
     return LIBRETRO.core.texture;
+}
+
+/**
+ * Load an image of the current screen of the core framebuffer.
+ *
+ * The image must be called with UnloadImage() to clear the memory.
+ *
+ * @return Essentially a screenshot of the libretro game. Empty image otherwise.
+ */
+static Image LoadImageFromLibretro() {
+    if (!IsLibretroGameReady() || LIBRETRO.core.frameBuffer == NULL || LIBRETRO.core.frameBufferSize == 0) {
+        Image empty = {0};
+        return empty;
+    }
+
+    Image image = {0};
+    image.width = (int)LIBRETRO.core.width;
+    image.height = (int)LIBRETRO.core.height;
+    image.mipmaps = 1;
+    image.format = LibretroRetroPixelFormatToPixelFormat(LIBRETRO.core.pixelFormat);
+
+    // Copy the pre-converted frame buffer into a newly allocated image data buffer.
+    image.data = MemAlloc((unsigned int)LIBRETRO.core.frameBufferSize);
+    if (image.data == NULL) {
+        Image empty = {0};
+        return empty;
+    }
+    memcpy(image.data, LIBRETRO.core.frameBuffer, LIBRETRO.core.frameBufferSize);
+
+    return image;
 }
 
 /**
