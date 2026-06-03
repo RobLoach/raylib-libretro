@@ -578,23 +578,31 @@ bool Update(void* userData) {
     if (!menu.active) {
 
         // Screenshot
-        if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.keyScreenshot)) || LibretroHotkeyGPReleased(menu.gamepadScreenshot)) {
+        if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.keyScreenshot)) || LibretroHotkeyGPReleased(menu.gamepadScreenshot) && IsLibretroGameReady()) {
             const char* screenshotsDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
             const char* contentName = GetLibretroContentName();
             const char* baseName = (contentName && contentName[0] != '\0') ? contentName : "screenshot";
-            bool taken = false;
+            bool foundSlot = false;
             for (int i = 1; i < 1000; i++) {
                 const char* screenshotName = TextFormat("%s/%s-%i.png", screenshotsDir, baseName, i);
                 if (!FileExists(screenshotName)) {
-                    Image screenshot = LoadImageFromTexture(GetLibretroTexture());
-                    ExportImage(screenshot, screenshotName);
-                    UnloadImage(screenshot);
-                    SetLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0);
-                    taken = true;
+                    //Image screenshot = LoadImageFromScreen();
+                    //Image screenshot = LoadImageFromTexture(GetLibretroTexture());
+                    Image screenshot = LoadImageFromLibretro();
+                    foundSlot = true;
+                    if (ExportImage(screenshot, screenshotName)) {
+                        SetLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0);
+                    }
+                    else {
+                        SetLibretroMessage(TextFormat("Screenshot failed: %s", screenshotName), 2.0);
+                    }
+                    if (screenshot.data != NULL) {
+                        UnloadImage(screenshot);
+                    }
                     break;
                 }
             }
-            if (!taken) {
+            if (!foundSlot) {
                 SetLibretroMessage("Screenshot slots full", 2.0);
             }
         }
