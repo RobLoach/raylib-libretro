@@ -97,7 +97,7 @@ A roadmap of some interesting features to consider.
 - [ ] Per-core / per-game input remap files (`.rmp` compatible)
 - [ ] Mouse (`RETRO_DEVICE_MOUSE`) fully wired through
 - [ ] Light gun (`RETRO_DEVICE_LIGHTGUN`) with cursor capture
-- [ ] Multitap (`RETRO_DEVICE_JOYPAD_MULTITAP`)
+- [x] Multitap (`RETRO_DEVICE_JOYPAD_MULTITAP`)
 - [ ] On-screen overlay touch layouts (PNG, auto-scale, snap-to-edges)
 - [ ] Analog stick deadzone + sensitivity per port
 - [ ] Game-Focus mode (pass all keys through, ignore hotkeys)
