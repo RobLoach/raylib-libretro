@@ -67,6 +67,8 @@ typedef enum LibretroMenuCombo {
 typedef struct LibretroMenuBinding {
     nk_rune key;
     enum nk_gamepad_button gamepad;
+    const char* name;
+    nk_rune defaultKey;
 } LibretroMenuBinding;
 
 typedef enum LibretroHotkey {
@@ -1318,39 +1320,6 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
 static void LibretroMenuUpdateLoadGameFilter(LibretroMenu* m);
 
 /**
- * Maps each hot key in the Keys settings to the menu fields.
- */
-typedef struct LibretroMenuHotkey {
-    const char* name; /** The name of the hot key, as shown in the menu. */
-    enum nk_gamepad_button* gamepad; /** The gamepad button that's currently assigned. */
-    nk_rune* key; /** The keyboard key that's currently assigned. */
-    nk_rune default_key; /** The initial keyboard binding that will be set. Gamepad button defaults are ignored. */
-} LibretroMenuHotkey;
-
-/**
- * Set of menu hot keys that will be built into input widgets in the Hot Keys menu.
- */
-static const LibretroMenuHotkey LibretroMenuHotkeys[] = {
-    { "Screenshot",      &menu.hotkeys[LIBRETRO_HOTKEY_SCREENSHOT].gamepad,   &menu.hotkeys[LIBRETRO_HOTKEY_SCREENSHOT].key,   NK_CONSOLE_KEY_F8 },
-    { "Rewind",          &menu.hotkeys[LIBRETRO_HOTKEY_REWIND].gamepad,       &menu.hotkeys[LIBRETRO_HOTKEY_REWIND].key,       (nk_rune)'R' },
-    { "Menu",            &menu.hotkeys[LIBRETRO_HOTKEY_MENU].gamepad,         &menu.hotkeys[LIBRETRO_HOTKEY_MENU].key,         NK_CONSOLE_KEY_ESCAPE },
-    { "Save State",      &menu.hotkeys[LIBRETRO_HOTKEY_SAVE_STATE].gamepad,   &menu.hotkeys[LIBRETRO_HOTKEY_SAVE_STATE].key,   NK_CONSOLE_KEY_F2 },
-    { "Load State",      &menu.hotkeys[LIBRETRO_HOTKEY_LOAD_STATE].gamepad,   &menu.hotkeys[LIBRETRO_HOTKEY_LOAD_STATE].key,   NK_CONSOLE_KEY_F4 },
-    { "Prev Slot",       &menu.hotkeys[LIBRETRO_HOTKEY_PREV_SLOT].gamepad,    &menu.hotkeys[LIBRETRO_HOTKEY_PREV_SLOT].key,    NK_CONSOLE_KEY_NONE },
-    { "Next Slot",       &menu.hotkeys[LIBRETRO_HOTKEY_NEXT_SLOT].gamepad,    &menu.hotkeys[LIBRETRO_HOTKEY_NEXT_SLOT].key,    NK_CONSOLE_KEY_NONE },
-    { "Fullscreen",      &menu.hotkeys[LIBRETRO_HOTKEY_FULLSCREEN].gamepad,   &menu.hotkeys[LIBRETRO_HOTKEY_FULLSCREEN].key,   NK_CONSOLE_KEY_F11 },
-    { "Previous Shader", &menu.hotkeys[LIBRETRO_HOTKEY_PREV_SHADER].gamepad,  &menu.hotkeys[LIBRETRO_HOTKEY_PREV_SHADER].key,  NK_CONSOLE_KEY_F9 },
-    { "Next Shader",     &menu.hotkeys[LIBRETRO_HOTKEY_NEXT_SHADER].gamepad,  &menu.hotkeys[LIBRETRO_HOTKEY_NEXT_SHADER].key,  NK_CONSOLE_KEY_F10 },
-    { "Reset",           &menu.hotkeys[LIBRETRO_HOTKEY_RESET].gamepad,        &menu.hotkeys[LIBRETRO_HOTKEY_RESET].key,        NK_CONSOLE_KEY_NONE },
-    { "Quit",            &menu.hotkeys[LIBRETRO_HOTKEY_QUIT].gamepad,         &menu.hotkeys[LIBRETRO_HOTKEY_QUIT].key,         NK_CONSOLE_KEY_NONE },
-    { "Volume Up",       &menu.hotkeys[LIBRETRO_HOTKEY_VOLUME_UP].gamepad,    &menu.hotkeys[LIBRETRO_HOTKEY_VOLUME_UP].key,    (nk_rune)'=' },
-    { "Volume Down",     &menu.hotkeys[LIBRETRO_HOTKEY_VOLUME_DOWN].gamepad,  &menu.hotkeys[LIBRETRO_HOTKEY_VOLUME_DOWN].key,  (nk_rune)'-' },
-    { "Mute",            &menu.hotkeys[LIBRETRO_HOTKEY_MUTE].gamepad,         &menu.hotkeys[LIBRETRO_HOTKEY_MUTE].key,         (nk_rune)'M' },
-    { "Fast Forward",    &menu.hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad, &menu.hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].key, (nk_rune)'F' },
-    { "Slow Motion",     &menu.hotkeys[LIBRETRO_HOTKEY_SLOW_MOTION].gamepad,  &menu.hotkeys[LIBRETRO_HOTKEY_SLOW_MOTION].key,  (nk_rune)'G' },
-};
-
-/**
  * Event that's triggered when a menu hot key was changed.
  */
 static void LibretroMenuHotkeyChanged(nk_console* widget, void* user_data) {
@@ -1367,25 +1336,21 @@ static void LibretroMenuHotkeyChanged(nk_console* widget, void* user_data) {
     }
 
     // Check if there were any conflicts with other keys/buttons.
-    for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
-        const LibretroMenuHotkey* hk = &LibretroMenuHotkeys[i];
-
+    for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
         // Skip the binding that was just changed (matched by output pointer).
-        if (hk->gamepad == data->out_gamepad_button || hk->key == data->out_key) {
+        if (&menu.hotkeys[i].gamepad == data->out_gamepad_button || &menu.hotkeys[i].key == data->out_key) {
             continue;
         }
 
         // Check if the key conflicts.
-        if (isKey && hk->key != NULL && *hk->key == *data->out_key) {
-            *hk->key = NK_CONSOLE_KEY_NONE; // Unbind it.
-            nk_console_show_message(menu.console,
-                TextFormat("%s has been unbound", hk->name));
+        if (isKey && menu.hotkeys[i].key == *data->out_key) {
+            menu.hotkeys[i].key = NK_CONSOLE_KEY_NONE;
+            nk_console_show_message(menu.console, TextFormat("%s has been unbound", menu.hotkeys[i].name));
         }
         // Check if the gamepad button conflicts.
-        else if (isGamepad && hk->gamepad != NULL && *hk->gamepad == *data->out_gamepad_button) {
-            *hk->gamepad = NK_GAMEPAD_BUTTON_INVALID; // Unbind it.
-            nk_console_show_message(menu.console,
-                TextFormat("%s has been unbound", hk->name));
+        else if (isGamepad && menu.hotkeys[i].gamepad == *data->out_gamepad_button) {
+            menu.hotkeys[i].gamepad = NK_GAMEPAD_BUTTON_INVALID;
+            nk_console_show_message(menu.console, TextFormat("%s has been unbound", menu.hotkeys[i].name));
         }
     }
 }
@@ -1413,10 +1378,32 @@ LibretroMenu* InitLibretroMenu(void) {
     menu.menuComboIndex = LIBRETRO_MENU_COMBO_SELECT_START;
     menu.slowMotionSpeed = 0.5f;
 
-    // Default hotkey bindings.
-    for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
-        *LibretroMenuHotkeys[i].key = LibretroMenuHotkeys[i].default_key;
-        *LibretroMenuHotkeys[i].gamepad = NK_GAMEPAD_BUTTON_INVALID;
+    // Default hotkey bindings — names and defaults live here so NK_CONSOLE_KEY_*
+    // constants are declared by this point (vendor headers already included above).
+    static const struct { const char* name; nk_rune defaultKey; } hotkeyDefs[LIBRETRO_HOTKEY_COUNT] = {
+        { "Screenshot",      NK_CONSOLE_KEY_F8     },
+        { "Rewind",          (nk_rune)'R'          },
+        { "Menu",            NK_CONSOLE_KEY_ESCAPE },
+        { "Save State",      NK_CONSOLE_KEY_F2     },
+        { "Load State",      NK_CONSOLE_KEY_F4     },
+        { "Prev Slot",       NK_CONSOLE_KEY_NONE   },
+        { "Next Slot",       NK_CONSOLE_KEY_NONE   },
+        { "Fullscreen",      NK_CONSOLE_KEY_F11    },
+        { "Previous Shader", NK_CONSOLE_KEY_F9     },
+        { "Next Shader",     NK_CONSOLE_KEY_F10    },
+        { "Reset",           NK_CONSOLE_KEY_NONE   },
+        { "Quit",            NK_CONSOLE_KEY_NONE   },
+        { "Volume Up",       (nk_rune)'='          },
+        { "Volume Down",     (nk_rune)'-'          },
+        { "Mute",            (nk_rune)'M'          },
+        { "Fast Forward",    (nk_rune)'F'          },
+        { "Slow Motion",     (nk_rune)'G'          },
+    };
+    for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
+        menu.hotkeys[i].name       = hotkeyDefs[i].name;
+        menu.hotkeys[i].defaultKey = hotkeyDefs[i].defaultKey;
+        menu.hotkeys[i].key        = hotkeyDefs[i].defaultKey;
+        menu.hotkeys[i].gamepad    = NK_GAMEPAD_BUTTON_INVALID;
     }
 
     // Font
@@ -1636,9 +1623,8 @@ LibretroMenu* InitLibretroMenu(void) {
                 "None|Select + Start|L1 + R1|L2 + R2|L3 + R3|Down + Select",
                 '|', &menu.menuComboIndex);
             menuCombo->tooltip = "Controller button combination to toggle the menu";
-            for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
-                const LibretroMenuHotkey* hk = &LibretroMenuHotkeys[i];
-                LibretroMenuAddHotkey(keysMenu, hk->name, hk->gamepad, hk->key);
+            for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
+                LibretroMenuAddHotkey(keysMenu, menu.hotkeys[i].name, &menu.hotkeys[i].gamepad, &menu.hotkeys[i].key);
             }
         }
 
@@ -2188,11 +2174,10 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_float(menu.cfg, "raylib-libretro", "slowMotionSpeed", menu.slowMotionSpeed);
 
     // Hotkey bindings (keyboard + gamepad), keyed by name as "key<Name>"/"gamepad<Name>".
-    for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
-        const LibretroMenuHotkey* hk = &LibretroMenuHotkeys[i];
-        const char* shortName = TextReplace(hk->name, " ", "");
-        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("key%s", shortName), (int)*hk->key);
-        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("gamepad%s", shortName), (int)*hk->gamepad);
+    for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
+        const char* shortName = TextReplace(menu.hotkeys[i].name, " ", "");
+        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("key%s", shortName), (int)menu.hotkeys[i].key);
+        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("gamepad%s", shortName), (int)menu.hotkeys[i].gamepad);
     }
 
     rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(LIBRETRO.coreDirectory));
@@ -2414,11 +2399,10 @@ static bool LoadLibretroMenuSettings(void) {
     if (username) TextCopy(LIBRETRO.username, username);
 
     // Hotkey bindings (keyboard + gamepad), keyed by name as "key<Name>"/"gamepad<Name>".
-    for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
-        const LibretroMenuHotkey* hk = &LibretroMenuHotkeys[i];
-        const char* shortName = TextReplace(hk->name, " ", "");
-        *hk->key = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("key%s", shortName), (int)*hk->key);
-        *hk->gamepad = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("gamepad%s", shortName), (int)*hk->gamepad);
+    for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
+        const char* shortName = TextReplace(menu.hotkeys[i].name, " ", "");
+        menu.hotkeys[i].key = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("key%s", shortName), (int)menu.hotkeys[i].key);
+        menu.hotkeys[i].gamepad = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("gamepad%s", shortName), (int)menu.hotkeys[i].gamepad);
     }
     SetExitKey(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_QUIT].key));
 
