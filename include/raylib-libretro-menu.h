@@ -1380,30 +1380,29 @@ LibretroMenu* InitLibretroMenu(void) {
 
     // Default hotkey bindings — names and defaults live here so NK_CONSOLE_KEY_*
     // constants are declared by this point (vendor headers already included above).
-    static const struct { const char* name; nk_rune defaultKey; } hotkeyDefs[LIBRETRO_HOTKEY_COUNT] = {
-        { "Screenshot",      NK_CONSOLE_KEY_F8     },
-        { "Rewind",          (nk_rune)'R'          },
-        { "Menu",            NK_CONSOLE_KEY_ESCAPE },
-        { "Save State",      NK_CONSOLE_KEY_F2     },
-        { "Load State",      NK_CONSOLE_KEY_F4     },
-        { "Prev Slot",       NK_CONSOLE_KEY_NONE   },
-        { "Next Slot",       NK_CONSOLE_KEY_NONE   },
-        { "Fullscreen",      NK_CONSOLE_KEY_F11    },
-        { "Previous Shader", NK_CONSOLE_KEY_F9     },
-        { "Next Shader",     NK_CONSOLE_KEY_F10    },
-        { "Reset",           NK_CONSOLE_KEY_NONE   },
-        { "Quit",            NK_CONSOLE_KEY_NONE   },
-        { "Volume Up",       (nk_rune)'='          },
-        { "Volume Down",     (nk_rune)'-'          },
-        { "Mute",            (nk_rune)'M'          },
-        { "Fast Forward",    (nk_rune)'F'          },
-        { "Slow Motion",     (nk_rune)'G'          },
+    static const LibretroMenuBinding hotkeyDefs[LIBRETRO_HOTKEY_COUNT] = {
+        { .name = "Screenshot",      .defaultKey = NK_CONSOLE_KEY_F8     },
+        { .name = "Rewind",          .defaultKey = (nk_rune)'R'          },
+        { .name = "Menu",            .defaultKey = NK_CONSOLE_KEY_ESCAPE },
+        { .name = "Save State",      .defaultKey = NK_CONSOLE_KEY_F2     },
+        { .name = "Load State",      .defaultKey = NK_CONSOLE_KEY_F4     },
+        { .name = "Prev Slot",       .defaultKey = NK_CONSOLE_KEY_NONE   },
+        { .name = "Next Slot",       .defaultKey = NK_CONSOLE_KEY_NONE   },
+        { .name = "Fullscreen",      .defaultKey = NK_CONSOLE_KEY_F11    },
+        { .name = "Previous Shader", .defaultKey = NK_CONSOLE_KEY_F9     },
+        { .name = "Next Shader",     .defaultKey = NK_CONSOLE_KEY_F10    },
+        { .name = "Reset",           .defaultKey = NK_CONSOLE_KEY_NONE   },
+        { .name = "Quit",            .defaultKey = NK_CONSOLE_KEY_NONE   },
+        { .name = "Volume Up",       .defaultKey = (nk_rune)'='          },
+        { .name = "Volume Down",     .defaultKey = (nk_rune)'-'          },
+        { .name = "Mute",            .defaultKey = (nk_rune)'M'          },
+        { .name = "Fast Forward",    .defaultKey = (nk_rune)'F'          },
+        { .name = "Slow Motion",     .defaultKey = (nk_rune)'G'          },
     };
     for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
-        menu.hotkeys[i].name       = hotkeyDefs[i].name;
-        menu.hotkeys[i].defaultKey = hotkeyDefs[i].defaultKey;
-        menu.hotkeys[i].key        = hotkeyDefs[i].defaultKey;
-        menu.hotkeys[i].gamepad    = NK_GAMEPAD_BUTTON_INVALID;
+        menu.hotkeys[i]        = hotkeyDefs[i];
+        menu.hotkeys[i].key    = hotkeyDefs[i].defaultKey;
+        menu.hotkeys[i].gamepad = NK_GAMEPAD_BUTTON_INVALID;
     }
 
     // Font
