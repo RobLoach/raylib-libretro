@@ -200,6 +200,7 @@ if ("${PLATFORM}" STREQUAL "Web")
     # when STATIC_LINKING=1, on the assumption that the frontend provides them.
     # As a self-contained side module the core must include them itself.
     build_libretro_side_module(picodrive "https://github.com/libretro/picodrive"         "Makefile.libretro" "" STATIC_LINKING=0)
+    build_libretro_side_module(prboom    "https://github.com/libretro/libretro-prboom"   "Makefile"          "")
 
     if (LIBRETRO_SIDE_MODULES)
         add_custom_target(libretro-side-modules ALL DEPENDS ${LIBRETRO_SIDE_MODULES})
@@ -226,6 +227,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/gambatte_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mgba_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/picodrive_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/prboom_libretro.so.zip"
         )
     elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
         download_cores(
@@ -234,6 +236,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/gambatte_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mgba_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/picodrive_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/prboom_libretro.so.zip"
         )
     endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -244,6 +247,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/gambatte_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mgba_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/picodrive_libretro.dll.zip"
+            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/prboom_libretro.dll.zip"
         )
     endif()
 elseif (APPLE)
@@ -259,6 +263,7 @@ elseif (APPLE)
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/gambatte_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mgba_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/picodrive_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/prboom_libretro.dylib.zip"
         )
     else()
         download_cores(
@@ -267,6 +272,7 @@ elseif (APPLE)
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/gambatte_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mgba_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/picodrive_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/prboom_libretro.dylib.zip"
         )
     endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -276,6 +282,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/gambatte_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mgba_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/picodrive_libretro_android.so.zip"
+        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/prboom_libretro_android.so.zip"
     )
 endif()
 

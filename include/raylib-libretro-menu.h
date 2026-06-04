@@ -156,7 +156,7 @@ typedef struct LibretroMenu {
     char aboutCoreAspectRatio[48];
     char aboutContent[160];
     char aboutExtensions[256];
-    nk_rune keyboardP1[16]; // Indexed by RETRO_DEVICE_ID_JOYPAD_*
+    nk_rune keyboardControls[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
 #endif
@@ -317,7 +317,6 @@ static bool SaveLibretroMenuSettings(void);
 static bool SaveLibretroCoreOptions(void);
 static bool LoadLibretroMenuSettings(void);
 static void UpdateLibretroMenuVisibility(void);
-static void LibretroMenuApplyKeyboardPlayer1(void);
 static Font GetLibretroMenuFont(void) {
     return menu.font;
 }
@@ -331,8 +330,42 @@ static KeyboardKey LibretroHotkeyToKeyboardKey(nk_rune key) {
 }
 
 /**
- * Menu callback when one of the settings has been changed.
+ * Inverse of LibretroHotkeyToKeyboardKey(): encode a raylib KeyboardKey as the
+ * NK_CONSOLE_KEY_* rune the nk_console key widgets display and capture. Used to
+ * seed each binding row from the canonical LIBRETRO.keyboardPlayer1.
  */
+static nk_rune LibretroKeyboardKeyToHotkey(int key) {
+    if (key <= KEY_NULL) {
+        return NK_CONSOLE_KEY_NONE;
+    }
+    if (key == KEY_RIGHT_SHIFT) { // Left shift and right shift are the same.
+        return NK_CONSOLE_KEY_SHIFT;
+    }
+    nk_rune nkKey = KeyboardKeyToNuklearKey((KeyboardKey)key);
+    // Encode recognised special keys in the NK_CONSOLE_KEY_* range. A printable
+    // whose code happens to land in the nk_keys range (e.g. Space = 32) won't
+    // round-trip, so it falls through unchanged as its codepoint.
+    if (nkKey > NK_KEY_NONE && nkKey < (nk_rune)NK_KEY_MAX &&
+            NuklearKeyToKeyboardKey(nkKey) == (KeyboardKey)key) {
+        return nk_console_input_rune_from_keys((enum nk_keys)nkKey);
+    }
+    return nkKey;
+}
+
+static void LibretroMenuKeyBindingChanged(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    int btn = (int)(intptr_t)user_data;
+    LIBRETRO.keyboardPlayer1[btn] = (int)LibretroHotkeyToKeyboardKey(menu.keyboardControls[btn]);
+}
+
+static nk_console* LibretroMenuKeyConsole(nk_console* parent, const char* label, int btn) {
+    menu.keyboardControls[btn] = LibretroKeyboardKeyToHotkey(LIBRETRO.keyboardPlayer1[btn]);
+    nk_console* widget = nk_console_key(parent, label, &menu.keyboardControls[btn]);
+    nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
+        &LibretroMenuKeyBindingChanged, (void*)(intptr_t)btn, NULL);
+    return widget;
+}
+
 static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
@@ -942,7 +975,6 @@ static void LibretroMenuResetCheatsClicked(nk_console* widget, void* user_data) 
 static void MenuCommitSettings(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     NK_UNUSED(user_data);
-    LibretroMenuApplyKeyboardPlayer1();
     SaveLibretroAllSettings();
 }
 
@@ -1408,24 +1440,6 @@ LibretroMenu* InitLibretroMenu(void) {
         *LibretroMenuHotkeys[i].gamepad = NK_GAMEPAD_BUTTON_INVALID;
     }
 
-    // Default Keyboard Controls
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]      = (nk_rune)'Z';
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]      = (nk_rune)'A';
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT] = NK_CONSOLE_KEY_SHIFT;
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]  = NK_CONSOLE_KEY_ENTER;
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]     = NK_CONSOLE_KEY_UP;
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]   = NK_CONSOLE_KEY_DOWN;
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]   = NK_CONSOLE_KEY_LEFT;
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]  = NK_CONSOLE_KEY_RIGHT;
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]      = (nk_rune)'X';
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]      = (nk_rune)'S';
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]      = (nk_rune)'Q';
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]      = (nk_rune)'W';
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]     = (nk_rune)'E';
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]     = (nk_rune)'R';
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]     = (nk_rune)'D';
-    menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]     = (nk_rune)'F';
-
     // Font
     menu.font = LoadFontFromNuklear(fontSize);
     if (!IsFontValid(menu.font)) {
@@ -1657,22 +1671,22 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_button_set_symbol(
                 nk_console_button_onclick(kbMenu, "Keyboard Controls", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
-            nk_console_key(kbMenu, "B",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_B]);
-            nk_console_key(kbMenu, "Y",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_Y]);
-            nk_console_key(kbMenu, "Select", &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_SELECT]);
-            nk_console_key(kbMenu, "Start",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_START]);
-            nk_console_key(kbMenu, "Up",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_UP]);
-            nk_console_key(kbMenu, "Down",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_DOWN]);
-            nk_console_key(kbMenu, "Left",   &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_LEFT]);
-            nk_console_key(kbMenu, "Right",  &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_RIGHT]);
-            nk_console_key(kbMenu, "A",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_A]);
-            nk_console_key(kbMenu, "X",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_X]);
-            nk_console_key(kbMenu, "L",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L]);
-            nk_console_key(kbMenu, "R",      &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R]);
-            nk_console_key(kbMenu, "L2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L2]);
-            nk_console_key(kbMenu, "R2",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R2]);
-            nk_console_key(kbMenu, "L3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_L3]);
-            nk_console_key(kbMenu, "R3",     &menu.keyboardP1[RETRO_DEVICE_ID_JOYPAD_R3]);
+            LibretroMenuKeyConsole(kbMenu, "B",      RETRO_DEVICE_ID_JOYPAD_B);
+            LibretroMenuKeyConsole(kbMenu, "Y",      RETRO_DEVICE_ID_JOYPAD_Y);
+            LibretroMenuKeyConsole(kbMenu, "Select", RETRO_DEVICE_ID_JOYPAD_SELECT);
+            LibretroMenuKeyConsole(kbMenu, "Start",  RETRO_DEVICE_ID_JOYPAD_START);
+            LibretroMenuKeyConsole(kbMenu, "Up",     RETRO_DEVICE_ID_JOYPAD_UP);
+            LibretroMenuKeyConsole(kbMenu, "Down",   RETRO_DEVICE_ID_JOYPAD_DOWN);
+            LibretroMenuKeyConsole(kbMenu, "Left",   RETRO_DEVICE_ID_JOYPAD_LEFT);
+            LibretroMenuKeyConsole(kbMenu, "Right",  RETRO_DEVICE_ID_JOYPAD_RIGHT);
+            LibretroMenuKeyConsole(kbMenu, "A",      RETRO_DEVICE_ID_JOYPAD_A);
+            LibretroMenuKeyConsole(kbMenu, "X",      RETRO_DEVICE_ID_JOYPAD_X);
+            LibretroMenuKeyConsole(kbMenu, "L",      RETRO_DEVICE_ID_JOYPAD_L);
+            LibretroMenuKeyConsole(kbMenu, "R",      RETRO_DEVICE_ID_JOYPAD_R);
+            LibretroMenuKeyConsole(kbMenu, "L2",     RETRO_DEVICE_ID_JOYPAD_L2);
+            LibretroMenuKeyConsole(kbMenu, "R2",     RETRO_DEVICE_ID_JOYPAD_R2);
+            LibretroMenuKeyConsole(kbMenu, "L3",     RETRO_DEVICE_ID_JOYPAD_L3);
+            LibretroMenuKeyConsole(kbMenu, "R3",     RETRO_DEVICE_ID_JOYPAD_R3);
         }
 
         // Directories
@@ -2208,16 +2222,11 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroResolveAbsoluteDirectory(menu.systemDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroResolveAbsoluteDirectory(menu.playlistsDirectory));
     rlconfig_set(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory", LibretroResolveAbsoluteDirectory(menu.fileBrowserStartDirectory));
-    for (int i = 0; i < 16; i++) {
-        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("keyP1[%d]", i), (int)menu.keyboardP1[i]);
+
+    for (int i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++) {
+        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("keyboard%d", i), LIBRETRO.keyboardPlayer1[i]);
     }
 #endif
-}
-
-static void LibretroMenuApplyKeyboardPlayer1(void) {
-    for (int i = 0; i < 16; i++) {
-        LIBRETRO.keyboardPlayer1[i] = (int)LibretroHotkeyToKeyboardKey(menu.keyboardP1[i]);
-    }
 }
 
 static bool SaveLibretroMenuSettings(void) {
@@ -2459,15 +2468,15 @@ static bool LoadLibretroMenuSettings(void) {
     const char* fileBrowserStartDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory");
     if (fileBrowserStartDirectory) TextCopy(menu.fileBrowserStartDirectory, fileBrowserStartDirectory);
 
-    for (int i = 0; i < 16; i++) {
-        menu.keyboardP1[i] = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("keyP1[%d]", i), (int)menu.keyboardP1[i]);
+    // Read raylib KeyboardKey values written under "keyboardP1[..]"; missing keys
+    // keep the defaults seeded into LIBRETRO.keyboardPlayer1 at init.
+    for (int i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++) {
+        LIBRETRO.keyboardPlayer1[i] = rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("keyboard%d", i), LIBRETRO.keyboardPlayer1[i]);
     }
-    LibretroMenuApplyKeyboardPlayer1();
 
     TraceLog(LOG_INFO, "MENU: Loaded menu settings from %s", RAYLIB_LIBRETRO_CFG_FILE);
     return true;
 #else
-    LibretroMenuApplyKeyboardPlayer1();
     return false;
 #endif
 }
@@ -2581,14 +2590,18 @@ void UpdateLibretroMenu(void) {// If there is no menu, skip.
         ShowLibretroMenu();
     }
 
+    // Track whether the menu just opened this frame for the rebuild logic below.
+    // Updated before the early-return so closing the menu resets the flag; a
+    // fresh open is then detected on every open, not just the first of the
+    // session. (Otherwise menuWasActive latches true forever and the core
+    // options visibility callback below never re-fires after a game loads.)
+    static bool menuWasActive = false;
+    bool menuJustOpened = menu.active && !menuWasActive;
+    menuWasActive = menu.active;
+
     if (!menu.active) {
         return;
     }
-
-    // Track whether menu just opened this frame for the rebuild logic below.
-    static bool menuWasActive = false;
-    bool menuJustOpened = !menuWasActive;
-    menuWasActive = menu.active;
 
     // Rebuild when any of these signals say the options pane is stale:
     //   * dirty flag set by a SET_CORE_OPTIONS_DISPLAY / late SET_VARIABLES

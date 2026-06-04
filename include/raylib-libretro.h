@@ -73,6 +73,7 @@ static unsigned GetLibretroWidth(void);
 static unsigned GetLibretroHeight(void);
 static int GetLibretroRotation(void);
 static Texture2D GetLibretroTexture(void);
+static Image LoadImageFromLibretro();
 static bool IsLibretroGameRequired(void);
 static bool ResetLibretro(void);
 static bool SetLibretroCheat(unsigned index, bool enabled, const char* code);
@@ -371,7 +372,7 @@ typedef struct LibretroData {
     double speedAccumulator;
     int textureFilter; // TextureFilter
     int analogToDpadIndex; // 0=None, 1=Left Analog, 2=Right Analog
-    int keyboardPlayer1[16];
+    int keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
     char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -413,7 +414,25 @@ extern "C" {
 static LibretroData LIBRETRO = {
     .volume = 1.0f,
     .speed = 1.0f,
-    .username = "raylib"
+    .username = "raylib",
+    .keyboardPlayer1 = {
+        [RETRO_DEVICE_ID_JOYPAD_B]      = KEY_Z,
+        [RETRO_DEVICE_ID_JOYPAD_Y]      = KEY_A,
+        [RETRO_DEVICE_ID_JOYPAD_SELECT] = KEY_RIGHT_SHIFT,
+        [RETRO_DEVICE_ID_JOYPAD_START]  = KEY_ENTER,
+        [RETRO_DEVICE_ID_JOYPAD_UP]     = KEY_UP,
+        [RETRO_DEVICE_ID_JOYPAD_DOWN]   = KEY_DOWN,
+        [RETRO_DEVICE_ID_JOYPAD_LEFT]   = KEY_LEFT,
+        [RETRO_DEVICE_ID_JOYPAD_RIGHT]  = KEY_RIGHT,
+        [RETRO_DEVICE_ID_JOYPAD_A]      = KEY_X,
+        [RETRO_DEVICE_ID_JOYPAD_X]      = KEY_S,
+        [RETRO_DEVICE_ID_JOYPAD_L]      = KEY_Q,
+        [RETRO_DEVICE_ID_JOYPAD_R]      = KEY_W,
+        [RETRO_DEVICE_ID_JOYPAD_L2]     = KEY_E,
+        [RETRO_DEVICE_ID_JOYPAD_R2]     = KEY_R,
+        [RETRO_DEVICE_ID_JOYPAD_L3]     = KEY_D,
+        [RETRO_DEVICE_ID_JOYPAD_R3]     = KEY_F,
+    }
 };
 
 static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
@@ -3324,6 +3343,36 @@ static float GetLibretroAspectRatio(void) {
  */
 static Texture2D GetLibretroTexture(void) {
     return LIBRETRO.core.texture;
+}
+
+/**
+ * Load an image of the current screen of the core framebuffer.
+ *
+ * The image must be called with UnloadImage() to clear the memory.
+ *
+ * @return Essentially a screenshot of the libretro game. Empty image otherwise.
+ */
+static Image LoadImageFromLibretro() {
+    if (!IsLibretroGameReady() || LIBRETRO.core.frameBuffer == NULL || LIBRETRO.core.frameBufferSize == 0) {
+        Image empty = {0};
+        return empty;
+    }
+
+    Image image = {0};
+    image.width = (int)LIBRETRO.core.width;
+    image.height = (int)LIBRETRO.core.height;
+    image.mipmaps = 1;
+    image.format = LibretroRetroPixelFormatToPixelFormat(LIBRETRO.core.pixelFormat);
+
+    // Copy the pre-converted frame buffer into a newly allocated image data buffer.
+    image.data = MemAlloc((unsigned int)LIBRETRO.core.frameBufferSize);
+    if (image.data == NULL) {
+        Image empty = {0};
+        return empty;
+    }
+    memcpy(image.data, LIBRETRO.core.frameBuffer, LIBRETRO.core.frameBufferSize);
+
+    return image;
 }
 
 /**

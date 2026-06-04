@@ -58,6 +58,10 @@
 
 #if defined(__ANDROID__)
 #include <jni.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <android/log.h>
+#include <android/window.h>            // AWINDOW_FLAG_* for ANativeActivity_setWindowFlags()
 #include <android_native_app_glue.h>
 // Provided by raylib's Android backend (rcore_android.c); not in raylib.h.
 extern struct android_app *GetAndroidApp(void);
@@ -151,7 +155,83 @@ typedef struct {
     bool pendingMenuOpen;
 } AppData;
 
+// Breadcrumb logging through startup. On Android these go to logcat (and the
+// file log below); compiled out everywhere else so the desktop log stays clean.
 #if defined(__ANDROID__)
+#define INIT_TRACE(...) TraceLog(LOG_INFO, __VA_ARGS__)
+#else
+#define INIT_TRACE(...) ((void)0)
+#endif
+
+#if defined(__ANDROID__)
+// --- Crash diagnostics -----------------------------------------------------
+// raylib's Android logger writes to logcat; we additionally tee TraceLog output
+// to a file in the app's data directory so the startup trail survives a crash
+// and can be retrieved later (e.g. `adb pull /sdcard/Android/data/<pkg>/files/`)
+// even when logcat wasn't being watched at the moment it died.
+static FILE* AndroidLogFile = NULL;
+
+static void AndroidTraceLog(int logLevel, const char* text, va_list args) {
+    int prio = ANDROID_LOG_INFO;
+    switch (logLevel) {
+        case LOG_TRACE:   prio = ANDROID_LOG_VERBOSE; break;
+        case LOG_DEBUG:   prio = ANDROID_LOG_DEBUG;   break;
+        case LOG_INFO:    prio = ANDROID_LOG_INFO;    break;
+        case LOG_WARNING: prio = ANDROID_LOG_WARN;    break;
+        case LOG_ERROR:   prio = ANDROID_LOG_ERROR;   break;
+        case LOG_FATAL:   prio = ANDROID_LOG_FATAL;   break;
+        default: break;
+    }
+    // va_list is single-use; copy it before the second consumer.
+    va_list fileArgs;
+    va_copy(fileArgs, args);
+    __android_log_vprint(prio, "raylib-libretro", text, args);
+    if (AndroidLogFile != NULL) {
+        vfprintf(AndroidLogFile, text, fileArgs);
+        fputc('\n', AndroidLogFile);
+        fflush(AndroidLogFile);  // flush per line so a hard crash can't lose the trail
+    }
+    va_end(fileArgs);
+}
+
+// Install the file logger as early as possible. Prefers the external data dir
+// (pullable over adb without root), falling back to the internal one.
+static void AndroidInitCrashLog(struct android_app* app) {
+    if (app == NULL || app->activity == NULL) return;
+    const char* dir = app->activity->externalDataPath;
+    if (dir == NULL) dir = app->activity->internalDataPath;
+    if (dir == NULL) return;
+    const char* path = TextFormat("%s/raylib-libretro.log", dir);
+    AndroidLogFile = fopen(path, "w");
+    if (AndroidLogFile != NULL) {
+        SetTraceLogCallback(AndroidTraceLog);
+        TraceLog(LOG_INFO, "ANDROID: Crash log at %s", path);
+    }
+}
+
+// Attach the calling thread to the JVM only if it isn't already attached, so we
+// detach exactly the attachments we create. Returns NULL if no env is available.
+static JNIEnv* AndroidJNIBegin(struct android_app* app, bool* outNeedDetach) {
+    *outNeedDetach = false;
+    if (app == NULL || app->activity == NULL || app->activity->vm == NULL) return NULL;
+    JavaVM* vm = app->activity->vm;
+    JNIEnv* env = NULL;
+    jint res = (*vm)->GetEnv(vm, (void**)&env, JNI_VERSION_1_6);
+    if (res == JNI_EDETACHED) {
+        if ((*vm)->AttachCurrentThread(vm, &env, NULL) != 0 || env == NULL) return NULL;
+        *outNeedDetach = true;
+    } else if (res != JNI_OK || env == NULL) {
+        return NULL;
+    }
+    return env;
+}
+
+static void AndroidJNIEnd(struct android_app* app, bool needDetach) {
+    if (needDetach && app != NULL && app->activity != NULL && app->activity->vm != NULL) {
+        (*app->activity->vm)->DetachCurrentThread(app->activity->vm);
+    }
+}
+
 // Copy a single bundled core out of the read-only APK assets into the writable
 // data directory so it can be dlopen()'d. No-op if it was already copied.
 static void AndroidCopyCore(const char* coreName, const char* destDir) {
@@ -180,57 +260,83 @@ static void AndroidCopyCore(const char* coreName, const char* destDir) {
 // can only be granted from a system settings screen. Open it once if we don't
 // already hold the permission. Older devices rely on legacy external storage.
 static void AndroidRequestStorageAccess(struct android_app* app) {
-    JavaVM* vm = app->activity->vm;
-    JNIEnv* env = NULL;
-    (*vm)->AttachCurrentThread(vm, &env, NULL);
+    bool needDetach = false;
+    JNIEnv* env = AndroidJNIBegin(app, &needDetach);
+    if (env == NULL) {
+        TraceLog(LOG_WARNING, "ANDROID: Could not attach JNI for storage access");
+        return;
+    }
 
+    // Every JNI lookup below is NULL-checked, and the pending-exception state is
+    // cleared after each Java call, so a missing class/method on an odd ROM can
+    // never feed a NULL handle (native SIGSEGV) or a pending exception into the
+    // next JNI call. The whole helper degrades to a no-op instead of crashing.
+    jint sdkInt = 0;
     jclass versionClass = (*env)->FindClass(env, "android/os/Build$VERSION");
-    jfieldID sdkIntField = (*env)->GetStaticFieldID(env, versionClass, "SDK_INT", "I");
-    jint sdkInt = (*env)->GetStaticIntField(env, versionClass, sdkIntField);
+    if (versionClass != NULL) {
+        jfieldID sdkIntField = (*env)->GetStaticFieldID(env, versionClass, "SDK_INT", "I");
+        if (sdkIntField != NULL) sdkInt = (*env)->GetStaticIntField(env, versionClass, sdkIntField);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 
     if (sdkInt >= 30) {
+        jboolean granted = JNI_TRUE;
         jclass environmentClass = (*env)->FindClass(env, "android/os/Environment");
-        jmethodID isManager = (*env)->GetStaticMethodID(env, environmentClass,
-            "isExternalStorageManager", "()Z");
-        jboolean granted = isManager ? (*env)->CallStaticBooleanMethod(env, environmentClass, isManager) : JNI_TRUE;
+        if (environmentClass != NULL) {
+            jmethodID isManager = (*env)->GetStaticMethodID(env, environmentClass,
+                "isExternalStorageManager", "()Z");
+            if (isManager != NULL) {
+                granted = (*env)->CallStaticBooleanMethod(env, environmentClass, isManager);
+            }
+        }
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 
         if (!granted) {
-            // Uri uri = Uri.parse("package:<applicationId>");
-            jclass activityClass = (*env)->GetObjectClass(env, app->activity->clazz);
-            jmethodID getPackageName = (*env)->GetMethodID(env, activityClass,
-                "getPackageName", "()Ljava/lang/String;");
-            jstring packageName = (jstring)(*env)->CallObjectMethod(env, app->activity->clazz, getPackageName);
-            const char* packageUtf = (*env)->GetStringUTFChars(env, packageName, NULL);
-            jstring uriString = (*env)->NewStringUTF(env, TextFormat("package:%s", packageUtf));
-            (*env)->ReleaseStringUTFChars(env, packageName, packageUtf);
+            // Intent intent = new Intent(ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+            //                            Uri.parse("package:<applicationId>"));
+            // activity.startActivity(intent);
+            jclass  activityClass   = (*env)->GetObjectClass(env, app->activity->clazz);
+            jmethodID getPackageName = activityClass ? (*env)->GetMethodID(env, activityClass,
+                "getPackageName", "()Ljava/lang/String;") : NULL;
+            jstring packageName = getPackageName ?
+                (jstring)(*env)->CallObjectMethod(env, app->activity->clazz, getPackageName) : NULL;
 
-            jclass uriClass = (*env)->FindClass(env, "android/net/Uri");
-            jmethodID uriParse = (*env)->GetStaticMethodID(env, uriClass, "parse",
-                "(Ljava/lang/String;)Landroid/net/Uri;");
-            jobject uri = (*env)->CallStaticObjectMethod(env, uriClass, uriParse, uriString);
+            jclass  uriClass = (*env)->FindClass(env, "android/net/Uri");
+            jmethodID uriParse = uriClass ? (*env)->GetStaticMethodID(env, uriClass, "parse",
+                "(Ljava/lang/String;)Landroid/net/Uri;") : NULL;
 
-            // Intent intent = new Intent(ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, uri);
-            jclass settingsClass = (*env)->FindClass(env, "android/provider/Settings");
-            jfieldID actionField = (*env)->GetStaticFieldID(env, settingsClass,
-                "ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION", "Ljava/lang/String;");
-            jstring action = (jstring)(*env)->GetStaticObjectField(env, settingsClass, actionField);
+            jclass  settingsClass = (*env)->FindClass(env, "android/provider/Settings");
+            jfieldID actionField = settingsClass ? (*env)->GetStaticFieldID(env, settingsClass,
+                "ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION", "Ljava/lang/String;") : NULL;
+            jstring action = actionField ?
+                (jstring)(*env)->GetStaticObjectField(env, settingsClass, actionField) : NULL;
 
-            jclass intentClass = (*env)->FindClass(env, "android/content/Intent");
-            jmethodID intentInit = (*env)->GetMethodID(env, intentClass, "<init>",
-                "(Ljava/lang/String;Landroid/net/Uri;)V");
-            jobject intent = (*env)->NewObject(env, intentClass, intentInit, action, uri);
+            jclass  intentClass = (*env)->FindClass(env, "android/content/Intent");
+            jmethodID intentInit = intentClass ? (*env)->GetMethodID(env, intentClass, "<init>",
+                "(Ljava/lang/String;Landroid/net/Uri;)V") : NULL;
+            jmethodID startActivity = activityClass ? (*env)->GetMethodID(env, activityClass,
+                "startActivity", "(Landroid/content/Intent;)V") : NULL;
 
-            jmethodID startActivity = (*env)->GetMethodID(env, activityClass, "startActivity",
-                "(Landroid/content/Intent;)V");
-            (*env)->CallVoidMethod(env, app->activity->clazz, startActivity, intent);
+            if (packageName && uriParse && action && intentInit && startActivity) {
+                const char* packageUtf = (*env)->GetStringUTFChars(env, packageName, NULL);
+                jstring uriString = (*env)->NewStringUTF(env,
+                    TextFormat("package:%s", packageUtf ? packageUtf : ""));
+                if (packageUtf) (*env)->ReleaseStringUTFChars(env, packageName, packageUtf);
 
-            TraceLog(LOG_INFO, "ANDROID: Requested All-Files Access for ROM browsing");
+                jobject uri = (*env)->CallStaticObjectMethod(env, uriClass, uriParse, uriString);
+                jobject intent = uri ? (*env)->NewObject(env, intentClass, intentInit, action, uri) : NULL;
+                if (intent != NULL) {
+                    (*env)->CallVoidMethod(env, app->activity->clazz, startActivity, intent);
+                    TraceLog(LOG_INFO, "ANDROID: Requested All-Files Access for ROM browsing");
+                }
+            } else {
+                TraceLog(LOG_WARNING, "ANDROID: Could not build All-Files Access intent");
+            }
+            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
         }
     }
 
-    // Don't let a missing class/method on an odd ROM crash the app.
-    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
-    (*vm)->DetachCurrentThread(vm);
+    AndroidJNIEnd(app, needDetach);
 }
 
 static void AndroidEnableImmersiveMode(struct android_app* app);
@@ -286,61 +392,37 @@ static void SetupAndroidEnvironment(LibretroMenu* menu) {
         nk_console_file_set_directory(menu->loadGameWidget, menu->fileBrowserStartDirectory);
     }
 
+    INIT_TRACE("ANDROID/INIT: requesting storage access");
     AndroidRequestStorageAccess(app);
+    INIT_TRACE("ANDROID/INIT: enabling immersive mode");
     AndroidEnableImmersiveMode(app);
+    INIT_TRACE("ANDROID/INIT: environment setup complete");
 }
 
-// Enable immersive fullscreen mode: hide navigation and status bars so the
-// game gets the entire display. Called once at startup; IMMERSIVE_STICKY means
-// the bars stay hidden until the user explicitly swipes them back.
+// Make the game fill the screen and keep it awake during play. Status-bar
+// hiding and notch/cutout rendering come declaratively from FullscreenTheme
+// (res/values/styles.xml); raylib itself also sets AWINDOW_FLAG_FULLSCREEN.
+//
+// This deliberately avoids touching the view hierarchy (setSystemUiVisibility /
+// Window.setAttributes): Init() runs on the android_main thread, not the UI
+// thread, so those calls throw CalledFromWrongThreadException — they never
+// applied, and on some ART builds the resulting pending exception aborted the
+// process right after the "Loading" screen. ANativeActivity_setWindowFlags is
+// the NDK-sanctioned, thread-safe equivalent.
 static void AndroidEnableImmersiveMode(struct android_app* app) {
-    JavaVM* vm = app->activity->vm;
-    JNIEnv* env = NULL;
-    (*vm)->AttachCurrentThread(vm, &env, NULL);
-
-    jobject activity = app->activity->clazz;
-    jclass activityClass = (*env)->GetObjectClass(env, activity);
-
-    jmethodID getWindow = (*env)->GetMethodID(env, activityClass, "getWindow", "()Landroid/view/Window;");
-    jobject window = (*env)->CallObjectMethod(env, activity, getWindow);
-    jclass windowClass = (*env)->GetObjectClass(env, window);
-
-    jmethodID getDecorView = (*env)->GetMethodID(env, windowClass, "getDecorView", "()Landroid/view/View;");
-    jobject decorView = (*env)->CallObjectMethod(env, window, getDecorView);
-    jclass viewClass = (*env)->GetObjectClass(env, decorView);
-
-    jmethodID setSystemUiVisibility = (*env)->GetMethodID(env, viewClass, "setSystemUiVisibility", "(I)V");
-    jint flags =
-        0x00000002 |  // SYSTEM_UI_FLAG_HIDE_NAVIGATION
-        0x00000004 |  // SYSTEM_UI_FLAG_FULLSCREEN
-        0x00001000 |  // SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        0x00000100 |  // SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-        0x00000200 |  // SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-        0x00000400;   // SYSTEM_UI_FLAG_LAYOUT_STABLE
-    (*env)->CallVoidMethod(env, decorView, setSystemUiVisibility, flags);
-
-    // On Android P (API 28+), render into the display cutout (notch) area.
-    jclass versionClass = (*env)->FindClass(env, "android/os/Build$VERSION");
-    jfieldID sdkIntField = (*env)->GetStaticFieldID(env, versionClass, "SDK_INT", "I");
-    jint sdkInt = (*env)->GetStaticIntField(env, versionClass, sdkIntField);
-    if (sdkInt >= 28) {
-        jmethodID getAttributes = (*env)->GetMethodID(env, windowClass, "getAttributes",
-            "()Landroid/view/WindowManager$LayoutParams;");
-        jobject attrs = (*env)->CallObjectMethod(env, window, getAttributes);
-        jclass attrsClass = (*env)->GetObjectClass(env, attrs);
-        jfieldID cutoutField = (*env)->GetFieldID(env, attrsClass, "layoutInDisplayCutoutMode", "I");
-        (*env)->SetIntField(env, attrs, cutoutField, 1);  // LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        jmethodID setAttributes = (*env)->GetMethodID(env, windowClass, "setAttributes",
-            "(Landroid/view/WindowManager$LayoutParams;)V");
-        (*env)->CallVoidMethod(env, window, setAttributes, attrs);
-    }
-
-    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
-    (*vm)->DetachCurrentThread(vm);
+    if (app == NULL || app->activity == NULL) return;
+    ANativeActivity_setWindowFlags(app->activity,
+        AWINDOW_FLAG_FULLSCREEN | AWINDOW_FLAG_KEEP_SCREEN_ON, 0);
 }
 #endif  // __ANDROID__
 
 bool Init(void** userData, int argc, char** argv) {
+#if defined(__ANDROID__)
+    // Start teeing the log to a file before anything that can crash, so the
+    // startup trail is recoverable even without a live logcat.
+    AndroidInitCrashLog(GetAndroidApp());
+#endif
+
     Image logo = GetLibretroLogo();
     SetWindowIcon(logo);
     UnloadImage(logo);
@@ -362,11 +444,15 @@ bool Init(void** userData, int argc, char** argv) {
     memset(data, 0, sizeof(AppData));
     *userData = data;
 
+    TraceLog(LOG_INFO, "LIBRETRO: Initializing Audio");
     InitAudioDevice();
+    TraceLog(LOG_INFO, "LIBRETRO: Initializing physfs");
     InitLibretroPhysFS();
 
     // Load the shaders and the menu.
+    TraceLog(LOG_INFO, "LIBRETRO: Initializing shaders");
     LoadLibretroShaders();
+    TraceLog(LOG_INFO, "LIBRETRO: Initializing Menu");
     data->menu = InitLibretroMenu();
     if (!data->menu) {
         TraceLog(LOG_ERROR, "Failed to initialize menu");
@@ -377,6 +463,7 @@ bool Init(void** userData, int argc, char** argv) {
     }
 
 #if defined(__ANDROID__)
+    INIT_TRACE("ANDROID/INIT: android environment");
     SetupAndroidEnvironment(data->menu);
 #endif
 
@@ -411,6 +498,7 @@ bool Init(void** userData, int argc, char** argv) {
         if (MenuLoadGame(gameFile)) HideLibretroMenu(); else ShowLibretroMenu();
     }
 
+    TraceLog(LOG_INFO, "LIBRETRO: Init() complete");
     return true;
 }
 
@@ -578,19 +666,31 @@ bool Update(void* userData) {
     if (!menu.active) {
 
         // Screenshot
-        if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.keyScreenshot)) || LibretroHotkeyGPReleased(menu.gamepadScreenshot)) {
+        if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.keyScreenshot)) || LibretroHotkeyGPReleased(menu.gamepadScreenshot) && IsLibretroGameReady()) {
             const char* screenshotsDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
-            bool taken = false;
+            const char* contentName = GetLibretroContentName();
+            const char* baseName = (contentName && contentName[0] != '\0') ? contentName : "screenshot";
+            bool foundSlot = false;
             for (int i = 1; i < 1000; i++) {
-                const char* screenshotName = TextFormat("%s/screenshot-%i.png", screenshotsDir, i);
+                const char* screenshotName = TextFormat("%s/%s-%i.png", screenshotsDir, baseName, i);
                 if (!FileExists(screenshotName)) {
-                    TakeScreenshot(screenshotName);
-                    SetLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0);
-                    taken = true;
+                    //Image screenshot = LoadImageFromScreen();
+                    //Image screenshot = LoadImageFromTexture(GetLibretroTexture());
+                    Image screenshot = LoadImageFromLibretro();
+                    foundSlot = true;
+                    if (ExportImage(screenshot, screenshotName)) {
+                        SetLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0);
+                    }
+                    else {
+                        SetLibretroMessage(TextFormat("Screenshot failed: %s", screenshotName), 2.0);
+                    }
+                    if (screenshot.data != NULL) {
+                        UnloadImage(screenshot);
+                    }
                     break;
                 }
             }
-            if (!taken) {
+            if (!foundSlot) {
                 SetLibretroMessage("Screenshot slots full", 2.0);
             }
         }
