@@ -75,6 +75,8 @@ typedef struct LibretroMenu {
     nk_bool vsync;
     int fpsIndex;                         // index into the "FPS" combobox (Auto/30/60/120/144/240/Unlimited)
     nk_console* optionsMenu;              // "Core Options" submenu node
+    nk_console* controllersMenu;          // "Controllers" submenu node
+    int portDeviceIndex[16];              // per-port combobox selection index
     nk_console* loadGameWidget;
     nk_console* saveStateButton;
     nk_console* loadStateButton;
@@ -171,6 +173,7 @@ void HideLibretroMenu(void);      // Hide the menu and apply cursor settings.
 void ToggleLibretroMenu(void);    // Toggle menu visibility.
 bool IsLibretroMenuShown(void);   // Returns true if the menu is currently visible.
 void BuildLibretroMenuOptions(LibretroMenu* menu); // Populate "Core Options" with comboboxes from the loaded core.
+void BuildLibretroMenuControllers(LibretroMenu* menu); // Populate "Controllers" with per-port device comboboxes.
 bool LoadLibretroCoreOptions(void);    // Apply saved core options from config to the loaded core.
 bool SaveLibretroAllSettings(void);    // Save menu settings + core options in a single file write.
 static Font GetLibretroMenuFont(void);
@@ -1255,6 +1258,7 @@ static bool MenuLoadGame(const char* gamePath) {
     }
 
     BuildLibretroMenuOptions(&menu);
+    BuildLibretroMenuControllers(&menu);
     HideLibretroMenu();
     MenuLoadGameSRAM();
     return true;
@@ -1701,6 +1705,17 @@ LibretroMenu* InitLibretroMenu(void) {
                 nk_console_button_onclick(menu.optionsMenu, "Core Options", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
         }
+
+        // Controllers (per-port device selection, populated by BuildLibretroMenuControllers)
+        menu.controllersMenu = nk_console_button(settings, "Controllers");
+        nk_console_add_event(menu.controllersMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+        nk_console_button_set_symbol(menu.controllersMenu, NK_SYMBOL_TRIANGLE_RIGHT);
+        {
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(menu.controllersMenu, "Controllers", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_UP);
+        }
+        menu.controllersMenu->visible = nk_false;
     }
 
     // About
@@ -2073,6 +2088,62 @@ void BuildLibretroMenuOptions(LibretroMenu* m) {
     nk_console_button_set_symbol(resetButton, NK_SYMBOL_TRIANGLE_LEFT);
 }
 
+static void LibretroMenuPortDeviceChanged(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    unsigned port = (unsigned)(uintptr_t)user_data;
+    unsigned count;
+    const struct retro_controller_info* info = GetLibretroControllerInfo(&count);
+    if (!info || port >= count) return;
+    unsigned idx = (unsigned)menu.portDeviceIndex[port];
+    if (idx >= info[port].num_types) return;
+    SetLibretroPortDevice(port, info[port].types[idx].id);
+}
+
+void BuildLibretroMenuControllers(LibretroMenu* m) {
+    if (!m || !m->controllersMenu) return;
+    nk_console_free_children(m->controllersMenu);
+
+    nk_console_button_set_symbol(
+        nk_console_button_onclick(m->controllersMenu, "Controllers", &nk_console_button_back),
+        NK_SYMBOL_TRIANGLE_UP);
+
+    unsigned count = 0;
+    const struct retro_controller_info* info = GetLibretroControllerInfo(&count);
+    if (!info || count == 0) {
+        m->controllersMenu->visible = nk_false;
+        return;
+    }
+
+    bool anyWidget = false;
+    for (unsigned port = 0; port < count && port < 16; port++) {
+        if (info[port].num_types <= 1) continue;
+
+        char options[512];
+        options[0] = '\0';
+        for (unsigned i = 0; i < info[port].num_types; i++) {
+            if (i > 0) strncat(options, "|", sizeof(options) - strlen(options) - 1);
+            strncat(options, info[port].types[i].desc, sizeof(options) - strlen(options) - 1);
+        }
+
+        unsigned currentDevice = GetLibretroPortDevice(port);
+        m->portDeviceIndex[port] = 0;
+        for (unsigned i = 0; i < info[port].num_types; i++) {
+            if (info[port].types[i].id == currentDevice) {
+                m->portDeviceIndex[port] = (int)i;
+                break;
+            }
+        }
+
+        nk_console* widget = nk_console_combobox(m->controllersMenu,
+            TextFormat("Port %u", port + 1), options, '|', &m->portDeviceIndex[port]);
+        nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
+            LibretroMenuPortDeviceChanged, (void*)(uintptr_t)port, NULL);
+        anyWidget = true;
+    }
+
+    m->controllersMenu->visible = (nk_bool)anyWidget;
+}
+
 static void LibretroMenuUpdateConfig(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return;
@@ -2376,6 +2447,9 @@ static void UpdateLibretroMenuVisibility(void) {
     } else if (menu.optionsMenu) {
         menu.optionsMenu->visible = nk_false;
     }
+    if (menu.controllersMenu && !IsLibretroReady()) {
+        menu.controllersMenu->visible = nk_false;
+    }
     if (menu.saveStateButton) {
         menu.saveStateButton->parent->visible = gameReady;
     }
@@ -2457,6 +2531,7 @@ void UpdateLibretroMenu(void) {// If there is no menu, skip.
             LIBRETRO.core.options_update_display_callback();
         }
         BuildLibretroMenuOptions(&menu);
+        BuildLibretroMenuControllers(&menu);
         LIBRETRO.core.variablesVisibilityDirty = false;
         lastBuiltVariableCount = LIBRETRO.core.variableCount;
         TextCopy(lastBuiltCoreName, LIBRETRO.core.libraryName);
