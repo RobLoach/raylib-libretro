@@ -153,7 +153,6 @@ typedef struct {
     float rewindTimer;  // seconds accumulated toward the next rewind capture/step
     bool muted;
     bool pendingMenuOpen;
-    float savedVolume;  // volume saved before fast-forward halves it
 } AppData;
 
 // Breadcrumb logging through startup. On Android these go to logcat (and the
@@ -592,10 +591,10 @@ bool Update(void* userData) {
                 KeyboardKey slowMotionKey = LibretroHotkeyToKeyboardKey(data->menu->hotkeys[LIBRETRO_HOTKEY_SLOW_MOTION].key);
                 if (IsKeyDown(key) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
                     if (IsKeyPressed(key) || LibretroHotkeyGPPressed(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
-                        // Halve the volume during fast-forward to soften the
-                        // sped-up audio and ring-buffer overrun crackle.
-                        data->savedVolume = LIBRETRO.volume;
-                        SetLibretroVolume(LIBRETRO.volume * 0.5f);
+                        // Halve audio stream volume during fast-forward without touching
+                        // LIBRETRO.volume so restore is just re-applying the stored value.
+                        if (IsAudioStreamValid(LIBRETRO.core.audioStream))
+                            SetAudioStreamVolume(LIBRETRO.core.audioStream, LIBRETRO.volume * 0.5f);
                         SetLibretroSpeed(data->menu->fastForwardSpeed);
                         SetLibretroMessage("Fast Forward", 1.0);
                     }
@@ -603,7 +602,7 @@ bool Update(void* userData) {
                     // so the single UpdateLibretro() call below runs the extra ticks.
                 }
                 else if (IsKeyReleased(key) || LibretroHotkeyGPReleased(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
-                    SetLibretroVolume(data->savedVolume);
+                    SetLibretroVolume(LIBRETRO.volume);
                     SetLibretroSpeed(1.0f);
                     SetLibretroMessage(NULL, 0.0);
                 }
@@ -768,15 +767,14 @@ bool Update(void* userData) {
         // Mute
         else if (IsKeyPressed(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_MUTE].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_MUTE].gamepad)) {
             if (!data->muted) {
-                data->savedVolume = LIBRETRO.volume;
-                SetLibretroVolume(0.0f);
+                if (IsAudioStreamValid(LIBRETRO.core.audioStream))
+                    SetAudioStreamVolume(LIBRETRO.core.audioStream, 0.0f);
                 data->muted = true;
                 SetLibretroMessage("Mute", 1.0f);
             } else {
-                float vol = data->savedVolume > 0.0f ? data->savedVolume : 1.0f;
-                SetLibretroVolume(vol);
+                SetLibretroVolume(LIBRETRO.volume);
                 data->muted = false;
-                SetLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0);
+                SetLibretroMessage(TextFormat("Volume: %d%%", (int)(LIBRETRO.volume * 10.0f + 0.5f) * 10), 1.0);
             }
         }
 
