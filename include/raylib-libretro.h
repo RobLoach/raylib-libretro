@@ -787,11 +787,18 @@ static bool SetLibretroRumbleState(unsigned port, enum retro_rumble_effect effec
         return false;
     }
     float normalized = (float)strength / 65535.0f;
-    if (effect == RETRO_RUMBLE_STRONG) {
-        LIBRETRO.core.rumbleStrong[port] = normalized;
-    } else {
-        LIBRETRO.core.rumbleWeak[port] = normalized;
+    float* slot = (effect == RETRO_RUMBLE_STRONG)
+        ? &LIBRETRO.core.rumbleStrong[port]
+        : &LIBRETRO.core.rumbleWeak[port];
+
+    // Cores call this every frame, almost always with the value unchanged
+    // (commonly 0). Skip the hardware update when nothing changed so we don't
+    // spam SetGamepadVibration(). The compare is exact: normalized is derived
+    // deterministically from the same integer strength each frame.
+    if (*slot == normalized) {
+        return true;
     }
+    *slot = normalized;
     SetGamepadVibration((int)port, LIBRETRO.core.rumbleStrong[port], LIBRETRO.core.rumbleWeak[port], 3600.0f);
     return true;
 }

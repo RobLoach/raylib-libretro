@@ -77,6 +77,8 @@ typedef struct LibretroMenu {
     nk_console* optionsMenu;              // "Core Options" submenu node
     nk_console* controllersMenu;          // "Controllers" submenu node
     int portDeviceIndex[16];              // per-port combobox selection index
+    char portDeviceOptions[16][512];      // per-port pipe-separated device list (must outlive the combobox)
+    char portDeviceLabel[16][16];         // per-port "Port N" label (must outlive the combobox)
     nk_console* loadGameWidget;
     nk_console* saveStateButton;
     nk_console* loadStateButton;
@@ -176,6 +178,8 @@ void BuildLibretroMenuOptions(LibretroMenu* menu); // Populate "Core Options" wi
 void BuildLibretroMenuControllers(LibretroMenu* menu); // Populate "Controllers" with per-port device comboboxes.
 bool LoadLibretroCoreOptions(void);    // Apply saved core options from config to the loaded core.
 bool SaveLibretroAllSettings(void);    // Save menu settings + core options in a single file write.
+static bool SaveLibretroPortDevices(void); // Persist per-port device selections for the loaded core.
+static bool LoadLibretroPortDevices(void); // Apply saved per-port device selections for the loaded core.
 static Font GetLibretroMenuFont(void);
 
 #if defined(__cplusplus)
@@ -1258,6 +1262,7 @@ static bool MenuLoadGame(const char* gamePath) {
     }
 
     BuildLibretroMenuOptions(&menu);
+    LoadLibretroPortDevices();
     BuildLibretroMenuControllers(&menu);
     HideLibretroMenu();
     MenuLoadGameSRAM();
@@ -2118,11 +2123,13 @@ void BuildLibretroMenuControllers(LibretroMenu* m) {
     for (unsigned port = 0; port < count && port < 16; port++) {
         if (info[port].num_types <= 1) continue;
 
-        char options[512];
+        // nk_console_combobox stores pointers into these strings rather than
+        // copying them, so they must persist for the lifetime of the widget.
+        char* options = m->portDeviceOptions[port];
         options[0] = '\0';
         for (unsigned i = 0; i < info[port].num_types; i++) {
-            if (i > 0) strncat(options, "|", sizeof(options) - strlen(options) - 1);
-            strncat(options, info[port].types[i].desc, sizeof(options) - strlen(options) - 1);
+            if (i > 0) strncat(options, "|", sizeof(m->portDeviceOptions[port]) - strlen(options) - 1);
+            strncat(options, info[port].types[i].desc, sizeof(m->portDeviceOptions[port]) - strlen(options) - 1);
         }
 
         unsigned currentDevice = GetLibretroPortDevice(port);
@@ -2134,8 +2141,9 @@ void BuildLibretroMenuControllers(LibretroMenu* m) {
             }
         }
 
+        TextCopy(m->portDeviceLabel[port], TextFormat("Port %u", port + 1));
         nk_console* widget = nk_console_combobox(m->controllersMenu,
-            TextFormat("Port %u", port + 1), options, '|', &m->portDeviceIndex[port]);
+            m->portDeviceLabel[port], options, '|', &m->portDeviceIndex[port]);
         nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
             LibretroMenuPortDeviceChanged, (void*)(uintptr_t)port, NULL);
         anyWidget = true;
@@ -2255,6 +2263,69 @@ bool LoadLibretroCoreOptions(void) {
 #endif
 }
 
+// Persist the per-port device selections for the current core. These live in a
+// dedicated "<core>.controllers" section, keyed by port, so they survive
+// independently of the core's option values (which occupy the bare "<core>"
+// section and get cleared/rewritten wholesale). Keyed by core because the
+// device ids are core-specific.
+static bool SaveLibretroPortDevices(void) {
+#ifdef RAYLIB_LIBRETRO_CONFIG_H
+    if (!menu.cfg) return false;
+    const char* coreName = LIBRETRO.core.libraryName;
+    if (!coreName || !coreName[0]) return false;
+    unsigned count = 0;
+    const struct retro_controller_info* info = GetLibretroControllerInfo(&count);
+    if (!info || count == 0) return false;
+
+    // Copy the section name into stable storage; rlconfig calls below use
+    // TextFormat for the keys, which rotates the same buffer pool. Sized to hold
+    // the longest possible libraryName (200) plus the suffix without overflow.
+    char section[256];
+    TextCopy(section, TextFormat("%s.controllers", coreName));
+    rlconfig_clear_section(menu.cfg, section);
+    for (unsigned port = 0; port < count && port < 16; port++) {
+        if (info[port].num_types <= 1) continue;
+        rlconfig_set_int(menu.cfg, section, TextFormat("port%u", port), (int)GetLibretroPortDevice(port));
+    }
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool LoadLibretroPortDevices(void) {
+#ifdef RAYLIB_LIBRETRO_CONFIG_H
+    if (!menu.cfg) return false;
+    const char* coreName = LIBRETRO.core.libraryName;
+    if (!coreName || !coreName[0]) return false;
+    unsigned count = 0;
+    const struct retro_controller_info* info = GetLibretroControllerInfo(&count);
+    if (!info || count == 0) return false;
+
+    char section[256];
+    TextCopy(section, TextFormat("%s.controllers", coreName));
+    int loaded = 0;
+    for (unsigned port = 0; port < count && port < 16; port++) {
+        if (info[port].num_types <= 1) continue;
+        int saved = rlconfig_get_int(menu.cfg, section, TextFormat("port%u", port), -1);
+        if (saved < 0) continue;
+        // Only apply a device the core still offers for this port; a core update
+        // may have renamed or dropped the saved device id.
+        for (unsigned i = 0; i < info[port].num_types; i++) {
+            if (info[port].types[i].id == (unsigned)saved) {
+                SetLibretroPortDevice(port, (unsigned)saved);
+                loaded++;
+                break;
+            }
+        }
+    }
+    TraceLog(LOG_INFO, "MENU: Loaded %d controller port device(s) from %s", loaded, RAYLIB_LIBRETRO_CFG_FILE);
+    return loaded > 0;
+#else
+    return false;
+#endif
+}
+
 #ifdef __EMSCRIPTEN__
 EMSCRIPTEN_KEEPALIVE // expose to JS as Module._SaveLibretroAllSettings
 #endif
@@ -2269,6 +2340,7 @@ bool SaveLibretroAllSettings(void) {
             rlconfig_set(menu.cfg, coreName, LIBRETRO.core.variableKeys[i], LIBRETRO.core.variableValues[i]);
         }
     }
+    SaveLibretroPortDevices();
     bool ok = rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
     TraceLog(LOG_INFO, "MENU: Saved all settings to %s", RAYLIB_LIBRETRO_CFG_FILE);
     MenuSaveGameSRAM();
