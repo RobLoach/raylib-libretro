@@ -2263,11 +2263,9 @@ bool LoadLibretroCoreOptions(void) {
 #endif
 }
 
-// Persist the per-port device selections for the current core. These live in a
-// dedicated "<core>.controllers" section, keyed by port, so they survive
-// independently of the core's option values (which occupy the bare "<core>"
-// section and get cleared/rewritten wholesale). Keyed by core because the
-// device ids are core-specific.
+/**
+ * Save the configured port devices to the config in [core.controllers]
+ */
 static bool SaveLibretroPortDevices(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return false;
@@ -2277,9 +2275,6 @@ static bool SaveLibretroPortDevices(void) {
     const struct retro_controller_info* info = GetLibretroControllerInfo(&count);
     if (!info || count == 0) return false;
 
-    // Copy the section name into stable storage; rlconfig calls below use
-    // TextFormat for the keys, which rotates the same buffer pool. Sized to hold
-    // the longest possible libraryName (200) plus the suffix without overflow.
     char section[256];
     TextCopy(section, TextFormat("%s.controllers", coreName));
     rlconfig_clear_section(menu.cfg, section);
@@ -2309,8 +2304,7 @@ static bool LoadLibretroPortDevices(void) {
         if (info[port].num_types <= 1) continue;
         int saved = rlconfig_get_int(menu.cfg, section, TextFormat("port%u", port), -1);
         if (saved < 0) continue;
-        // Only apply a device the core still offers for this port; a core update
-        // may have renamed or dropped the saved device id.
+        // Only apply a device the core still offers for this port; a core update may have renamed or dropped the saved device id.
         for (unsigned i = 0; i < info[port].num_types; i++) {
             if (info[port].types[i].id == (unsigned)saved) {
                 SetLibretroPortDevice(port, (unsigned)saved);
