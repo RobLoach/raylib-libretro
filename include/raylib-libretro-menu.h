@@ -196,10 +196,11 @@ static Font GetLibretroMenuFont(void);
 #include <emscripten.h>
 #include <emscripten/html5.h>
 
-// Push MEMFS -> IDBFS so any writes under /userdata survive a page reload.
-// Called at every commit point (settings save, save state, etc.) because
-// Firefox aggressively kills the JS context on tab close and won't reliably
-// complete an async syncfs queued from pagehide.
+/**
+ * Push the memory file system to IBDFS so that any writes under /userdata are captured.
+ *
+ * This is called at commit points, like when the user is leaving the settings menu, or saving the state.
+ */
 static void LibretroFlushPersistentStorage(void) {
     EM_ASM({
         FS.syncfs(false, function (err) {
@@ -248,9 +249,7 @@ static void LibretroMenuEmscriptenLoadGameClicked(nk_console* widget, void* user
 #define RAYLIB_NUKLEAR_IMPLEMENTATION
 #include "../vendor/raylib-nuklear/include/raylib-nuklear.h"
 
-// rlGetVersion() for the About screen's renderer line. Header-only include
-// (no RLGL_IMPLEMENTATION); the symbol is provided by the linked raylib.
-#include "rlgl.h"
+#include "rlgl.h" // rlGetVersion()
 
 #define NK_GAMEPAD_IMPLEMENTATION
 #define NK_GAMEPAD_RAYLIB
@@ -272,8 +271,9 @@ static void LibretroMenuEmscriptenLoadGameClicked(nk_console* widget, void* user
 #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
 #endif
 
-// App version. Defined by the build (CMake passes the project version); falls
-// back to "dev" for ad-hoc builds that include this header directly.
+/**
+ * The version is set by a define, defaults to DEV.
+ */
 #ifndef RAYLIB_LIBRETRO_VERSION
 #define RAYLIB_LIBRETRO_VERSION "dev"
 #endif
@@ -293,12 +293,16 @@ static void LibretroMenuEmscriptenLoadGameClicked(nk_console* widget, void* user
 #define RAYLIB_LIBRETRO_PLATFORM "Unknown"
 #endif
 
-// Number of increments a float settings slider divides its range into.
+/**
+ * Number of increments a float settings slider divides its range into.
+ */
 #ifndef RAYLIB_LIBRETRO_MENU_SLIDER_STEPS
 #define RAYLIB_LIBRETRO_MENU_SLIDER_STEPS 20.0f
 #endif
 
-// Step size that divides [min, max] into RAYLIB_LIBRETRO_MENU_SLIDER_STEPS steps.
+/**
+ * Step size that divides [min, max] into RAYLIB_LIBRETRO_MENU_SLIDER_STEPS steps.
+ */
 #define RAYLIB_LIBRETRO_MENU_SLIDER_STEP(min, max) (((max) - (min)) / RAYLIB_LIBRETRO_MENU_SLIDER_STEPS)
 
 #if defined(__cplusplus)
@@ -326,6 +330,9 @@ static KeyboardKey LibretroHotkeyToKeyboardKey(nk_rune key) {
     return NuklearKeyToKeyboardKey(special != NK_KEY_NONE ? (nk_rune)special : key);
 }
 
+/**
+ * Menu callback when one of the settings has been changed.
+ */
 static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
@@ -661,8 +668,9 @@ static void SetLibretroMenuStyle(LibretroMenuStyle style) {
     }
 }
 
-// Map the "FPS" combobox index to a SetTargetFPS() value. "Auto" follows the
-// monitor refresh rate; "Unlimited" returns 0 (no cap).
+/**
+ * Make the FPS combobox index to a SetTargetFPS() call. Auto uses the monitor refresh rate.
+ */
 static int LibretroMenuResolveTargetFps(void) {
     switch (menu.fpsIndex) {
         case 1: return 30;
@@ -679,18 +687,18 @@ static int LibretroMenuResolveTargetFps(void) {
     }
 }
 
-// Apply the current VSYNC + FPS selection to the window. Emulation speed is
-// driven by the time accumulator in UpdateLibretro(), so these only govern how
-// often the frontend renders/polls; "Auto" doubles as a busy-loop safety cap
-// when a compositor or driver ignores the vsync hint.
+/**
+ * Apply the mouse cursor show/hide settings.
+ */
 static void LibretroMenuApplyCursorSettings(void) {
     if (menu.active) {
-        ShowCursor();
-        EnableCursor();
-    } else {
-        if (menu.hideCursor) HideCursor(); else ShowCursor();
-        if (menu.lockCursor) DisableCursor(); else EnableCursor();
+        if (menu.hideCursor) ShowCursor();
+        if (menu.lockCursor) EnableCursor();
+        return;
     }
+
+    if (menu.hideCursor) HideCursor();
+    if (menu.lockCursor) DisableCursor();
 }
 
 void ShowLibretroMenu(void) {
@@ -715,6 +723,9 @@ bool IsLibretroMenuShown(void) {
     return menu.active;
 }
 
+/**
+ * Applies the video VSYNC/FPS settings.
+ */
 static void LibretroMenuApplyVideoSettings(void) {
     if (menu.vsync) {
         SetWindowState(FLAG_VSYNC_HINT);
@@ -770,7 +781,9 @@ static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
 #endif
 }
 
-// Human-readable name for raylib's active rendering backend (rlgl.h enum).
+/**
+ * Human-readable name for raylib's active rendering backend (rlgl.h enum).
+ */
 static const char* LibretroMenuRendererName(void) {
     switch (rlGetVersion()) {
         case RL_OPENGL_11:       return "OpenGL 1.1";
@@ -784,7 +797,9 @@ static const char* LibretroMenuRendererName(void) {
     }
 }
 
-// Human-readable name for the core's framebuffer pixel format.
+/**
+ * Human-readable name for the core's framebuffer pixel format.
+ */
 static const char* LibretroMenuPixelFormatName(enum retro_pixel_format fmt) {
     switch (fmt) {
         case RETRO_PIXEL_FORMAT_0RGB1555: return "0RGB1555";
@@ -919,30 +934,17 @@ static void LibretroMenuResetCheatsClicked(nk_console* widget, void* user_data) 
     }
 }
 
-// Fired when the user navigates back from Settings or Core Options. This is
-// the natural commit point: anything the user just touched in those submenus
-// is now part of the loaded state, so write the cfg out and flush IDBFS so
-// the change survives a page reload / tab close on the web.
+/**
+ * Fired when the user navigates back from Settings or Core Options.
+ *
+ * This is the natural commit point: anything the user just touched in those submenus is now part of the loaded state, so write the cfg out and flush IDBFS so the change survives a page reload / tab close on the web.
+ */
 static void MenuCommitSettings(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     NK_UNUSED(user_data);
     LibretroMenuApplyKeyboardPlayer1();
     SaveLibretroAllSettings();
 }
-
-// Close Game has been removed for now, since it's not really needed.
-// static void MenuCloseGameClicked(nk_console* widget, void* user_data) {
-//     NK_UNUSED(widget);
-//     NK_UNUSED(user_data);
-//     if (!IsLibretroReady()) {
-//         return;
-//     }
-//     if (IsLibretroGameReady()) {
-//         UnloadLibretroGame();
-//     }
-//     CloseLibretro();
-//     UpdateLibretroMenuVisibility();
-// }
 
 static void ScanLibretroCoreDirectory(void);
 
@@ -1807,8 +1809,11 @@ static bool LibretroMenuTokenIsFalsy(const char* tok) {
            TextIsEqual(tok, "0");
 }
 
-// Called when a core option combobox selection changes.
-// user_data is the option index cast to (void*).
+/**
+ * Called when a core option combobox selection changes.
+ *
+ * @param user_data The option index cast to (void*).
+ */
 static void LibretroMenuOptionChanged(nk_console* widget, void* user_data) {
     (void)widget;
     unsigned i = (unsigned)(uintptr_t)user_data;
@@ -1821,10 +1826,11 @@ static void LibretroMenuOptionChanged(nk_console* widget, void* user_data) {
     }
 }
 
-// Called when a core option boolean checkbox changes.
-// user_data is the option index cast to (void*). Writes back the actual token
-// the core declared (e.g. "on"/"off", "enabled"/"disabled") rather than
-// assuming a fixed pair, so non-"enabled|disabled" booleans work too.
+/**
+ * Called when a core option boolean checkbox changes.
+ *
+ * @param user_data The option index cast to (void*). Writes back the actual token the core declared (e.g. "on"/"off", "enabled"/"disabled") rather than assuming a fixed pair, so non-"enabled|disabled" booleans work too.
+ */
 static void LibretroMenuOptionCheckboxChanged(nk_console* widget, void* user_data) {
     (void)widget;
     unsigned i = (unsigned)(uintptr_t)user_data;
@@ -1857,9 +1863,11 @@ static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
     return 0;
 }
 
-// Returns true if value is an exact token in the pipe-delimited list (e.g.
-// "a|b|c"). Unlike LibretroMenuFindTokenIndex, this distinguishes "not present"
-// from "present at index 0", so it can validate a saved option value.
+/**
+ * Returns true if value is an exact token in the pipe-delimited list (e.g. "a|b|c").
+ *
+ * Unlike LibretroMenuFindTokenIndex, this distinguishes "not present" from "present at index 0", so it can validate a saved option value.
+ */
 static bool LibretroMenuValueInList(const char* valuesList, const char* value) {
     const char* p = valuesList;
     while (p && *p) {
@@ -1875,8 +1883,11 @@ static bool LibretroMenuValueInList(const char* valuesList, const char* value) {
     return false;
 }
 
-// Returns true if the values are exactly a boolean pair (one truthy, one falsy
-// token in either order) — e.g. "enabled|disabled", "off|on", "true|false".
+/**
+ * Returns true if the values are exactly a boolean pair.
+ *
+ * One truthy, one falsy token in either order, like "enabled|disabled", "off|on", "true|false".
+ */
 static bool LibretroMenuIsBooleanOption(const char* valuesList) {
     if (!valuesList || !*valuesList) return false;
     char tok0[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
@@ -1890,8 +1901,9 @@ static bool LibretroMenuIsBooleanOption(const char* valuesList) {
            (LibretroMenuTokenIsFalsy(tok0)  && LibretroMenuTokenIsTruthy(tok1));
 }
 
-// Returns the registered category index for option i, or -1 if it has no
-// category (or references a category the core never declared — treated flat).
+/**
+ * Returns the registered category index for option i, or -1 if it has no category (or references a category the core never declared — treated flat).
+ */
 static int LibretroMenuOptionCategory(unsigned i) {
     if (LIBRETRO.core.variableCategoryKeys[i][0] == '\0') return -1;
     for (unsigned c = 0; c < LIBRETRO.core.categoryCount; c++) {
@@ -1902,7 +1914,9 @@ static int LibretroMenuOptionCategory(unsigned i) {
     return -1;
 }
 
-// Build the checkbox/combobox widget for option i under the given parent node.
+/**
+ * Build the checkbox/combobox widget for option i under the given parent node.
+ */
 static void LibretroMenuBuildOptionWidget(LibretroMenu* m, nk_console* parent, unsigned i) {
     const char* label = TextLength(LIBRETRO.core.variableLabels[i]) > 0
         ? LIBRETRO.core.variableLabels[i]
@@ -1945,8 +1959,9 @@ static void LibretroMenuResetCoreOptionsClicked(nk_console* widget, void* user_d
     nk_console_navigate_back(widget->parent);
 }
 
-// Append an extension token to the pipe-separated list if it is not already
-// present and there is room. Returns the updated list length.
+/**
+ * Append an extension token to the pipe-separated list if it is not already present and there is room. Returns the updated list length.
+ */
 static unsigned int LibretroMenuAddExtension(char* list, unsigned int len, size_t cap,
                                              const char* tok, unsigned int tokLen) {
     if (tokLen == 0) return len;

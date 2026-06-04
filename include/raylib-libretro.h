@@ -178,7 +178,9 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #define RETRO_DEVICE_JOYPAD_MULTITAP RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_JOYPAD, 1)
 #endif
 
-// Dynamic loading methods.
+/**
+ * Load a symbol from the libretro handle.
+ */
 #define LoadLibretroMethodHandle(V, S) do {\
     function_t func = dylib_proc(LIBRETRO.core.symbols.handle, #S); \
     memcpy(&V, &func, sizeof(func)); \
@@ -187,6 +189,10 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
         return false; \
     }\
 } while (0)
+
+/**
+ * Loads a method from the libretro core handle.
+ */
 #define LoadLibretroMethod(S) LoadLibretroMethodHandle(LIBRETRO.core.symbols.S, S)
 
 /**
