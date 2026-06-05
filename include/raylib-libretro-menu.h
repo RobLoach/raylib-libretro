@@ -136,6 +136,9 @@ typedef struct LibretroMenu {
     char aboutContent[160];
     char aboutExtensions[256];
     nk_rune keyboardControls[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
+    nk_console* corePickerMenu;
+    char pendingGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    char pendingCorePaths[16][512];
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
 #endif
@@ -920,18 +923,17 @@ static bool FindZipInnerExtensionForCore(const char* zipPath, char* outExt) {
 #endif
 }
 
-static const char* FindCoreForGame(const char* gamePath) {
+static int FindCoresForGame(const char* gamePath, char paths[][512], int maxCount) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
-    if (!menu.cfg || !gamePath || !gamePath[0]) return NULL;
+    if (!menu.cfg || !gamePath || !gamePath[0] || !paths || maxCount <= 0) return 0;
 
     const char* gameExt = GetFileExtension(gamePath);
-    if (!gameExt || !gameExt[0]) return NULL;
+    if (!gameExt || !gameExt[0]) return 0;
     if (gameExt[0] == '.') gameExt++;
 
     char gameExtLower[32] = {0};
     TextCopy(gameExtLower, TextToLower(gameExt));
 
-    // If the path is a .zip, look up the actual ROM extension from inside.
     if (TextIsEqual(gameExtLower, "zip")) {
         char zipInner[32] = {0};
         if (FindZipInnerExtensionForCore(gamePath, zipInner)) {
@@ -939,8 +941,9 @@ static const char* FindCoreForGame(const char* gamePath) {
         }
     }
 
+    int found = 0;
     int count = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count && found < maxCount; i++) {
         char keyExts[64], keyPath[64];
         TextCopy(keyExts, TextFormat("core_%d_extensions", i));
         TextCopy(keyPath, TextFormat("core_%d_path", i));
@@ -952,12 +955,16 @@ static const char* FindCoreForGame(const char* gamePath) {
         char** extList = TextSplit(extensions, '|', &extCount);
         for (int j = 0; j < extCount; j++) {
             if (TextIsEqual(extList[j], gameExtLower)) {
-                return rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath);
+                const char* corePath = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath);
+                if (corePath) TextCopy(paths[found++], corePath);
+                break;
             }
         }
     }
+    return found;
+#else
+    return 0;
 #endif
-    return NULL;
 }
 
 static bool MenuInitCore(const char* corePath) {
@@ -1024,6 +1031,54 @@ static bool MenuSaveGameSRAM(void) {
     return ok;
 }
 
+static bool MenuDoLoadGame(const char* gamePath) {
+    if (!LoadLibretroGameFromPhysFS(gamePath)) {
+        if (IsLibretroGameRequired()) {
+            nk_console_show_message(menu.console, "Failed to load game");
+            return false;
+        }
+        if (!LoadLibretroGame(NULL)) {
+            nk_console_show_message(menu.console, "Failed to load core");
+            return false;
+        }
+    }
+    BuildLibretroMenuOptions(&menu);
+    LoadLibretroPortDevices();
+    BuildLibretroMenuControllers(&menu);
+    HideLibretroMenu();
+    MenuLoadGameSRAM();
+    return true;
+}
+
+static void MenuCorePickerLoad(nk_console* widget, void* user_data) {
+    (void)widget;
+    const char* corePath = (const char*)user_data;
+    if (!MenuInitCore(corePath)) {
+        nk_console_show_message(menu.console, "Failed to load core");
+        ShowLibretroMenu();
+        return;
+    }
+    if (!MenuDoLoadGame(menu.pendingGamePath)) {
+        ShowLibretroMenu();
+    }
+}
+
+static void MenuShowCorePicker(const char* gamePath, int coreCount) {
+    TextCopy(menu.pendingGamePath, gamePath);
+    nk_console_free_children(menu.corePickerMenu);
+    nk_console_button_set_symbol(
+        nk_console_button_onclick(menu.corePickerMenu, "Select Core", &nk_console_button_back),
+        NK_SYMBOL_TRIANGLE_UP);
+    for (int i = 0; i < coreCount; i++) {
+        nk_console_button_onclick_handler(menu.corePickerMenu,
+            GetFileNameWithoutExt(menu.pendingCorePaths[i]),
+            MenuCorePickerLoad, menu.pendingCorePaths[i], NULL);
+    }
+    ShowLibretroMenu();
+    nk_console_set_active_parent(menu.corePickerMenu);
+    nk_console_set_active_widget(nk_console_find_first_selectable(menu.corePickerMenu));
+}
+
 static bool MenuLoadGame(const char* gamePath) {
     BeginDrawing();
         ClearBackground(BLACK);
@@ -1041,38 +1096,25 @@ static bool MenuLoadGame(const char* gamePath) {
         UnloadLibretroGame();
     }
 
-    // Detect a workable core.
-    const char* corePath = FindCoreForGame(gamePath);
-    if (!corePath) {
+    // Find all cores that support this file type.
+    int coreCount = FindCoresForGame(gamePath, menu.pendingCorePaths, 16);
+    if (coreCount == 0) {
         nk_console_show_message(menu.console, TextFormat("No core found for %s", GetFileName(gamePath)));
         return false;
     }
 
-    // Load the core
-    if (!MenuInitCore(corePath)) {
+    if (coreCount > 1) {
+        MenuShowCorePicker(gamePath, coreCount);
+        return true;
+    }
+
+    // Single core: load immediately.
+    if (!MenuInitCore(menu.pendingCorePaths[0])) {
         nk_console_show_message(menu.console, "Failed to load core");
         return false;
     }
 
-    // Load the game (PhysFS-aware so .zip archives Just Work).
-    if (!LoadLibretroGameFromPhysFS(gamePath)) {
-        if (IsLibretroGameRequired()) {
-            nk_console_show_message(menu.console, "Failed to load game");
-            return false;
-        }
-        // Core supports running without content; fall back to standalone.
-        if (!LoadLibretroGame(NULL)) {
-            nk_console_show_message(menu.console, "Failed to load core");
-            return false;
-        }
-    }
-
-    BuildLibretroMenuOptions(&menu);
-    LoadLibretroPortDevices();
-    BuildLibretroMenuControllers(&menu);
-    HideLibretroMenu();
-    MenuLoadGameSRAM();
-    return true;
+    return MenuDoLoadGame(gamePath);
 }
 
 static void MenuGameFileChanged(nk_console* widget, void* user_data) {
@@ -1520,6 +1562,10 @@ LibretroMenu* InitLibretroMenu(void) {
     nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuQuitClicked);
     nk_console_button_set_symbol(quitButton, NK_SYMBOL_X);
 #endif
+
+    // Core picker (hidden; shown dynamically when a game matches multiple cores)
+    menu.corePickerMenu = nk_console_button(menu.console, "Select Core");
+    menu.corePickerMenu->visible = nk_false;
 
     ShowLibretroMenu();
     return &menu;
