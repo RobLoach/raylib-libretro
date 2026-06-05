@@ -64,6 +64,34 @@ typedef enum LibretroMenuCombo {
     LIBRETRO_MENU_COMBO_COUNT,
 } LibretroMenuCombo;
 
+typedef struct LibretroMenuBinding {
+    nk_rune key;
+    enum nk_gamepad_button gamepad;
+    const char* name;
+    nk_rune defaultKey;
+} LibretroMenuBinding;
+
+typedef enum LibretroHotkey {
+    LIBRETRO_HOTKEY_SCREENSHOT,
+    LIBRETRO_HOTKEY_REWIND,
+    LIBRETRO_HOTKEY_MENU,
+    LIBRETRO_HOTKEY_SAVE_STATE,
+    LIBRETRO_HOTKEY_LOAD_STATE,
+    LIBRETRO_HOTKEY_PREV_SLOT,
+    LIBRETRO_HOTKEY_NEXT_SLOT,
+    LIBRETRO_HOTKEY_FULLSCREEN,
+    LIBRETRO_HOTKEY_PREV_SHADER,
+    LIBRETRO_HOTKEY_NEXT_SHADER,
+    LIBRETRO_HOTKEY_RESET,
+    LIBRETRO_HOTKEY_QUIT,
+    LIBRETRO_HOTKEY_VOLUME_UP,
+    LIBRETRO_HOTKEY_VOLUME_DOWN,
+    LIBRETRO_HOTKEY_MUTE,
+    LIBRETRO_HOTKEY_FAST_FORWARD,
+    LIBRETRO_HOTKEY_SLOW_MOTION,
+    LIBRETRO_HOTKEY_COUNT,
+} LibretroHotkey;
+
 typedef struct LibretroMenu {
     struct nk_context* ctx;
     Font font;
@@ -87,56 +115,15 @@ typedef struct LibretroMenu {
     nk_console* cheatsMenuButton;
     //nk_console* closeGameButton;
     int shaderSelectedIndex;
-    int textureFilterIndex;
     int themeSelectedIndex;
-    float volumeSelected;
     bool rewindEnabled;
     int menuComboIndex;
-    nk_rune keyScreenshot;
-    nk_rune keyRewind;
-    nk_rune keyMenu;
-    nk_rune keySaveState;
-    nk_rune keyLoadState;
-    nk_rune keyPrevSlot;
-    nk_rune keyNextSlot;
+    LibretroMenuBinding hotkeys[LIBRETRO_HOTKEY_COUNT];
     int saveSlotIndex;
-    nk_rune keyFullscreen;
-    nk_rune keyPrevShader;
-    nk_rune keyNextShader;
-    nk_rune keyReset;
-    nk_rune keyQuit;
-    nk_rune keyVolumeUp;
-    nk_rune keyVolumeDown;
-    nk_rune keyMute;
-    nk_rune keyFastForward;
     float fastForwardSpeed;
-    nk_rune keySlowMotion;
     float slowMotionSpeed;
-    enum nk_gamepad_button gamepadScreenshot;
-    enum nk_gamepad_button gamepadRewind;
-    enum nk_gamepad_button gamepadMenu;
-    enum nk_gamepad_button gamepadSaveState;
-    enum nk_gamepad_button gamepadLoadState;
-    enum nk_gamepad_button gamepadPrevSlot;
-    enum nk_gamepad_button gamepadNextSlot;
-    enum nk_gamepad_button gamepadFullscreen;
-    enum nk_gamepad_button gamepadPrevShader;
-    enum nk_gamepad_button gamepadNextShader;
-    enum nk_gamepad_button gamepadReset;
-    enum nk_gamepad_button gamepadQuit;
-    enum nk_gamepad_button gamepadVolumeUp;
-    enum nk_gamepad_button gamepadVolumeDown;
-    enum nk_gamepad_button gamepadMute;
-    enum nk_gamepad_button gamepadFastForward;
-    enum nk_gamepad_button gamepadSlowMotion;
     int optionSelectedIndices[LIBRETRO_MAX_CORE_VARIABLES];    // per-option combobox index
     nk_bool optionCheckboxValues[LIBRETRO_MAX_CORE_VARIABLES]; // per-option checkbox state for enabled/disabled options
-    char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char systemDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char playlistsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char fileBrowserStartDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
@@ -309,7 +296,117 @@ static void LibretroMenuEmscriptenLoadGameClicked(nk_console* widget, void* user
 extern "C" {
 #endif
 
-static LibretroMenu menu = {0};
+static LibretroMenu menu = {
+    .themeSelectedIndex = LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
+    .vsync              = nk_true,
+    .fastForwardSpeed   = 3.0f,
+    .slowMotionSpeed    = 0.5f,
+    .menuComboIndex     = LIBRETRO_MENU_COMBO_SELECT_START,
+    .hotkeys = {
+        [LIBRETRO_HOTKEY_SCREENSHOT] = {
+            .name = "Screenshot",
+            .defaultKey = NK_CONSOLE_KEY_F8,
+            .key = NK_CONSOLE_KEY_F8,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_REWIND] = {
+            .name = "Rewind",
+            .defaultKey = (nk_rune)'R',
+            .key = (nk_rune)'R',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_MENU] = {
+            .name = "Menu",
+            .defaultKey = NK_CONSOLE_KEY_ESCAPE,
+            .key = NK_CONSOLE_KEY_ESCAPE,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_SAVE_STATE] = {
+            .name = "Save State",
+            .defaultKey = NK_CONSOLE_KEY_F2,
+            .key = NK_CONSOLE_KEY_F2,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_LOAD_STATE] = {
+            .name = "Load State",
+            .defaultKey = NK_CONSOLE_KEY_F4,
+            .key = NK_CONSOLE_KEY_F4,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_PREV_SLOT] = {
+            .name = "Prev Slot",
+            .defaultKey = NK_CONSOLE_KEY_NONE,
+            .key = NK_CONSOLE_KEY_NONE,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_NEXT_SLOT] = {
+            .name = "Next Slot",
+            .defaultKey = NK_CONSOLE_KEY_NONE,
+            .key = NK_CONSOLE_KEY_NONE,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_FULLSCREEN]   = {
+            .name = "Fullscreen",
+            .defaultKey = NK_CONSOLE_KEY_F11,
+            .key = NK_CONSOLE_KEY_F11,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_PREV_SHADER]  = {
+            .name = "Previous Shader",
+            .defaultKey = NK_CONSOLE_KEY_F9,
+            .key = NK_CONSOLE_KEY_F9,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_NEXT_SHADER] = {
+            .name = "Next Shader",
+            .defaultKey = NK_CONSOLE_KEY_F10,
+            .key = NK_CONSOLE_KEY_F10,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_RESET] = {
+            .name = "Reset",
+            .defaultKey = NK_CONSOLE_KEY_NONE,
+            .key = NK_CONSOLE_KEY_NONE,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_QUIT] = {
+            .name = "Quit",
+            .defaultKey = NK_CONSOLE_KEY_NONE,
+            .key = NK_CONSOLE_KEY_NONE,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_VOLUME_UP] = {
+            .name = "Volume Up",
+            .defaultKey = (nk_rune)'=',
+            .key = (nk_rune)'=',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_VOLUME_DOWN]  = {
+            .name = "Volume Down",
+            .defaultKey = (nk_rune)'-',
+            .key = (nk_rune)'-',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_MUTE] = {
+            .name = "Mute",
+            .defaultKey = (nk_rune)'M',
+            .key = (nk_rune)'M',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_FAST_FORWARD] = {
+            .name = "Fast Forward",
+            .defaultKey = (nk_rune)'F',
+            .key = (nk_rune)'F',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_SLOW_MOTION]  = {
+            .name = "Slow Motion",
+            .defaultKey = (nk_rune)'G',
+            .key = (nk_rune)'G',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+    },
+};
 
 static void SetLibretroMenuStyle(LibretroMenuStyle style);
 static bool IsLibretroMenuReady(void);
@@ -371,12 +468,14 @@ static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
     (void)user_data;
     SetActiveLibretroShader((LibretroShaderType)menu.shaderSelectedIndex);
     SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
-    SetLibretroVolume(menu.volumeSelected);
-    if (LIBRETRO.textureFilter != menu.textureFilterIndex) {
-        LIBRETRO.textureFilter = menu.textureFilterIndex;
-        InitLibretroVideo();
-    }
-    SetExitKey(LibretroHotkeyToKeyboardKey(menu.keyQuit));
+    SetLibretroVolume(LIBRETRO.volume);
+    SetExitKey(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_QUIT].key));
+}
+
+static void LibretroMenuTextureFilterChanged(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    InitLibretroVideo();
 }
 
 static LibretroMenu* GetLibretroMenu(void) {
@@ -980,21 +1079,15 @@ static void MenuCommitSettings(nk_console* widget, void* user_data) {
 
 static void ScanLibretroCoreDirectory(void);
 
-static void LibretroApplyDirectories(void) {
-    TextCopy(LIBRETRO.coreDirectory,            menu.coreDirectory);
-    TextCopy(LIBRETRO.saveDirectory,            menu.saveDirectory);
-    TextCopy(LIBRETRO.coreAssetsDirectory,      menu.coreAssetsDirectory);
-    TextCopy(LIBRETRO.systemDirectory,          menu.systemDirectory);
-    TextCopy(LIBRETRO.playlistsDirectory,       menu.playlistsDirectory);
-    TextCopy(LIBRETRO.fileBrowserStartDirectory, menu.fileBrowserStartDirectory);
-    if (menu.saveDirectory[0] != '\0' && !DirectoryExists(menu.saveDirectory)) {
-        MakeDirectory(menu.saveDirectory);
+static void LibretroMenuEnsureSaveDir(void) {
+    if (LIBRETRO.saveDirectory[0] != '\0' && !DirectoryExists(LIBRETRO.saveDirectory)) {
+        MakeDirectory(LIBRETRO.saveDirectory);
     }
 }
 
 static void MenuDirChanged(nk_console* widget, void* user_data) {
     LibretroMenuSettingChanged(widget, user_data);
-    LibretroApplyDirectories();
+    LibretroMenuEnsureSaveDir();
 }
 
 static void MenuCoreDirChanged(nk_console* widget, void* user_data) {
@@ -1005,8 +1098,8 @@ static void MenuCoreDirChanged(nk_console* widget, void* user_data) {
 static void MenuContentDirChanged(nk_console* widget, void* user_data) {
     MenuDirChanged(widget, user_data);
 #ifndef __EMSCRIPTEN__
-    if (menu.loadGameWidget && menu.fileBrowserStartDirectory[0] != '\0') {
-        nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
+    if (menu.loadGameWidget && LIBRETRO.fileBrowserStartDirectory[0] != '\0') {
+        nk_console_file_set_directory(menu.loadGameWidget, LIBRETRO.fileBrowserStartDirectory);
     }
 #endif
 }
@@ -1032,7 +1125,7 @@ static int LibretroCoreDirectoryFileCount(const char* dir) {
 static void ScanLibretroCoreDirectory(void) {
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return;
-    const char* dir = menu.coreDirectory;
+    const char* dir = LIBRETRO.coreDirectory;
     if (!dir || !dir[0]) return;
 
     // If a core is already loaded we can't peek at other cores; just invalidate
@@ -1188,10 +1281,9 @@ static const char* FindCoreForGame(const char* gamePath) {
 }
 
 static bool MenuInitCore(const char* corePath) {
-    LibretroApplyDirectories();
     if (!InitLibretro(corePath)) return false;
     LoadLibretroCoreOptions();
-    SetLibretroVolume(menu.volumeSelected);
+    SetLibretroVolume(LIBRETRO.volume);
     menu.cheatIndex = 0;
     menu.cheatBuffer[0] = '\0';
     menu.cheatList[0] = '\0';
@@ -1338,39 +1430,6 @@ static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
 static void LibretroMenuUpdateLoadGameFilter(LibretroMenu* m);
 
 /**
- * Maps each hot key in the Keys settings to the menu fields.
- */
-typedef struct LibretroMenuHotkey {
-    const char* name; /** The name of the hot key, as shown in the menu. */
-    enum nk_gamepad_button* gamepad; /** The gamepad button that's currently assigned. */
-    nk_rune* key; /** The keyboard key that's currently assigned. */
-    nk_rune default_key; /** The initial keyboard binding that will be set. Gamepad button defaults are ignored. */
-} LibretroMenuHotkey;
-
-/**
- * Set of menu hot keys that will be built into input widgets in the Hot Keys menu.
- */
-static const LibretroMenuHotkey LibretroMenuHotkeys[] = {
-    { "Screenshot",      &menu.gamepadScreenshot,  &menu.keyScreenshot,  NK_CONSOLE_KEY_F8 },
-    { "Rewind",          &menu.gamepadRewind,      &menu.keyRewind,      (nk_rune)'R' },
-    { "Menu",            &menu.gamepadMenu,        &menu.keyMenu,        NK_CONSOLE_KEY_ESCAPE },
-    { "Save State",      &menu.gamepadSaveState,   &menu.keySaveState,   NK_CONSOLE_KEY_F2 },
-    { "Load State",      &menu.gamepadLoadState,   &menu.keyLoadState,   NK_CONSOLE_KEY_F4 },
-    { "Prev Slot",       &menu.gamepadPrevSlot,    &menu.keyPrevSlot,    NK_CONSOLE_KEY_NONE },
-    { "Next Slot",       &menu.gamepadNextSlot,    &menu.keyNextSlot,    NK_CONSOLE_KEY_NONE },
-    { "Fullscreen",      &menu.gamepadFullscreen,  &menu.keyFullscreen,  NK_CONSOLE_KEY_F11 },
-    { "Previous Shader", &menu.gamepadPrevShader,  &menu.keyPrevShader,  NK_CONSOLE_KEY_F9 },
-    { "Next Shader",     &menu.gamepadNextShader,  &menu.keyNextShader,  NK_CONSOLE_KEY_F10 },
-    { "Reset",           &menu.gamepadReset,       &menu.keyReset,       NK_CONSOLE_KEY_NONE },
-    { "Quit",            &menu.gamepadQuit,        &menu.keyQuit,        NK_CONSOLE_KEY_NONE },
-    { "Volume Up",       &menu.gamepadVolumeUp,    &menu.keyVolumeUp,    (nk_rune)'=' },
-    { "Volume Down",     &menu.gamepadVolumeDown,  &menu.keyVolumeDown,  (nk_rune)'-' },
-    { "Mute",            &menu.gamepadMute,        &menu.keyMute,        (nk_rune)'M' },
-    { "Fast Forward",    &menu.gamepadFastForward, &menu.keyFastForward, (nk_rune)'F' },
-    { "Slow Motion",     &menu.gamepadSlowMotion,  &menu.keySlowMotion,  (nk_rune)'G' },
-};
-
-/**
  * Event that's triggered when a menu hot key was changed.
  */
 static void LibretroMenuHotkeyChanged(nk_console* widget, void* user_data) {
@@ -1387,58 +1446,27 @@ static void LibretroMenuHotkeyChanged(nk_console* widget, void* user_data) {
     }
 
     // Check if there were any conflicts with other keys/buttons.
-    for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
-        const LibretroMenuHotkey* hk = &LibretroMenuHotkeys[i];
-
+    for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
         // Skip the binding that was just changed (matched by output pointer).
-        if (hk->gamepad == data->out_gamepad_button || hk->key == data->out_key) {
+        if (&menu.hotkeys[i].gamepad == data->out_gamepad_button || &menu.hotkeys[i].key == data->out_key) {
             continue;
         }
 
         // Check if the key conflicts.
-        if (isKey && hk->key != NULL && *hk->key == *data->out_key) {
-            *hk->key = NK_CONSOLE_KEY_NONE; // Unbind it.
-            nk_console_show_message(menu.console,
-                TextFormat("%s has been unbound", hk->name));
+        if (isKey && menu.hotkeys[i].key == *data->out_key) {
+            menu.hotkeys[i].key = NK_CONSOLE_KEY_NONE;
+            nk_console_show_message(menu.console, TextFormat("%s has been unbound", menu.hotkeys[i].name));
         }
         // Check if the gamepad button conflicts.
-        else if (isGamepad && hk->gamepad != NULL && *hk->gamepad == *data->out_gamepad_button) {
-            *hk->gamepad = NK_GAMEPAD_BUTTON_INVALID; // Unbind it.
-            nk_console_show_message(menu.console,
-                TextFormat("%s has been unbound", hk->name));
+        else if (isGamepad && menu.hotkeys[i].gamepad == *data->out_gamepad_button) {
+            menu.hotkeys[i].gamepad = NK_GAMEPAD_BUTTON_INVALID;
+            nk_console_show_message(menu.console, TextFormat("%s has been unbound", menu.hotkeys[i].name));
         }
     }
-}
-
-/**
- * Creates a Hot Key widget in the Hot Key menu.
- */
-static nk_console* LibretroMenuAddHotkey(nk_console* parent, const char* label, enum nk_gamepad_button* gamepad, nk_rune* key) {
-    nk_console* widget = nk_console_input(parent, label, -1, NULL, gamepad, key, NULL);
-    nk_console_add_event(widget, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuHotkeyChanged);
-    return widget;
 }
 
 LibretroMenu* InitLibretroMenu(void) {
-    int fontSize = 13;
-    int screenWidth = GetScreenWidth();
-
-    // Create the menu.
-    menu = (LibretroMenu){0};
-    menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA;
-    menu.volumeSelected = 1.0f;
-    menu.vsync = nk_true;
-    menu.fpsIndex = 0; // Auto
-    menu.saveSlotIndex  = 0;
-    menu.fastForwardSpeed = 3.0f;
-    menu.menuComboIndex = LIBRETRO_MENU_COMBO_SELECT_START;
-    menu.slowMotionSpeed = 0.5f;
-
-    // Default hotkey bindings.
-    for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
-        *LibretroMenuHotkeys[i].key = LibretroMenuHotkeys[i].default_key;
-        *LibretroMenuHotkeys[i].gamepad = NK_GAMEPAD_BUTTON_INVALID;
-    }
+    const int fontSize = 13;
 
     // Font
     menu.font = LoadFontFromNuklear(fontSize);
@@ -1477,20 +1505,20 @@ LibretroMenu* InitLibretroMenu(void) {
 #endif
 
     // Directories
-    TextCopy(menu.coreDirectory, "cores");
-    TextCopy(menu.saveDirectory, "saves");
-    TextCopy(menu.systemDirectory, "system");
+    TextCopy(LIBRETRO.coreDirectory, "cores");
+    TextCopy(LIBRETRO.saveDirectory, "saves");
+    TextCopy(LIBRETRO.systemDirectory, "system");
 #ifdef __EMSCRIPTEN__
     // Default save/system directories point at the IDBFS mount so they
     // persist across page reloads. The user can still override via the
     // Settings menu; saved values take precedence on subsequent runs.
-    TextCopy(menu.saveDirectory,   "/userdata/saves");
-    TextCopy(menu.systemDirectory, "/userdata/system");
+    TextCopy(LIBRETRO.saveDirectory,   "/userdata/saves");
+    TextCopy(LIBRETRO.systemDirectory, "/userdata/system");
 #endif
 
     // Menu Settings
     LoadLibretroMenuSettings();
-    LibretroApplyDirectories();
+    LibretroMenuEnsureSaveDir();
     ScanLibretroCoreDirectory();
 
     // Apply VSYNC/FPS even when no config was loaded, so the frame cap is always
@@ -1548,8 +1576,8 @@ LibretroMenu* InitLibretroMenu(void) {
 #else
     menu.loadGameWidget = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
     nk_console_add_event_handler(menu.loadGameWidget, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
-    if (menu.fileBrowserStartDirectory[0] != '\0') {
-        nk_console_file_set_directory(menu.loadGameWidget, menu.fileBrowserStartDirectory);
+    if (LIBRETRO.fileBrowserStartDirectory[0] != '\0') {
+        nk_console_file_set_directory(menu.loadGameWidget, LIBRETRO.fileBrowserStartDirectory);
     }
 #endif
     LibretroMenuUpdateLoadGameFilter(&menu);
@@ -1578,7 +1606,7 @@ LibretroMenu* InitLibretroMenu(void) {
                 NK_SYMBOL_TRIANGLE_UP);
 
             // Volume
-            nk_console* volume = nk_console_slider_float(graphicsMenu, "Volume", 0.0f, &menu.volumeSelected, 1.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.0f, 1.0f));
+            nk_console* volume = nk_console_slider_float(graphicsMenu, "Volume", 0.0f, &LIBRETRO.volume, 1.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.0f, 1.0f));
             nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
             nk_console* fullscreenCheckbox = nk_console_checkbox(graphicsMenu, "Fullscreen", &menu.fullscreen);
@@ -1607,8 +1635,8 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* shaderCombo = nk_console_combobox(graphicsMenu, "Shader", shaderNames, '|', &menu.shaderSelectedIndex);
             nk_console_add_event_handler(shaderCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
-            nk_console* textureFilter = nk_console_combobox(graphicsMenu, "Texture Filter", "None|Bilinear|Trilinear|Anisotropic 4x|Anisotropic 8x|Anisotropic 16x", '|', &menu.textureFilterIndex);
-            nk_console_add_event_handler(textureFilter, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            nk_console* textureFilter = nk_console_combobox(graphicsMenu, "Texture Filter", "None|Bilinear|Trilinear|Anisotropic 4x|Anisotropic 8x|Anisotropic 16x", '|', &LIBRETRO.textureFilter);
+            nk_console_add_event_handler(textureFilter, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuTextureFilterChanged, NULL, NULL);
 
             nk_console* rotation = nk_console_combobox(graphicsMenu, "Rotation", "0 Degrees|90 Degrees|180 Degrees|270 Degrees", '|', &LIBRETRO.core.rotation);
             rotation->tooltip = "Override the display rotation for the running game.";
@@ -1645,21 +1673,25 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_textedit(gameplayMenu, "Username", LIBRETRO.username, 128);
         }
 
-        // Keys
+        // Hot Keys
         {
-            nk_console* keysMenu = nk_console_button(settings, "Keys");
+            nk_console* keysMenu = nk_console_button(settings, "Hot Keys");
             nk_console_button_set_symbol(keysMenu, NK_SYMBOL_TRIANGLE_RIGHT);
             nk_console_add_event(keysMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
-                nk_console_button_onclick(keysMenu, "Keys", &nk_console_button_back),
+                nk_console_button_onclick(keysMenu, "Hot Keys", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
+
+            // Menu Controller Combo
             nk_console* menuCombo = nk_console_combobox(keysMenu, "Menu Controller Combo",
                 "None|Select + Start|L1 + R1|L2 + R2|L3 + R3|Down + Select",
                 '|', &menu.menuComboIndex);
             menuCombo->tooltip = "Controller button combination to toggle the menu";
-            for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
-                const LibretroMenuHotkey* hk = &LibretroMenuHotkeys[i];
-                LibretroMenuAddHotkey(keysMenu, hk->name, hk->gamepad, hk->key);
+
+            // Keys
+            for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
+                nk_console* widget = nk_console_input(keysMenu, menu.hotkeys[i].name, -1, NULL, &menu.hotkeys[i].gamepad, &menu.hotkeys[i].key, NULL);
+                nk_console_add_event(widget, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuHotkeyChanged);
             }
         }
 
@@ -1698,22 +1730,22 @@ LibretroMenu* InitLibretroMenu(void) {
                 nk_console_button_onclick(dirMenu, "Directories", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
 
-            nk_console* coreDirectory = nk_console_dir(dirMenu, "Cores", menu.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* coreDirectory = nk_console_dir(dirMenu, "Cores", LIBRETRO.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuCoreDirChanged, NULL, NULL);
 
-            nk_console* saveDirectory = nk_console_dir(dirMenu, "Saves", menu.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* saveDirectory = nk_console_dir(dirMenu, "Saves", LIBRETRO.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(saveDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* coreAssetsDirectory = nk_console_dir(dirMenu, "Assets", menu.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* coreAssetsDirectory = nk_console_dir(dirMenu, "Assets", LIBRETRO.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreAssetsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* systemDirectory = nk_console_dir(dirMenu, "System", menu.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* systemDirectory = nk_console_dir(dirMenu, "System", LIBRETRO.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(systemDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* playlistsDirectory = nk_console_dir(dirMenu, "Playlists", menu.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* playlistsDirectory = nk_console_dir(dirMenu, "Playlists", LIBRETRO.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(playlistsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
-            nk_console* fileBrowserStartDirectory = nk_console_dir(dirMenu, "Content", menu.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+            nk_console* fileBrowserStartDirectory = nk_console_dir(dirMenu, "Content", LIBRETRO.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuContentDirChanged, NULL, NULL);
         }
 
@@ -2192,9 +2224,9 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "vsync", (int)menu.vsync);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "fps", menu.fpsIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "shader", menu.shaderSelectedIndex);
-    rlconfig_set_int(menu.cfg, "raylib-libretro", "textureFilter", menu.textureFilterIndex);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "textureFilter", LIBRETRO.textureFilter);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
-    rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", menu.volumeSelected);
+    rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", LIBRETRO.volume);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "analogToDpad", LIBRETRO.analogToDpadIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "menuCombo", menu.menuComboIndex);
@@ -2209,19 +2241,18 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_float(menu.cfg, "raylib-libretro", "slowMotionSpeed", menu.slowMotionSpeed);
 
     // Hotkey bindings (keyboard + gamepad), keyed by name as "key<Name>"/"gamepad<Name>".
-    for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
-        const LibretroMenuHotkey* hk = &LibretroMenuHotkeys[i];
-        const char* shortName = TextReplace(hk->name, " ", "");
-        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("key%s", shortName), (int)*hk->key);
-        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("gamepad%s", shortName), (int)*hk->gamepad);
+    for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
+        const char* shortName = TextReplace(menu.hotkeys[i].name, " ", "");
+        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("key%s", shortName), (int)menu.hotkeys[i].key);
+        rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("gamepad%s", shortName), (int)menu.hotkeys[i].gamepad);
     }
 
-    rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(menu.coreDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(menu.saveDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(menu.coreAssetsDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroResolveAbsoluteDirectory(menu.systemDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroResolveAbsoluteDirectory(menu.playlistsDirectory));
-    rlconfig_set(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory", LibretroResolveAbsoluteDirectory(menu.fileBrowserStartDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "coreDirectory", LibretroResolveAbsoluteDirectory(LIBRETRO.coreDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "saveDirectory", LibretroResolveAbsoluteDirectory(LIBRETRO.saveDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "coreAssetsDirectory", LibretroResolveAbsoluteDirectory(LIBRETRO.coreAssetsDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "systemDirectory", LibretroResolveAbsoluteDirectory(LIBRETRO.systemDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "playlistsDirectory", LibretroResolveAbsoluteDirectory(LIBRETRO.playlistsDirectory));
+    rlconfig_set(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory", LibretroResolveAbsoluteDirectory(LIBRETRO.fileBrowserStartDirectory));
 
     for (int i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++) {
         rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("keyboard%d", i), LIBRETRO.keyboardPlayer1[i]);
@@ -2402,22 +2433,19 @@ static bool LoadLibretroMenuSettings(void) {
     }
     SetActiveLibretroShader((LibretroShaderType)menu.shaderSelectedIndex);
 
-    menu.textureFilterIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "textureFilter", 0);
-    if (menu.textureFilterIndex < 0 || menu.textureFilterIndex > TEXTURE_FILTER_ANISOTROPIC_16X)
-        menu.textureFilterIndex = 0;
-    LIBRETRO.textureFilter = menu.textureFilterIndex;
+    LIBRETRO.textureFilter = rlconfig_get_int(menu.cfg, "raylib-libretro", "textureFilter", 0);
+    if (LIBRETRO.textureFilter < 0 || LIBRETRO.textureFilter > TEXTURE_FILTER_ANISOTROPIC_16X)
+        LIBRETRO.textureFilter = 0;
 
     menu.themeSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "theme", LIBRETRO_MENU_STYLE_DRACULA);
     if (menu.themeSelectedIndex < 0 || menu.themeSelectedIndex >= LIBRETRO_MENU_STYLE_COUNT)
         menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
     SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
 
-    menu.volumeSelected = rlconfig_get_float(menu.cfg, "raylib-libretro", "volume", menu.volumeSelected);
+    float savedVolume = rlconfig_get_float(menu.cfg, "raylib-libretro", "volume", LIBRETRO.volume);
     // Migrate the legacy 0..100 integer storage to the 0.0..1.0 float scale.
-    if (menu.volumeSelected > 1.0f) menu.volumeSelected /= 100.0f;
-    if (menu.volumeSelected < 0.0f) menu.volumeSelected = 0.0f;
-    if (menu.volumeSelected > 1.0f) menu.volumeSelected = 1.0f;
-    SetLibretroVolume(menu.volumeSelected);
+    if (savedVolume > 1.0f) savedVolume /= 100.0f;
+    SetLibretroVolume(savedVolume);
 
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
     LIBRETRO.analogToDpadIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "analogToDpad", 0);
@@ -2438,13 +2466,12 @@ static bool LoadLibretroMenuSettings(void) {
     if (username) TextCopy(LIBRETRO.username, username);
 
     // Hotkey bindings (keyboard + gamepad), keyed by name as "key<Name>"/"gamepad<Name>".
-    for (int i = 0; i < (int)(sizeof(LibretroMenuHotkeys) / sizeof(LibretroMenuHotkeys[0])); i++) {
-        const LibretroMenuHotkey* hk = &LibretroMenuHotkeys[i];
-        const char* shortName = TextReplace(hk->name, " ", "");
-        *hk->key = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("key%s", shortName), (int)*hk->key);
-        *hk->gamepad = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("gamepad%s", shortName), (int)*hk->gamepad);
+    for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
+        const char* shortName = TextReplace(menu.hotkeys[i].name, " ", "");
+        menu.hotkeys[i].key = (nk_rune)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("key%s", shortName), (int)menu.hotkeys[i].key);
+        menu.hotkeys[i].gamepad = (enum nk_gamepad_button)rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("gamepad%s", shortName), (int)menu.hotkeys[i].gamepad);
     }
-    SetExitKey(LibretroHotkeyToKeyboardKey(menu.keyQuit));
+    SetExitKey(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_QUIT].key));
 
     menu.fastForwardSpeed = rlconfig_get_float(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
     if (menu.fastForwardSpeed < 1.1f) menu.fastForwardSpeed = 1.1f;
@@ -2456,17 +2483,17 @@ static bool LoadLibretroMenuSettings(void) {
     if (menu.slowMotionSpeed > 0.9f) menu.slowMotionSpeed = 0.9f;
 
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
-    if (coreDirectory) TextCopy(menu.coreDirectory, coreDirectory);
+    if (coreDirectory) TextCopy(LIBRETRO.coreDirectory, coreDirectory);
     const char* saveDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "saveDirectory");
-    if (saveDirectory) TextCopy(menu.saveDirectory, saveDirectory);
+    if (saveDirectory) TextCopy(LIBRETRO.saveDirectory, saveDirectory);
     const char* coreAssetsDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreAssetsDirectory");
-    if (coreAssetsDirectory) TextCopy(menu.coreAssetsDirectory, coreAssetsDirectory);
+    if (coreAssetsDirectory) TextCopy(LIBRETRO.coreAssetsDirectory, coreAssetsDirectory);
     const char* systemDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "systemDirectory");
-    if (systemDirectory) TextCopy(menu.systemDirectory, systemDirectory);
+    if (systemDirectory) TextCopy(LIBRETRO.systemDirectory, systemDirectory);
     const char* playlistsDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "playlistsDirectory");
-    if (playlistsDirectory) TextCopy(menu.playlistsDirectory, playlistsDirectory);
+    if (playlistsDirectory) TextCopy(LIBRETRO.playlistsDirectory, playlistsDirectory);
     const char* fileBrowserStartDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory");
-    if (fileBrowserStartDirectory) TextCopy(menu.fileBrowserStartDirectory, fileBrowserStartDirectory);
+    if (fileBrowserStartDirectory) TextCopy(LIBRETRO.fileBrowserStartDirectory, fileBrowserStartDirectory);
 
     // Read raylib KeyboardKey values written under "keyboardP1[..]"; missing keys
     // keep the defaults seeded into LIBRETRO.keyboardPlayer1 at init.
@@ -2582,7 +2609,7 @@ void UpdateLibretroMenu(void) {// If there is no menu, skip.
     }
 
     // Menu Key
-    if ((IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.keyMenu)) || LibretroHotkeyGPReleased(menu.gamepadMenu)) && !menu.active) {
+    if ((IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_MENU].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_MENU].gamepad)) && !menu.active) {
         ShowLibretroMenu();
     }
 
