@@ -1,12 +1,12 @@
 # raylib-libretro :space_invader: [![Tests](https://github.com/RobLoach/raylib-libretro/workflows/Tests/badge.svg)](https://github.com/RobLoach/raylib-libretro/actions)
 
-[libretro](https://www.libretro.com/) frontend to play emulators, game engines and media players, for Windows, Mac, Linux, and Web with [raylib](https://www.raylib.com). The [raylib-libretro.h](include/raylib-libretro.h) allows integrating any raylib application with the libretro API. *Still in early development.*
+[libretro](https://www.libretro.com/) frontend to play emulators for Windows, Mac, Linux, and the Web with [raylib](https://www.raylib.com). The [raylib-libretro.h](include/raylib-libretro.h) allows integrating any raylib application with the libretro API. *Still in early development.*
 
 ![Screenshot of raylib-libretro](docs/screenshot.png)
 
 ## Features
 
-- Multi-Emulator for NES, SNES, GBA, Genesis, etc
+- Multi-System Emulator for NES, SNES, GB, GBA, SMS/GG
 - Shipped Cores: fceumm, snes9x, gambatte, mgba, picodrive
 - Gamepad, Keyboard, On-Screen Controls
 - Audio
