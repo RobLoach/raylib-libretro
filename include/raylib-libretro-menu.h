@@ -1182,11 +1182,10 @@ static void MenuShowCorePicker(nk_console* widget, void* user_data) {
 
     // Core List
     for (int i = 0; i < coreCount; i++) {
-        // pendingCoreNames holds each core's cached human-readable name (filled by
-        // FindCoresForGame). nk_console keeps the label pointer, so it must remain
-        // valid — it lives in the menu struct for the lifetime of the menu.
-        nk_console_button_onclick_handler(menu.corePickerMenu, menu.pendingCoreNames[i],
+        // pendingCoreNames holds each core's cached human-readable name
+        nk_console* coreButton = nk_console_button_onclick_handler(menu.corePickerMenu, menu.pendingCoreNames[i],
             MenuCorePickerLoad, menu.pendingCorePaths[i], NULL);
+        nk_console_set_tooltip(coreButton, tooltip);
     }
     ShowLibretroMenu();
     MenuNavigateInto(menu.corePickerMenu);
