@@ -1289,15 +1289,19 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* volume = nk_console_slider_float(graphicsMenu, "Volume", 0.0f, &LIBRETRO.volume, 1.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.0f, 1.0f));
             nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
+            // Full Screen
             nk_console* fullscreenCheckbox = nk_console_checkbox(graphicsMenu, "Fullscreen", &menu.fullscreen);
             nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
 
+            // VSYNC
             nk_console* vsyncCheckbox = nk_console_checkbox(graphicsMenu, "VSYNC", &menu.vsync);
             nk_console_add_event(vsyncCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuVideoChanged);
 
+            // FPS
             nk_console* fpsCombo = nk_console_combobox(graphicsMenu, "FPS", "Auto|30|60|120|144|240|Unlimited", '|', &menu.fpsIndex);
             nk_console_add_event_handler(fpsCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuVideoChanged, NULL, NULL);
 
+            // Shader
             static char shaderNames[256] = {0};
             if (shaderNames[0] == '\0') {
                 int offset = 0;
@@ -1315,13 +1319,16 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* shaderCombo = nk_console_combobox(graphicsMenu, "Shader", shaderNames, '|', &menu.shaderSelectedIndex);
             nk_console_add_event_handler(shaderCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
+            // Texture Filter
             nk_console* textureFilter = nk_console_combobox(graphicsMenu, "Texture Filter", "None|Bilinear|Trilinear|Anisotropic 4x|Anisotropic 8x|Anisotropic 16x", '|', &LIBRETRO.textureFilter);
             nk_console_add_event_handler(textureFilter, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuTextureFilterChanged, NULL, NULL);
 
+            // Rotation
             nk_console* rotation = nk_console_combobox(graphicsMenu, "Rotation", "0 Degrees|90 Degrees|180 Degrees|270 Degrees", '|', &LIBRETRO.core.rotation);
             rotation->tooltip = "Override the display rotation for the running game.";
 
-            nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", "Mocha|Latte|Frappe|Macchiato|Dracula|Dark", '|', &menu.themeSelectedIndex);
+            // Theme
+            nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", RAYLIB_LIBRETRO_STYLES_NAMES, '|', &menu.themeSelectedIndex);
             nk_console_add_event_handler(themeCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
             SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
         }
@@ -1335,18 +1342,31 @@ LibretroMenu* InitLibretroMenu(void) {
                 nk_console_button_onclick(gameplayMenu, "Gameplay", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
 
+            // Fast Forward Speed
             nk_console_slider_float(gameplayMenu, "Fast Forward Speed", 1.1f, &menu.fastForwardSpeed, 10.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(1.1f, 10.0f));
+
+            // Slow Motion Speed
             nk_console_slider_float(gameplayMenu, "Slow Motion Speed", 0.1f, &menu.slowMotionSpeed, 0.9f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.1f, 0.9f));
+
+            // Touch Control
             nk_console_checkbox(gameplayMenu, "Touch Controls", &menu.touchControls);
+
+            // Touch Haptics
             #if defined(PLATFORM_WEB)
             nk_console_checkbox(gameplayMenu, "Touch Haptics", &menu.touchHapticsEnabled);
             #endif
+
+            // Rewind
             nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
             nk_console* analogCombo = nk_console_combobox(gameplayMenu, "Analog to D-Pad",
                 "None|Left Analog|Right Analog", '|', &LIBRETRO.analogToDpadIndex);
             analogCombo->tooltip = "Map an analog stick to D-Pad inputs";
+
+            // Cursor
             nk_console_checkbox(gameplayMenu, "Hide Cursor", &menu.hideCursor);
             nk_console_checkbox(gameplayMenu, "Lock Cursor", &menu.lockCursor);
+
+            // Save Slot
             nk_console_combobox(gameplayMenu, "Save Slot",
                 "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
                 '|', &menu.saveSlotIndex);
@@ -1410,21 +1430,27 @@ LibretroMenu* InitLibretroMenu(void) {
                 nk_console_button_onclick(dirMenu, "Directories", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
 
+            // Cores
             nk_console* coreDirectory = nk_console_dir(dirMenu, "Cores", LIBRETRO.coreDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuCoreDirChanged, NULL, NULL);
 
+            // Saves
             nk_console* saveDirectory = nk_console_dir(dirMenu, "Saves", LIBRETRO.saveDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(saveDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
+            // Assets
             nk_console* coreAssetsDirectory = nk_console_dir(dirMenu, "Assets", LIBRETRO.coreAssetsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(coreAssetsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
+            // System
             nk_console* systemDirectory = nk_console_dir(dirMenu, "System", LIBRETRO.systemDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(systemDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
+            // Playlists
             nk_console* playlistsDirectory = nk_console_dir(dirMenu, "Playlists", LIBRETRO.playlistsDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(playlistsDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuDirChanged, NULL, NULL);
 
+            // Content
             nk_console* fileBrowserStartDirectory = nk_console_dir(dirMenu, "Content", LIBRETRO.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuContentDirChanged, NULL, NULL);
         }

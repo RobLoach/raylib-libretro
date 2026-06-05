@@ -38,6 +38,14 @@ typedef enum LibretroMenuStyle {
     LIBRETRO_MENU_STYLE_COUNT,
 } LibretroMenuStyle;
 
+/**
+ * The style names, seperated by a |
+ */
+#define RAYLIB_LIBRETRO_STYLES_NAMES "Mocha|Latte|Frappe|Macchiato|Dracula|Dark"
+
+/**
+ * Sets the menu style.
+ */
 static void SetLibretroMenuStyle(LibretroMenuStyle style);
 
 #endif // RAYLIB_LIBRETRO_STYLES_H
