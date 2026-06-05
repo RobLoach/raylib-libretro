@@ -1117,8 +1117,9 @@ static void MenuDrawLoadingScreen(const char* gamePath) {
     EndDrawing();
 }
 
-// Show the loading splash, initialise the core, then load the game into it.
-// Reports a failure message and returns false (the caller restores the menu).
+/**
+ * Initialize the given core, and load the associated game.
+ */
 static bool MenuLoadCoreAndGame(const char* corePath, const char* gamePath) {
     MenuDrawLoadingScreen(gamePath);
     if (!MenuInitCore(corePath)) {
@@ -1128,7 +1129,9 @@ static bool MenuLoadCoreAndGame(const char* corePath, const char* gamePath) {
     return MenuDoLoadGame(gamePath);
 }
 
-// Enter a console submenu (or the root) and focus its first selectable child.
+/**
+ * Enter a console submenu, and focus its first selectable child.
+ */
 static void MenuNavigateInto(nk_console* parent) {
     nk_console_set_active_parent(parent);
     nk_console_set_active_widget(nk_console_find_first_selectable(parent));
@@ -1161,9 +1164,23 @@ static void MenuShowCorePicker(nk_console* widget, void* user_data) {
     if (coreCount <= 0) return;
 
     nk_console_free_children(menu.corePickerMenu);
-    nk_console_button_set_symbol(
-        nk_console_button_onclick(menu.corePickerMenu, "Select Core", &nk_console_button_back),
-        NK_SYMBOL_TRIANGLE_UP);
+
+    // Back Button
+    nk_console* backButton = nk_console_button_onclick(menu.corePickerMenu, "Select Core", &nk_console_button_back);
+    nk_console_button_set_symbol(backButton, NK_SYMBOL_X);
+
+    // Tooltip
+    const char* tooltip;
+    const char* gameName = GetFileNameWithoutExt(menu.pendingGamePath);
+    if (menu.pendingGamePath[0] != '\0' && gameName != NULL && gameName[0] != '\0') {
+        tooltip = TextFormat("Load %s with which core?", gameName);
+    }
+    else {
+        tooltip ="Choose a core to load the game.";
+    }
+    nk_console_set_tooltip(backButton, tooltip);
+
+    // Core List
     for (int i = 0; i < coreCount; i++) {
         // pendingCoreNames holds each core's cached human-readable name (filled by
         // FindCoresForGame). nk_console keeps the label pointer, so it must remain
@@ -1189,11 +1206,7 @@ static bool MenuLoadGame(const char* gamePath) {
     }
 
     if (coreCount > 1) {
-        // Defer opening the picker to a post-render event. This is usually
-        // reached from the file browser's CHANGED event, which calls
-        // navigate_back() immediately afterwards and would clobber the picker's
-        // active parent; the post-render event runs after that and while a
-        // Nuklear window is current (the picker mutates window scroll state).
+        // Defer opening the picker to a post-render event.
         TextCopy(menu.pendingGamePath, gamePath);
         menu.pendingCoreCount = coreCount;
         ShowLibretroMenu();
@@ -1635,7 +1648,7 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_label(coreTree, menu.aboutContent);
             nk_console_label(coreTree, menu.aboutExtensions);
 
-            // Available Cores (names from the core cache, captured at startup)
+            // Available Cores
             nk_console* coresTree = nk_console_tree(aboutMenu, "Available Cores", nk_false);
             int cachedCores = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
             if (cachedCores <= 0) {
