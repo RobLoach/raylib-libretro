@@ -356,40 +356,39 @@ static void SetupAndroidEnvironment(LibretroMenu* menu) {
 
     // Only override values still at the relative desktop defaults — an absolute
     // path means the user (or a saved config) already chose a directory.
-    if (menu->coreDirectory[0]   != '/') TextCopy(menu->coreDirectory,   TextFormat("%s/cores", dataDir));
-    if (menu->saveDirectory[0]   != '/') TextCopy(menu->saveDirectory,   TextFormat("%s/saves", dataDir));
-    if (menu->systemDirectory[0] != '/') TextCopy(menu->systemDirectory, TextFormat("%s/system", dataDir));
-    if (menu->fileBrowserStartDirectory[0] == '\0' && externalDir != NULL) {
-        TextCopy(menu->fileBrowserStartDirectory, externalDir);
+    if (LIBRETRO.coreDirectory[0]   != '/') TextCopy(LIBRETRO.coreDirectory,   TextFormat("%s/cores", dataDir));
+    if (LIBRETRO.saveDirectory[0]   != '/') TextCopy(LIBRETRO.saveDirectory,   TextFormat("%s/saves", dataDir));
+    if (LIBRETRO.systemDirectory[0] != '/') TextCopy(LIBRETRO.systemDirectory, TextFormat("%s/system", dataDir));
+    if (LIBRETRO.fileBrowserStartDirectory[0] == '\0' && externalDir != NULL) {
+        TextCopy(LIBRETRO.fileBrowserStartDirectory, externalDir);
     }
 
-    MakeDirectory(menu->coreDirectory);
-    MakeDirectory(menu->saveDirectory);
-    MakeDirectory(menu->systemDirectory);
+    MakeDirectory(LIBRETRO.coreDirectory);
+    MakeDirectory(LIBRETRO.saveDirectory);
+    MakeDirectory(LIBRETRO.systemDirectory);
 
     // Install each core listed in the build-generated assets/cores.list.
     char* list = LoadFileText("cores.list");
     if (list != NULL) {
         int count = 0;
-        const char** lines = TextSplit(list, '\n', &count);
+        char** lines = TextSplit(list, '\n', &count);
         for (int i = 0; i < count; i++) {
             char coreName[256];
             TextCopy(coreName, lines[i]);
             int len = TextLength(coreName);
             if (len > 0 && coreName[len - 1] == '\r') coreName[len - 1] = '\0';
             if (coreName[0] == '\0') continue;
-            AndroidCopyCore(coreName, menu->coreDirectory);
+            AndroidCopyCore(coreName, LIBRETRO.coreDirectory);
         }
         UnloadFileText(list);
     } else {
         TraceLog(LOG_WARNING, "ANDROID: cores.list missing; no bundled cores to install");
     }
 
-    // Re-apply the directories and rescan now that the cores are on disk.
-    LibretroApplyDirectories();
+    // Rescan the core directory now that bundled cores are on disk.
     ScanLibretroCoreDirectory();
-    if (menu->loadGameWidget != NULL && menu->fileBrowserStartDirectory[0] != '\0') {
-        nk_console_file_set_directory(menu->loadGameWidget, menu->fileBrowserStartDirectory);
+    if (menu->loadGameWidget != NULL && LIBRETRO.fileBrowserStartDirectory[0] != '\0') {
+        nk_console_file_set_directory(menu->loadGameWidget, LIBRETRO.fileBrowserStartDirectory);
     }
 
     INIT_TRACE("ANDROID/INIT: requesting storage access");

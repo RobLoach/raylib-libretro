@@ -42,6 +42,7 @@ target_compile_definitions(raylib-libretro PRIVATE
 if (NOT DEFINED CORES_DIR)
     set(CORES_DIR "${CMAKE_BINARY_DIR}/cores")
 endif()
+file(MAKE_DIRECTORY "${CORES_DIR}")
 
 # download_cores(<url> [<url> ...])
 # Downloads each zip URL to the build directory and extracts it into CORES_DIR.
