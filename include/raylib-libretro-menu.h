@@ -296,7 +296,117 @@ static void LibretroMenuEmscriptenLoadGameClicked(nk_console* widget, void* user
 extern "C" {
 #endif
 
-static LibretroMenu menu = {0};
+static LibretroMenu menu = {
+    .themeSelectedIndex = LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
+    .vsync              = nk_true,
+    .fastForwardSpeed   = 3.0f,
+    .slowMotionSpeed    = 0.5f,
+    .menuComboIndex     = LIBRETRO_MENU_COMBO_SELECT_START,
+    .hotkeys = {
+        [LIBRETRO_HOTKEY_SCREENSHOT] = {
+            .name = "Screenshot",
+            .defaultKey = NK_CONSOLE_KEY_F8,
+            .key = NK_CONSOLE_KEY_F8,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_REWIND] = {
+            .name = "Rewind",
+            .defaultKey = (nk_rune)'R',
+            .key = (nk_rune)'R',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_MENU] = {
+            .name = "Menu",
+            .defaultKey = NK_CONSOLE_KEY_ESCAPE,
+            .key = NK_CONSOLE_KEY_ESCAPE,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_SAVE_STATE] = {
+            .name = "Save State",
+            .defaultKey = NK_CONSOLE_KEY_F2,
+            .key = NK_CONSOLE_KEY_F2,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_LOAD_STATE] = {
+            .name = "Load State",
+            .defaultKey = NK_CONSOLE_KEY_F4,
+            .key = NK_CONSOLE_KEY_F4,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_PREV_SLOT] = {
+            .name = "Prev Slot",
+            .defaultKey = NK_CONSOLE_KEY_NONE,
+            .key = NK_CONSOLE_KEY_NONE,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_NEXT_SLOT] = {
+            .name = "Next Slot",
+            .defaultKey = NK_CONSOLE_KEY_NONE,
+            .key = NK_CONSOLE_KEY_NONE,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_FULLSCREEN]   = {
+            .name = "Fullscreen",
+            .defaultKey = NK_CONSOLE_KEY_F11,
+            .key = NK_CONSOLE_KEY_F11,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_PREV_SHADER]  = {
+            .name = "Previous Shader",
+            .defaultKey = NK_CONSOLE_KEY_F9,
+            .key = NK_CONSOLE_KEY_F9,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_NEXT_SHADER] = {
+            .name = "Next Shader",
+            .defaultKey = NK_CONSOLE_KEY_F10,
+            .key = NK_CONSOLE_KEY_F10,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_RESET] = {
+            .name = "Reset",
+            .defaultKey = NK_CONSOLE_KEY_NONE,
+            .key = NK_CONSOLE_KEY_NONE,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_QUIT] = {
+            .name = "Quit",
+            .defaultKey = NK_CONSOLE_KEY_NONE,
+            .key = NK_CONSOLE_KEY_NONE,
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_VOLUME_UP] = {
+            .name = "Volume Up",
+            .defaultKey = (nk_rune)'=',
+            .key = (nk_rune)'=',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_VOLUME_DOWN]  = {
+            .name = "Volume Down",
+            .defaultKey = (nk_rune)'-',
+            .key = (nk_rune)'-',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_MUTE] = {
+            .name = "Mute",
+            .defaultKey = (nk_rune)'M',
+            .key = (nk_rune)'M',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_FAST_FORWARD] = {
+            .name = "Fast Forward",
+            .defaultKey = (nk_rune)'F',
+            .key = (nk_rune)'F',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_SLOW_MOTION]  = {
+            .name = "Slow Motion",
+            .defaultKey = (nk_rune)'G',
+            .key = (nk_rune)'G',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+    },
+};
 
 static void SetLibretroMenuStyle(LibretroMenuStyle style);
 static bool IsLibretroMenuReady(void);
@@ -1355,55 +1465,8 @@ static void LibretroMenuHotkeyChanged(nk_console* widget, void* user_data) {
     }
 }
 
-/**
- * Creates a Hot Key widget in the Hot Key menu.
- */
-static nk_console* LibretroMenuAddHotkey(nk_console* parent, const char* label, enum nk_gamepad_button* gamepad, nk_rune* key) {
-    nk_console* widget = nk_console_input(parent, label, -1, NULL, gamepad, key, NULL);
-    nk_console_add_event(widget, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuHotkeyChanged);
-    return widget;
-}
-
 LibretroMenu* InitLibretroMenu(void) {
-    int fontSize = 13;
-    int screenWidth = GetScreenWidth();
-
-    // Create the menu.
-    menu = (LibretroMenu){0};
-    menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA;
-    menu.vsync = nk_true;
-    menu.fpsIndex = 0; // Auto
-    menu.saveSlotIndex  = 0;
-    menu.fastForwardSpeed = 3.0f;
-    menu.menuComboIndex = LIBRETRO_MENU_COMBO_SELECT_START;
-    menu.slowMotionSpeed = 0.5f;
-
-    // Default hotkey bindings — names and defaults live here so NK_CONSOLE_KEY_*
-    // constants are declared by this point (vendor headers already included above).
-    static const LibretroMenuBinding hotkeyDefs[LIBRETRO_HOTKEY_COUNT] = {
-        { .name = "Screenshot",      .defaultKey = NK_CONSOLE_KEY_F8     },
-        { .name = "Rewind",          .defaultKey = (nk_rune)'R'          },
-        { .name = "Menu",            .defaultKey = NK_CONSOLE_KEY_ESCAPE },
-        { .name = "Save State",      .defaultKey = NK_CONSOLE_KEY_F2     },
-        { .name = "Load State",      .defaultKey = NK_CONSOLE_KEY_F4     },
-        { .name = "Prev Slot",       .defaultKey = NK_CONSOLE_KEY_NONE   },
-        { .name = "Next Slot",       .defaultKey = NK_CONSOLE_KEY_NONE   },
-        { .name = "Fullscreen",      .defaultKey = NK_CONSOLE_KEY_F11    },
-        { .name = "Previous Shader", .defaultKey = NK_CONSOLE_KEY_F9     },
-        { .name = "Next Shader",     .defaultKey = NK_CONSOLE_KEY_F10    },
-        { .name = "Reset",           .defaultKey = NK_CONSOLE_KEY_NONE   },
-        { .name = "Quit",            .defaultKey = NK_CONSOLE_KEY_NONE   },
-        { .name = "Volume Up",       .defaultKey = (nk_rune)'='          },
-        { .name = "Volume Down",     .defaultKey = (nk_rune)'-'          },
-        { .name = "Mute",            .defaultKey = (nk_rune)'M'          },
-        { .name = "Fast Forward",    .defaultKey = (nk_rune)'F'          },
-        { .name = "Slow Motion",     .defaultKey = (nk_rune)'G'          },
-    };
-    for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
-        menu.hotkeys[i]        = hotkeyDefs[i];
-        menu.hotkeys[i].key    = hotkeyDefs[i].defaultKey;
-        menu.hotkeys[i].gamepad = NK_GAMEPAD_BUTTON_INVALID;
-    }
+    const int fontSize = 13;
 
     // Font
     menu.font = LoadFontFromNuklear(fontSize);
@@ -1610,20 +1673,25 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_textedit(gameplayMenu, "Username", LIBRETRO.username, 128);
         }
 
-        // Keys
+        // Hot Keys
         {
-            nk_console* keysMenu = nk_console_button(settings, "Keys");
+            nk_console* keysMenu = nk_console_button(settings, "Hot Keys");
             nk_console_button_set_symbol(keysMenu, NK_SYMBOL_TRIANGLE_RIGHT);
             nk_console_add_event(keysMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
             nk_console_button_set_symbol(
-                nk_console_button_onclick(keysMenu, "Keys", &nk_console_button_back),
+                nk_console_button_onclick(keysMenu, "Hot Keys", &nk_console_button_back),
                 NK_SYMBOL_TRIANGLE_UP);
+
+            // Menu Controller Combo
             nk_console* menuCombo = nk_console_combobox(keysMenu, "Menu Controller Combo",
                 "None|Select + Start|L1 + R1|L2 + R2|L3 + R3|Down + Select",
                 '|', &menu.menuComboIndex);
             menuCombo->tooltip = "Controller button combination to toggle the menu";
+
+            // Keys
             for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
-                LibretroMenuAddHotkey(keysMenu, menu.hotkeys[i].name, &menu.hotkeys[i].gamepad, &menu.hotkeys[i].key);
+                nk_console* widget = nk_console_input(keysMenu, menu.hotkeys[i].name, -1, NULL, &menu.hotkeys[i].gamepad, &menu.hotkeys[i].key, NULL);
+                nk_console_add_event(widget, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuHotkeyChanged);
             }
         }
 
