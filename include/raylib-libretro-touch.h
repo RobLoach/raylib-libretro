@@ -505,12 +505,32 @@ void DrawLibretroTouchControls(void) {
         }
         Color textColor = fadeTint;
         if (isMenuLike) textColor.a = (unsigned char)(180 * alpha);
-        Font font = GetLibretroTouchFont();
-        float fs = btns[i].rect.height * 0.4f;
-        Vector2 ts = MeasureTextEx(font, btns[i].label, fs, 1.0f);
-        DrawTextEx(font, btns[i].label,
-            (Vector2){ fcx - ts.x * 0.5f, fcy - ts.y * 0.5f },
-            fs, 1.0f, textColor);
+        if (id == RETRO_DEVICE_ID_JOYPAD_START) {
+            // Three horizontal bars (hamburger / Xbox Menu icon)
+            float barW = btns[i].rect.width  * 0.50f;
+            float barH = btns[i].rect.height * 0.10f;
+            float gap  = btns[i].rect.height * 0.20f;
+            float bx   = fcx - barW * 0.5f;
+            for (int row = -1; row <= 1; row++) {
+                Rectangle bar = { bx, fcy + row * gap - barH * 0.5f, barW, barH };
+                DrawRectangleRounded(bar, 1.0f, 4, textColor);
+            }
+        } else if (id == RETRO_DEVICE_ID_JOYPAD_SELECT) {
+            // Two overlapping squares (Xbox View icon)
+            float sq   = btns[i].rect.width  * 0.30f;
+            float off  = btns[i].rect.width  * 0.12f;
+            Rectangle back  = { fcx - off - sq * 0.5f, fcy - sq * 0.5f, sq, sq };
+            Rectangle front = { fcx + off - sq * 0.5f, fcy - sq * 0.5f, sq, sq };
+            DrawRectangleRoundedLines(back,  0.2f, 4, textColor);
+            DrawRectangleRoundedLines(front, 0.2f, 4, textColor);
+        } else {
+            Font font = GetLibretroTouchFont();
+            float fs = btns[i].rect.height * 0.4f;
+            Vector2 ts = MeasureTextEx(font, btns[i].label, fs, 1.0f);
+            DrawTextEx(font, btns[i].label,
+                (Vector2){ fcx - ts.x * 0.5f, fcy - ts.y * 0.5f },
+                fs, 1.0f, textColor);
+        }
     }
 
     // Menu button
