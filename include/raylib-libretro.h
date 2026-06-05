@@ -3372,6 +3372,13 @@ static Image LoadImageFromLibretro() {
     }
     memcpy(image.data, LIBRETRO.core.frameBuffer, LIBRETRO.core.frameBufferSize);
 
+    switch (LIBRETRO.core.rotation) {
+        case 1: ImageRotateCW(&image);        break;
+        case 2: ImageRotate(&image, 180);     break;
+        case 3: ImageRotateCCW(&image);       break;
+        default: break;
+    }
+
     return image;
 }
 
