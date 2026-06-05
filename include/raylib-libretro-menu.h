@@ -139,6 +139,8 @@ typedef struct LibretroMenu {
     nk_console* corePickerMenu;
     char pendingGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char pendingCorePaths[16][512];
+    char pendingCoreNames[16][128];       // stable picker button labels (GetFileNameWithoutExt reuses a shared static buffer)
+    int pendingCoreCount;                 // >0 requests the core picker on the next menu update (deferred past the file browser's navigate_back)
 #ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
 #endif
@@ -1060,7 +1062,12 @@ static void MenuCorePickerLoad(nk_console* widget, void* user_data) {
     }
     if (!MenuDoLoadGame(menu.pendingGamePath)) {
         ShowLibretroMenu();
+        return;
     }
+    // Game loaded: leave the picker behind so reopening the menu lands on the
+    // top-level main menu rather than the (now hidden) Select Core submenu.
+    nk_console_set_active_parent(menu.console);
+    nk_console_set_active_widget(nk_console_find_first_selectable(menu.console));
 }
 
 static void MenuShowCorePicker(const char* gamePath, int coreCount) {
@@ -1070,13 +1077,36 @@ static void MenuShowCorePicker(const char* gamePath, int coreCount) {
         nk_console_button_onclick(menu.corePickerMenu, "Select Core", &nk_console_button_back),
         NK_SYMBOL_TRIANGLE_UP);
     for (int i = 0; i < coreCount; i++) {
+        // Copy the display name into stable storage: nk_console keeps the label
+        // pointer (it doesn't copy), and GetFileNameWithoutExt() returns raylib's
+        // shared static buffer, so every button would otherwise show the last name.
+        TextCopy(menu.pendingCoreNames[i], TextReplace(GetFileNameWithoutExt(menu.pendingCorePaths[i]), "_libretro", ""));
         nk_console_button_onclick_handler(menu.corePickerMenu,
-            GetFileNameWithoutExt(menu.pendingCorePaths[i]),
+            menu.pendingCoreNames[i],
             MenuCorePickerLoad, menu.pendingCorePaths[i], NULL);
     }
     ShowLibretroMenu();
     nk_console_set_active_parent(menu.corePickerMenu);
     nk_console_set_active_widget(nk_console_find_first_selectable(menu.corePickerMenu));
+}
+
+/**
+ * POST_RENDER_ONCE handler that opens the deferred core picker.
+ *
+ * MenuShowCorePicker() changes the console's active parent, which sets the
+ * Nuklear window scroll and therefore must run while a window is current. Run
+ * from a post-render event it fires inside the render pass (ctx->current valid)
+ * and after the file browser's navigate_back(), which would otherwise clobber
+ * the picker's active parent. @see MenuLoadGame.
+ */
+static void MenuShowCorePickerDeferred(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    if (menu.pendingCoreCount > 0) {
+        int coreCount = menu.pendingCoreCount;
+        menu.pendingCoreCount = 0;
+        MenuShowCorePicker(menu.pendingGamePath, coreCount);
+    }
 }
 
 static bool MenuLoadGame(const char* gamePath) {
@@ -1104,8 +1134,16 @@ static bool MenuLoadGame(const char* gamePath) {
     }
 
     if (coreCount > 1) {
-        MenuShowCorePicker(gamePath, coreCount);
-        return true;
+        // Defer opening the picker to a post-render event. This is usually
+        // reached from the file browser's CHANGED event, which calls
+        // navigate_back() immediately afterwards and would clobber the picker's
+        // active parent; the post-render event runs after that and while a
+        // Nuklear window is current (the picker mutates window scroll state).
+        TextCopy(menu.pendingGamePath, gamePath);
+        menu.pendingCoreCount = coreCount;
+        ShowLibretroMenu();
+        nk_console_add_event(menu.console, NK_CONSOLE_EVENT_POST_RENDER_ONCE, &MenuShowCorePickerDeferred);
+        return false;
     }
 
     // Single core: load immediately.
