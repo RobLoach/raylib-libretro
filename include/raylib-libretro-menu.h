@@ -43,8 +43,19 @@
 #include "../../vendor/nuklear_gamepad/nuklear_gamepad.h"
 #include "../vendor/nuklear_console/nuklear_console.h"
 #include "raylib-libretro-physfs.h"
+#include "raylib-libretro-config.h"
 
 #include "raylib-libretro-styles.h"
+
+// Maximum number of cores the "Select Core" picker offers for one game file.
+#ifndef LIBRETRO_MAX_GAME_CORES
+#define LIBRETRO_MAX_GAME_CORES 16
+#endif
+
+// Maximum number of cores listed in the About screen's "Available Cores" tree.
+#ifndef LIBRETRO_MENU_MAX_LISTED_CORES
+#define LIBRETRO_MENU_MAX_LISTED_CORES 64
+#endif
 
 typedef enum LibretroMenuCombo {
     LIBRETRO_MENU_COMBO_NONE = 0,
@@ -135,15 +146,14 @@ typedef struct LibretroMenu {
     char aboutCoreAspectRatio[48];
     char aboutContent[160];
     char aboutExtensions[256];
+    char aboutCoreNames[LIBRETRO_MENU_MAX_LISTED_CORES][128]; // "Available Cores" labels (nk_console keeps the pointers)
     nk_rune keyboardControls[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
     nk_console* corePickerMenu;
     char pendingGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-    char pendingCorePaths[16][512];
-    char pendingCoreNames[16][128];       // stable picker button labels (GetFileNameWithoutExt reuses a shared static buffer)
+    char pendingCorePaths[LIBRETRO_MAX_GAME_CORES][512];
+    char pendingCoreNames[LIBRETRO_MAX_GAME_CORES][128]; // stable picker button labels (GetFileNameWithoutExt reuses a shared static buffer)
     int pendingCoreCount;                 // >0 requests the core picker on the next menu update (deferred past the file browser's navigate_back)
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
-#endif
 } LibretroMenu;
 
 #if defined(__cplusplus)
@@ -807,8 +817,18 @@ static int LibretroCoreDirectoryFileCount(const char* dir) {
     return count;
 }
 
+// True when every cached core file (rebuilt as <dir>/<file>) still exists on
+// disk. A missing entry means a core was moved/removed or the cache predates a
+// path-format change, so the cache should be rebuilt.
+static bool LibretroCoreCacheFilesPresent(const char* dir, int count) {
+    for (int i = 0; i < count; i++) {
+        const char* file = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_path", i));
+        if (!file || !FileExists(TextFormat("%s/%s", dir, file))) return false;
+    }
+    return true;
+}
+
 static void ScanLibretroCoreDirectory(void) {
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return;
     const char* dir = LIBRETRO.coreDirectory;
     if (!dir || !dir[0]) return;
@@ -821,13 +841,20 @@ static void ScanLibretroCoreDirectory(void) {
         return;
     }
 
+    // The cache stays valid while it describes the same directory (dir_path)
+    // with the same number of core files (file_count) AND every cached core
+    // file is still present. The existence check catches a core moved/removed
+    // even when the file count is unchanged (a same-count swap), and rebuilds a
+    // cache left by an older path format — all without re-peeking every core.
     int currentCount = LibretroCoreDirectoryFileCount(dir);
     int cachedCount = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", -1);
     const char* cachedDir = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "dir_path");
     if (cachedCount == currentCount && cachedDir && TextIsEqual(cachedDir, dir)) {
         int cached = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
-        TraceLog(LOG_INFO, "LIBRETRO: Core cache valid (%d cores)", cached);
-        return;
+        if (LibretroCoreCacheFilesPresent(dir, cached)) {
+            TraceLog(LOG_INFO, "LIBRETRO: Core cache valid (%d cores)", cached);
+            return;
+        }
     }
 
     TraceLog(LOG_INFO, "LIBRETRO: Rescanning cores in %s", dir);
@@ -850,11 +877,12 @@ static void ScanLibretroCoreDirectory(void) {
             continue;
         }
 
-        char keyPath[64], keyExts[64];
-        TextCopy(keyPath, TextFormat("core_%d_path", coreIndex));
-        TextCopy(keyExts, TextFormat("core_%d_extensions", coreIndex));
-        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath, files.paths[i]);
-        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyExts, LIBRETRO.core.validExtensions);
+        // Store only the file name (the directory is dir_path) so the cache is
+        // portable; the full path is rebuilt as <coreDirectory>/<file> on load.
+        // rlconfig_set copies the key immediately, so chained TextFormat keys are safe.
+        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_path", coreIndex), GetFileName(files.paths[i]));
+        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_extensions", coreIndex), LIBRETRO.core.validExtensions);
+        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_name", coreIndex), LIBRETRO.core.libraryName);
         TraceLog(LOG_INFO, "LIBRETRO: Cached %s (%s)", LIBRETRO.core.libraryName, LIBRETRO.core.validExtensions);
         CloseLibretro();
         coreIndex++;
@@ -864,7 +892,46 @@ static void ScanLibretroCoreDirectory(void) {
     rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", coreIndex);
     rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
     TraceLog(LOG_INFO, "LIBRETRO: Cached %d cores in %s", coreIndex, dir);
-#endif
+}
+
+/**
+ * Lower-cased file extension of @p path (no leading dot) into @p out (>= 32 bytes).
+ * @return false when @p path has no extension.
+ */
+static bool LibretroExtLower(const char* path, char* out) {
+    const char* ext = GetFileExtension(path);
+    if (!ext || !ext[0]) return false;
+    if (ext[0] == '.') ext++;
+    TextCopy(out, TextToLower(ext));
+    return true;
+}
+
+/**
+ * @return true when cached core @p index lists extension @p extLower
+ *         (lower-case, no dot) in its valid_extensions.
+ */
+static bool LibretroCoreSupportsExt(int index, const char* extLower) {
+    const char* exts = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
+                                    TextFormat("core_%d_extensions", index));
+    if (!exts) return false;
+    int extCount = 0;
+    char** extList = TextSplit(exts, '|', &extCount);
+    for (int j = 0; j < extCount; j++) {
+        if (TextIsEqual(extList[j], extLower)) return true;
+    }
+    return false;
+}
+
+/**
+ * Display name for cached core @p index: its cached human-readable name, or the
+ * de-suffixed file name as a fallback. The returned pointer is only valid until
+ * the next raylib text-buffer call, so callers must copy it immediately.
+ */
+static const char* LibretroCoreDisplayName(int index) {
+    const char* name = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_name", index));
+    if (name && name[0]) return name;
+    const char* file = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_path", index));
+    return file ? TextReplace(GetFileNameWithoutExt(file), "_libretro", "") : "";
 }
 
 /**
@@ -882,62 +949,39 @@ static void ScanLibretroCoreDirectory(void) {
  * @return \c true if a matching inner file was found and copied into @p outExt.
  */
 static bool FindZipInnerExtensionForCore(const char* zipPath, char* outExt) {
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!IsPhysFSReady() && !InitLibretroPhysFS()) return false;
     // Mount at a scratch point to avoid clobbering any /game mount in flight.
     if (!MountPhysFS(zipPath, "/peek")) return false;
 
     FilePathList entries = LoadDirectoryFilesFromPhysFSEx("/peek", NULL, true);
-    bool found = false;
     int coreCount = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
+    bool found = false;
 
     for (unsigned int e = 0; e < entries.count && !found; e++) {
-        const char* innerExt = GetFileExtension(entries.paths[e]);
-        if (!innerExt || !innerExt[0]) continue;
-        if (innerExt[0] == '.') innerExt++;
-        char innerLower[32] = {0};
-        TextCopy(innerLower, TextToLower(innerExt));
-
+        char innerLower[32];
+        if (!LibretroExtLower(entries.paths[e], innerLower)) continue;
         for (int i = 0; i < coreCount; i++) {
-            const char* exts = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
-                                            TextFormat("core_%d_extensions", i));
-            if (!exts) continue;
-            int extCount = 0;
-            char** extList = TextSplit(exts, '|', &extCount);
-            for (int j = 0; j < extCount; j++) {
-                if (TextIsEqual(extList[j], innerLower)) {
-                    TextCopy(outExt, innerLower);
-                    found = true;
-                    break;
-                }
+            if (LibretroCoreSupportsExt(i, innerLower)) {
+                TextCopy(outExt, innerLower);
+                found = true;
+                break;
             }
-            if (found) break;
         }
     }
 
     UnloadDirectoryFiles(entries);
     UnmountPhysFS(zipPath);
     return found;
-#else
-    (void)zipPath;
-    (void)outExt;
-    return false;
-#endif
 }
 
-static int FindCoresForGame(const char* gamePath, char paths[][512], int maxCount) {
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
-    if (!menu.cfg || !gamePath || !gamePath[0] || !paths || maxCount <= 0) return 0;
+static int FindCoresForGame(const char* gamePath, char paths[][512], char names[][128], int maxCount) {
+    if (!menu.cfg || !gamePath || !gamePath[0] || !paths || !names || maxCount <= 0) return 0;
 
-    const char* gameExt = GetFileExtension(gamePath);
-    if (!gameExt || !gameExt[0]) return 0;
-    if (gameExt[0] == '.') gameExt++;
-
-    char gameExtLower[32] = {0};
-    TextCopy(gameExtLower, TextToLower(gameExt));
+    char gameExtLower[32];
+    if (!LibretroExtLower(gamePath, gameExtLower)) return 0;
 
     if (TextIsEqual(gameExtLower, "zip")) {
-        char zipInner[32] = {0};
+        char zipInner[32];
         if (FindZipInnerExtensionForCore(gamePath, zipInner)) {
             TextCopy(gameExtLower, zipInner);
         }
@@ -946,27 +990,16 @@ static int FindCoresForGame(const char* gamePath, char paths[][512], int maxCoun
     int found = 0;
     int count = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
     for (int i = 0; i < count && found < maxCount; i++) {
-        char keyExts[64], keyPath[64];
-        TextCopy(keyExts, TextFormat("core_%d_extensions", i));
-        TextCopy(keyPath, TextFormat("core_%d_path", i));
-
-        const char* extensions = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyExts);
-        if (!extensions) continue;
-
-        int extCount = 0;
-        char** extList = TextSplit(extensions, '|', &extCount);
-        for (int j = 0; j < extCount; j++) {
-            if (TextIsEqual(extList[j], gameExtLower)) {
-                const char* corePath = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, keyPath);
-                if (corePath) TextCopy(paths[found++], corePath);
-                break;
-            }
-        }
+        if (!LibretroCoreSupportsExt(i, gameExtLower)) continue;
+        const char* coreFile = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
+                                            TextFormat("core_%d_path", i));
+        if (!coreFile) continue;
+        TextCopy(names[found], LibretroCoreDisplayName(i));
+        // The cache stores the file name; rebuild the full path under the core dir.
+        TextCopy(paths[found], TextFormat("%s/%s", LIBRETRO.coreDirectory, coreFile));
+        found++;
     }
     return found;
-#else
-    return 0;
-#endif
 }
 
 static bool MenuInitCore(const char* corePath) {
@@ -1052,82 +1085,104 @@ static bool MenuDoLoadGame(const char* gamePath) {
     return true;
 }
 
-static void MenuCorePickerLoad(nk_console* widget, void* user_data) {
-    (void)widget;
-    const char* corePath = (const char*)user_data;
+// Draw a one-frame "Loading <game>" splash, shown right before a (potentially
+// slow) core init + game load so there is feedback during the stall.
+/** */
+static void MenuDrawLoadingScreen(const char* gamePath) {
+    BeginDrawing();
+        // Colors
+        Color background = GRAY;
+        Color foreground = WHITE;
+        if (menu.ctx != NULL) {
+            background = NuklearColorToColor(menu.ctx->style.window.background);
+            foreground = NuklearColorToColor(menu.ctx->style.button.text_hover);
+        }
+
+        // Background
+        ClearBackground(background);
+
+        // Text
+        const char* loadingText = "Loading";
+        if (gamePath != NULL) {
+            loadingText = TextFormat("Loading %s", GetFileNameWithoutExt(gamePath));
+        }
+        Font font = IsFontValid(menu.font) ? menu.font : GetFontDefault();
+        float fontSize = (float)font.baseSize;
+        Vector2 textSize = MeasureTextEx(font, loadingText, fontSize, 1);
+
+        // Write it.
+        DrawTextEx(font, loadingText,
+            (Vector2){ (GetScreenWidth() - textSize.x) / 2, (GetScreenHeight() - textSize.y) / 2 },
+            fontSize, 1, foreground);
+    EndDrawing();
+}
+
+// Show the loading splash, initialise the core, then load the game into it.
+// Reports a failure message and returns false (the caller restores the menu).
+static bool MenuLoadCoreAndGame(const char* corePath, const char* gamePath) {
+    MenuDrawLoadingScreen(gamePath);
     if (!MenuInitCore(corePath)) {
         nk_console_show_message(menu.console, "Failed to load core");
-        ShowLibretroMenu();
-        return;
+        return false;
     }
-    if (!MenuDoLoadGame(menu.pendingGamePath)) {
+    return MenuDoLoadGame(gamePath);
+}
+
+// Enter a console submenu (or the root) and focus its first selectable child.
+static void MenuNavigateInto(nk_console* parent) {
+    nk_console_set_active_parent(parent);
+    nk_console_set_active_widget(nk_console_find_first_selectable(parent));
+}
+
+static void MenuCorePickerLoad(nk_console* widget, void* user_data) {
+    (void)widget;
+    if (!MenuLoadCoreAndGame((const char*)user_data, menu.pendingGamePath)) {
         ShowLibretroMenu();
         return;
     }
     // Game loaded: leave the picker behind so reopening the menu lands on the
     // top-level main menu rather than the (now hidden) Select Core submenu.
-    nk_console_set_active_parent(menu.console);
-    nk_console_set_active_widget(nk_console_find_first_selectable(menu.console));
+    MenuNavigateInto(menu.console);
 }
 
-static void MenuShowCorePicker(const char* gamePath, int coreCount) {
-    TextCopy(menu.pendingGamePath, gamePath);
+/**
+ * Build and open the "Select Core" picker for the pending game.
+ *
+ * Registered as a POST_RENDER_ONCE handler (see MenuLoadGame): switching the
+ * active parent updates the Nuklear window scroll, so it must run while a
+ * window is current, and after the file browser's navigate_back() that would
+ * otherwise pull focus back to the main menu.
+ */
+static void MenuShowCorePicker(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    int coreCount = menu.pendingCoreCount;
+    menu.pendingCoreCount = 0;
+    if (coreCount <= 0) return;
+
     nk_console_free_children(menu.corePickerMenu);
     nk_console_button_set_symbol(
         nk_console_button_onclick(menu.corePickerMenu, "Select Core", &nk_console_button_back),
         NK_SYMBOL_TRIANGLE_UP);
     for (int i = 0; i < coreCount; i++) {
-        // Copy the display name into stable storage: nk_console keeps the label
-        // pointer (it doesn't copy), and GetFileNameWithoutExt() returns raylib's
-        // shared static buffer, so every button would otherwise show the last name.
-        TextCopy(menu.pendingCoreNames[i], TextReplace(GetFileNameWithoutExt(menu.pendingCorePaths[i]), "_libretro", ""));
-        nk_console_button_onclick_handler(menu.corePickerMenu,
-            menu.pendingCoreNames[i],
+        // pendingCoreNames holds each core's cached human-readable name (filled by
+        // FindCoresForGame). nk_console keeps the label pointer, so it must remain
+        // valid — it lives in the menu struct for the lifetime of the menu.
+        nk_console_button_onclick_handler(menu.corePickerMenu, menu.pendingCoreNames[i],
             MenuCorePickerLoad, menu.pendingCorePaths[i], NULL);
     }
     ShowLibretroMenu();
-    nk_console_set_active_parent(menu.corePickerMenu);
-    nk_console_set_active_widget(nk_console_find_first_selectable(menu.corePickerMenu));
-}
-
-/**
- * POST_RENDER_ONCE handler that opens the deferred core picker.
- *
- * MenuShowCorePicker() changes the console's active parent, which sets the
- * Nuklear window scroll and therefore must run while a window is current. Run
- * from a post-render event it fires inside the render pass (ctx->current valid)
- * and after the file browser's navigate_back(), which would otherwise clobber
- * the picker's active parent. @see MenuLoadGame.
- */
-static void MenuShowCorePickerDeferred(nk_console* widget, void* user_data) {
-    NK_UNUSED(widget);
-    NK_UNUSED(user_data);
-    if (menu.pendingCoreCount > 0) {
-        int coreCount = menu.pendingCoreCount;
-        menu.pendingCoreCount = 0;
-        MenuShowCorePicker(menu.pendingGamePath, coreCount);
-    }
+    MenuNavigateInto(menu.corePickerMenu);
 }
 
 static bool MenuLoadGame(const char* gamePath) {
-    BeginDrawing();
-        ClearBackground(BLACK);
-        const char* loadingText = TextFormat("Loading %s", GetFileName(gamePath));
-        Font font = IsFontValid(menu.font) ? menu.font : GetFontDefault();
-        float fontSize = (float)font.baseSize;
-        Vector2 textSize = MeasureTextEx(font, loadingText, fontSize, 1);
-        DrawTextEx(font, loadingText,
-            (Vector2){ (GetScreenWidth() - textSize.x) / 2, (GetScreenHeight() - textSize.y) / 2 },
-            fontSize, 1, GRAY);
-    EndDrawing();
-
     // Unload the current game if it's a thing.
     if (IsLibretroGameReady()) {
         UnloadLibretroGame();
     }
 
     // Find all cores that support this file type.
-    int coreCount = FindCoresForGame(gamePath, menu.pendingCorePaths, 16);
+    int coreCount = FindCoresForGame(gamePath, menu.pendingCorePaths, menu.pendingCoreNames, LIBRETRO_MAX_GAME_CORES);
     if (coreCount == 0) {
         nk_console_show_message(menu.console, TextFormat("No core found for %s", GetFileName(gamePath)));
         return false;
@@ -1142,17 +1197,12 @@ static bool MenuLoadGame(const char* gamePath) {
         TextCopy(menu.pendingGamePath, gamePath);
         menu.pendingCoreCount = coreCount;
         ShowLibretroMenu();
-        nk_console_add_event(menu.console, NK_CONSOLE_EVENT_POST_RENDER_ONCE, &MenuShowCorePickerDeferred);
+        nk_console_add_event(menu.console, NK_CONSOLE_EVENT_POST_RENDER_ONCE, &MenuShowCorePicker);
         return false;
     }
 
-    // Single core: load immediately.
-    if (!MenuInitCore(menu.pendingCorePaths[0])) {
-        nk_console_show_message(menu.console, "Failed to load core");
-        return false;
-    }
-
-    return MenuDoLoadGame(gamePath);
+    // Single core: load it straight away.
+    return MenuLoadCoreAndGame(menu.pendingCorePaths[0], gamePath);
 }
 
 static void MenuGameFileChanged(nk_console* widget, void* user_data) {
@@ -1260,9 +1310,7 @@ LibretroMenu* InitLibretroMenu(void) {
     // When trying to go back from the main menu, exit the menu.
     nk_console_add_event(menu.console, NK_CONSOLE_EVENT_BACK, &MenuResumeClicked);
 
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     menu.cfg = rlconfig_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
-#endif
 
     // Directories
     TextCopy(LIBRETRO.coreDirectory, "cores");
@@ -1586,6 +1634,17 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_label(coreTree, menu.aboutCoreAspectRatio);
             nk_console_label(coreTree, menu.aboutContent);
             nk_console_label(coreTree, menu.aboutExtensions);
+
+            // Available Cores (names from the core cache, captured at startup)
+            nk_console* coresTree = nk_console_tree(aboutMenu, "Available Cores", nk_false);
+            int cachedCores = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
+            if (cachedCores <= 0) {
+                nk_console_label(coresTree, "(none found)");
+            }
+            for (int i = 0; i < cachedCores && i < LIBRETRO_MENU_MAX_LISTED_CORES; i++) {
+                TextCopy(menu.aboutCoreNames[i], LibretroCoreDisplayName(i));
+                nk_console_label(coresTree, menu.aboutCoreNames[i]);
+            }
 
             // License
             nk_console* licenseTree = nk_console_tree(aboutMenu, "License", nk_false);
@@ -2004,7 +2063,6 @@ void BuildLibretroMenuControllers(LibretroMenu* m) {
 }
 
 static void LibretroMenuUpdateConfig(void) {
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return;
     if (!IsWindowFullscreen()) {
         rlconfig_set_int(menu.cfg, "raylib-libretro", "windowWidth", GetScreenWidth());
@@ -2047,23 +2105,17 @@ static void LibretroMenuUpdateConfig(void) {
     for (int i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++) {
         rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("keyboard%d", i), LIBRETRO.keyboardPlayer1[i]);
     }
-#endif
 }
 
 static bool SaveLibretroMenuSettings(void) {
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return false;
     LibretroMenuUpdateConfig();
     bool ok = rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
     TraceLog(LOG_INFO, "MENU: Saved menu settings to %s", RAYLIB_LIBRETRO_CFG_FILE);
     return ok;
-#else
-    return false;
-#endif
 }
 
 static bool SaveLibretroCoreOptions(void) {
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg || LIBRETRO.core.variableCount == 0) return false;
     const char *coreName = LIBRETRO.core.libraryName;
     if (!coreName || !coreName[0]) return false;
@@ -2074,13 +2126,9 @@ static bool SaveLibretroCoreOptions(void) {
     bool ok = rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
     TraceLog(LOG_INFO, "LIBRETRO: Saved core options to %s", RAYLIB_LIBRETRO_CFG_FILE);
     return ok;
-#else
-    return false;
-#endif
 }
 
 bool LoadLibretroCoreOptions(void) {
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return false;
     const char *coreName = LIBRETRO.core.libraryName;
     if (!coreName || !coreName[0]) return false;
@@ -2103,16 +2151,12 @@ bool LoadLibretroCoreOptions(void) {
     }
     TraceLog(LOG_INFO, "LIBRETRO: Loaded %d core option(s) from %s", loaded, RAYLIB_LIBRETRO_CFG_FILE);
     return loaded > 0;
-#else
-    return false;
-#endif
 }
 
 /**
  * Save the configured port devices to the config in [core.controllers]
  */
 static bool SaveLibretroPortDevices(void) {
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return false;
     const char* coreName = LIBRETRO.core.libraryName;
     if (!coreName || !coreName[0]) return false;
@@ -2128,13 +2172,9 @@ static bool SaveLibretroPortDevices(void) {
         rlconfig_set_int(menu.cfg, section, TextFormat("port%u", port), (int)GetLibretroPortDevice(port));
     }
     return true;
-#else
-    return false;
-#endif
 }
 
 static bool LoadLibretroPortDevices(void) {
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return false;
     const char* coreName = LIBRETRO.core.libraryName;
     if (!coreName || !coreName[0]) return false;
@@ -2160,16 +2200,12 @@ static bool LoadLibretroPortDevices(void) {
     }
     TraceLog(LOG_INFO, "MENU: Loaded %d controller port device(s) from %s", loaded, RAYLIB_LIBRETRO_CFG_FILE);
     return loaded > 0;
-#else
-    return false;
-#endif
 }
 
 #ifdef __EMSCRIPTEN__
 EMSCRIPTEN_KEEPALIVE // expose to JS as Module._SaveLibretroAllSettings
 #endif
 bool SaveLibretroAllSettings(void) {
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return false;
     LibretroMenuUpdateConfig();
     const char *coreName = LIBRETRO.core.libraryName;
@@ -2185,15 +2221,12 @@ bool SaveLibretroAllSettings(void) {
     MenuSaveGameSRAM();
     LibretroFlushPersistentStorage();
     return ok;
-#else
-    return false;
-#endif
 }
 
 static bool LoadLibretroMenuSettings(void) {
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     if (!menu.cfg) return false;
 
+    // Full Screen
     nk_bool savedFullscreen = (nk_bool)rlconfig_get_int(menu.cfg, "raylib-libretro", "fullscreen", (int)menu.fullscreen);
     menu.fullscreen = savedFullscreen;
 #ifdef __EMSCRIPTEN__
@@ -2206,52 +2239,72 @@ static bool LoadLibretroMenuSettings(void) {
     if (savedFullscreen != (nk_bool)IsWindowFullscreen()) ToggleFullscreen();
 #endif
 
+    // Window Size
     if (!savedFullscreen) {
         int w = rlconfig_get_int(menu.cfg, "raylib-libretro", "windowWidth", 0);
         int h = rlconfig_get_int(menu.cfg, "raylib-libretro", "windowHeight", 0);
         if (w > 0 && h > 0) SetWindowSize(w, h);
     }
 
+    // VSYNC
     menu.vsync = (nk_bool)rlconfig_get_int(menu.cfg, "raylib-libretro", "vsync", (int)menu.vsync);
     menu.fpsIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "fps", menu.fpsIndex);
     if (menu.fpsIndex < 0 || menu.fpsIndex > 6) menu.fpsIndex = 0;
     LibretroMenuApplyVideoSettings();
 
+    // Shader
     menu.shaderSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "shader", LIBRETRO_SHADER_NONE);
     if (menu.shaderSelectedIndex < 0 || menu.shaderSelectedIndex >= LIBRETRO_SHADER_TYPE_COUNT) {
         menu.shaderSelectedIndex = LIBRETRO_SHADER_NONE;
     }
     SetActiveLibretroShader((LibretroShaderType)menu.shaderSelectedIndex);
 
+    // Texture Filter
     LIBRETRO.textureFilter = rlconfig_get_int(menu.cfg, "raylib-libretro", "textureFilter", 0);
     if (LIBRETRO.textureFilter < 0 || LIBRETRO.textureFilter > TEXTURE_FILTER_ANISOTROPIC_16X)
         LIBRETRO.textureFilter = 0;
 
-    menu.themeSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "theme", LIBRETRO_MENU_STYLE_DRACULA);
+    // Theme
+    menu.themeSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "theme", 0);
     if (menu.themeSelectedIndex < 0 || menu.themeSelectedIndex >= LIBRETRO_MENU_STYLE_COUNT)
-        menu.themeSelectedIndex = LIBRETRO_MENU_STYLE_DRACULA;
+        menu.themeSelectedIndex = 0;
     SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
 
+    // Volume
     float savedVolume = rlconfig_get_float(menu.cfg, "raylib-libretro", "volume", LIBRETRO.volume);
     // Migrate the legacy 0..100 integer storage to the 0.0..1.0 float scale.
     if (savedVolume > 1.0f) savedVolume /= 100.0f;
     SetLibretroVolume(savedVolume);
 
+    // Rewind
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
+
+    // Analog to D-Pad
     LIBRETRO.analogToDpadIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "analogToDpad", 0);
     if (LIBRETRO.analogToDpadIndex < 0 || LIBRETRO.analogToDpadIndex > 2) LIBRETRO.analogToDpadIndex = 0;
+
+    // Menu Gamepad Combo
     menu.menuComboIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "menuCombo", LIBRETRO_MENU_COMBO_SELECT_START);
     if (menu.menuComboIndex < 0 || menu.menuComboIndex >= LIBRETRO_MENU_COMBO_COUNT) menu.menuComboIndex = LIBRETRO_MENU_COMBO_SELECT_START;
+
+    // Cursor
     menu.hideCursor = (nk_bool)(rlconfig_get_int(menu.cfg, "raylib-libretro", "hideCursor", 0) > 0);
     menu.lockCursor = (nk_bool)(rlconfig_get_int(menu.cfg, "raylib-libretro", "lockCursor", 0) > 0);
+
+    // Touch Controls
 #if defined(PLATFORM_WEB)
+    menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 1) > 0;
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 1) > 0;
 #else
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 0) > 0;
+    menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 0) > 0;
 #endif
-    menu.touchHapticsEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchHaptics", 1) > 0;
+
+    // Save Slot
     menu.saveSlotIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "saveSlot", 0);
     if (menu.saveSlotIndex < 0 || menu.saveSlotIndex > 9) menu.saveSlotIndex = 0;
+
+    // Username
     const char* username = rlconfig_get(menu.cfg, "raylib-libretro", "username");
     if (username) TextCopy(LIBRETRO.username, username);
 
@@ -2263,15 +2316,19 @@ static bool LoadLibretroMenuSettings(void) {
     }
     SetExitKey(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_QUIT].key));
 
+    // Fast Forward
     menu.fastForwardSpeed = rlconfig_get_float(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
     if (menu.fastForwardSpeed < 1.1f) menu.fastForwardSpeed = 1.1f;
     if (menu.fastForwardSpeed > 10.0f) menu.fastForwardSpeed = 10.0f;
+
+    // Slow Motion
     menu.slowMotionSpeed = rlconfig_get_float(menu.cfg, "raylib-libretro", "slowMotionSpeed", menu.slowMotionSpeed);
     // Migrate the legacy x10 integer storage (1..9) to the 0.1..0.9 float scale.
     if (menu.slowMotionSpeed > 0.95f) menu.slowMotionSpeed /= 10.0f;
     if (menu.slowMotionSpeed < 0.1f) menu.slowMotionSpeed = 0.1f;
     if (menu.slowMotionSpeed > 0.9f) menu.slowMotionSpeed = 0.9f;
 
+    // Directories
     const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
     if (coreDirectory) TextCopy(LIBRETRO.coreDirectory, coreDirectory);
     const char* saveDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "saveDirectory");
@@ -2285,17 +2342,13 @@ static bool LoadLibretroMenuSettings(void) {
     const char* fileBrowserStartDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory");
     if (fileBrowserStartDirectory) TextCopy(LIBRETRO.fileBrowserStartDirectory, fileBrowserStartDirectory);
 
-    // Read raylib KeyboardKey values written under "keyboardP1[..]"; missing keys
-    // keep the defaults seeded into LIBRETRO.keyboardPlayer1 at init.
+    // Keyboard Controls
     for (int i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++) {
         LIBRETRO.keyboardPlayer1[i] = rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("keyboard%d", i), LIBRETRO.keyboardPlayer1[i]);
     }
 
     TraceLog(LOG_INFO, "MENU: Loaded menu settings from %s", RAYLIB_LIBRETRO_CFG_FILE);
     return true;
-#else
-    return false;
-#endif
 }
 
 void CloseLibretroMenu(void) {
@@ -2320,10 +2373,8 @@ void CloseLibretroMenu(void) {
         menu.font.recs = NULL;
     }
 
-#ifdef RAYLIB_LIBRETRO_CONFIG_H
     rlconfig_free(menu.cfg);
     menu.cfg = NULL;
-#endif
 }
 
 static void UpdateLibretroMenuVisibility(void) {

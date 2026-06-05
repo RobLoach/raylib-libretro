@@ -422,23 +422,19 @@ bool Init(void** userData, int argc, char** argv) {
     AndroidInitCrashLog(GetAndroidApp());
 #endif
 
+    // Display loading screen
+    MenuDrawLoadingScreen(NULL);
+
+    // Window Icon
     Image logo = GetLibretroLogo();
     SetWindowIcon(logo);
     UnloadImage(logo);
 
+    // Window Flags
     SetWindowMinSize(400, 300);
     SetExitKey(KEY_NULL);
 
-    BeginDrawing();
-        ClearBackground(BLACK);
-        const char* loadingText = "Loading";
-        int fontSize = 20;
-        DrawText(loadingText,
-            (GetScreenWidth()  - MeasureText(loadingText, fontSize)) / 2,
-            (GetScreenHeight() - fontSize) / 2,
-            fontSize, GRAY);
-    EndDrawing();
-
+    // Application data.
     AppData* data = (AppData*)MemAlloc(sizeof(AppData));
     memset(data, 0, sizeof(AppData));
     *userData = data;
