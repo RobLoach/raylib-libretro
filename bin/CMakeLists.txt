@@ -195,7 +195,6 @@ if ("${PLATFORM}" STREQUAL "Web")
 
     build_libretro_side_module(fceumm    "https://github.com/libretro/libretro-fceumm"   "Makefile.libretro" "")
     build_libretro_side_module(snes9x    "https://github.com/libretro/snes9x"            "Makefile"          "libretro")
-    build_libretro_side_module(gambatte  "https://github.com/libretro/gambatte-libretro" "Makefile.libretro" "")
     build_libretro_side_module(mgba      "https://github.com/libretro/mgba"              "Makefile.libretro" "")
     # picodrive's Makefile skips libretro-common (including filestream_vfs_init)
     # when STATIC_LINKING=1, on the assumption that the frontend provides them.
@@ -227,7 +226,6 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         download_cores(
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/fceumm_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/snes9x_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/gambatte_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mgba_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/picodrive_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/prboom_libretro.so.zip"
@@ -238,7 +236,6 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         download_cores(
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/fceumm_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/snes9x_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/gambatte_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mgba_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/picodrive_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/prboom_libretro.so.zip"
@@ -251,7 +248,6 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
         download_cores(
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/fceumm_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/snes9x_libretro.dll.zip"
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/gambatte_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mgba_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/picodrive_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/prboom_libretro.dll.zip"
@@ -269,7 +265,6 @@ elseif (APPLE)
         download_cores(
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/fceumm_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/snes9x_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/gambatte_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mgba_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/picodrive_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/prboom_libretro.dylib.zip"
@@ -280,7 +275,6 @@ elseif (APPLE)
         download_cores(
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/fceumm_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/snes9x_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/gambatte_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mgba_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/picodrive_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/prboom_libretro.dylib.zip"
@@ -292,7 +286,6 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
     download_cores(
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/fceumm_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/snes9x_libretro_android.so.zip"
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/gambatte_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mgba_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/picodrive_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/prboom_libretro_android.so.zip"
