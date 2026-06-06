@@ -498,31 +498,25 @@ void DrawLibretroTouchControls(void) {
         c.a = (unsigned char)(((touchHeld || physicalHeld) ? heldA : restA) * alpha);
         float fcx = btns[i].rect.x + btns[i].rect.width  * 0.5f;
         float fcy = btns[i].rect.y + btns[i].rect.height * 0.5f;
-        if (IsLibretroTouchFaceButton(id)) {
-            DrawCircle((int)fcx, (int)fcy, btns[i].rect.width * 0.5f, c);
+        float radius = btns[i].rect.width * 0.5f;
+        if (IsLibretroTouchFaceButton(id) || isMenuLike) {
+            DrawCircle((int)fcx, (int)fcy, radius, c);
         } else {
             DrawRectangleRounded(btns[i].rect, 0.5f, 6, c);
         }
         Color textColor = fadeTint;
         if (isMenuLike) textColor.a = (unsigned char)(180 * alpha);
         if (id == RETRO_DEVICE_ID_JOYPAD_START) {
-            // Three horizontal bars (hamburger / Xbox Menu icon)
-            float barW = btns[i].rect.width  * 0.50f;
-            float barH = btns[i].rect.height * 0.10f;
-            float gap  = btns[i].rect.height * 0.20f;
-            float bx   = fcx - barW * 0.5f;
-            for (int row = -1; row <= 1; row++) {
-                Rectangle bar = { bx, fcy + row * gap - barH * 0.5f, barW, barH };
-                DrawRectangleRounded(bar, 1.0f, 4, textColor);
-            }
+            // "+" icon
+            float armLen = radius * 0.55f;
+            float armW   = radius * 0.18f;
+            DrawRectangle((int)(fcx - armW * 0.5f), (int)(fcy - armLen * 0.5f), (int)armW, (int)armLen, textColor);
+            DrawRectangle((int)(fcx - armLen * 0.5f), (int)(fcy - armW * 0.5f), (int)armLen, (int)armW, textColor);
         } else if (id == RETRO_DEVICE_ID_JOYPAD_SELECT) {
-            // Two overlapping squares (Xbox View icon)
-            float sq   = btns[i].rect.width  * 0.30f;
-            float off  = btns[i].rect.width  * 0.12f;
-            Rectangle back  = { fcx - off - sq * 0.5f, fcy - sq * 0.5f, sq, sq };
-            Rectangle front = { fcx + off - sq * 0.5f, fcy - sq * 0.5f, sq, sq };
-            DrawRectangleRoundedLines(back,  0.2f, 4, textColor);
-            DrawRectangleRoundedLines(front, 0.2f, 4, textColor);
+            // "-" icon
+            float armLen = radius * 0.55f;
+            float armW   = radius * 0.18f;
+            DrawRectangle((int)(fcx - armLen * 0.5f), (int)(fcy - armW * 0.5f), (int)armLen, (int)armW, textColor);
         } else {
             Font font = GetLibretroTouchFont();
             float fs = btns[i].rect.height * 0.4f;
