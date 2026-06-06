@@ -1666,7 +1666,7 @@ LibretroMenu* InitLibretroMenu(void) {
     }
 
     // Quit
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !defined(PLATFORM_ANDROID)
     nk_console* quitButton = nk_console_button(menu.console, "Quit");
     nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuQuitClicked);
     nk_console_button_set_symbol(quitButton, NK_SYMBOL_X);
