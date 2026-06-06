@@ -177,7 +177,9 @@ static int LibretroTouchJoypadKeyboard(int buttonId) {
 #endif
 }
 
-// Returns the raylib GamepadButton mapped to a joypad button for port 0.
+/**
+ * Returns the raylib GamepadButton mapped to a joypad button for port 0.
+ */
 static int LibretroTouchJoypadGamepad(int buttonId) {
     switch (buttonId) {
         case RETRO_DEVICE_ID_JOYPAD_UP:     return GAMEPAD_BUTTON_LEFT_FACE_UP;
@@ -200,7 +202,9 @@ static int LibretroTouchJoypadGamepad(int buttonId) {
     }
 }
 
-// Returns true if the joypad button is currently held via keyboard or gamepad.
+/**
+ * Returns true if the joypad button is currently held via keyboard or gamepad.
+ */
 static bool LibretroTouchIsPhysicalButtonDown(int buttonId) {
     int key = LibretroTouchJoypadKeyboard(buttonId);
     if (key != KEY_NULL && IsKeyDown(key)) return true;
@@ -211,8 +215,11 @@ static bool LibretroTouchIsPhysicalButtonDown(int buttonId) {
     return false;
 }
 
-// Cached layout — rebuilt only when the screen size changes so a single frame
-// pays for layout math once across Update + Draw.
+/**
+ * Cached layout.
+ *
+ * Rebuilt only when the screen size changes so a single frame pays for layout math once across Update Draw.
+ */
 static TouchControlsButton LibretroTouchButtons[RAYLIB_LIBRETRO_TOUCH_BUTTON_COUNT];
 static int LibretroTouchButtonsCount = 0;
 static int LibretroTouchCachedW = -1;
@@ -233,7 +240,9 @@ static int LibretroTouchFindButtonById(int id) {
     return -1;
 }
 
-// Computes the center and radius of the circular D-pad from the 4 cardinal rects.
+/**
+ * Computes the center and radius of the circular D-pad from the 4 cardinal rects.
+ */
 static void LibretroTouchDpadInfo(Vector2 *center, float *radius) {
     int iUp    = LibretroTouchFindButtonById(RETRO_DEVICE_ID_JOYPAD_UP);
     int iDown  = LibretroTouchFindButtonById(RETRO_DEVICE_ID_JOYPAD_DOWN);
@@ -248,21 +257,23 @@ static void LibretroTouchDpadInfo(Vector2 *center, float *radius) {
     *radius   = (right.x + right.width - left.x) * 0.5f;
 }
 
-// Track whether the touch/mouse press that just landed on the MENU button has
-// been released. The menu opens on release, not press — opening on press lets
-// the press leak into Nuklear on the next frame and immediately triggers the
-// first menu item (Resume), closing the menu instantly.
+/**
+ * Track whether the touch/mouse press that just landed on the MENU button has been released. The menu opens on release, not press, opening on press lets the press leak into Nuklear on the next frame and immediately triggers the first menu item (Resume), closing the menu instantly.
+ */
 static bool LibretroTouchMenuArmed = false;
 static bool LibretroTouchMenuTriggered = false;
 static bool LibretroTouchHapticsEnabled = true;
-// D-pad lock: once a press begins inside the circle, the direction is tracked
-// from that input point even after it moves outside the circle.
-// dpadTouchId == -1 means the lock belongs to the mouse; -2 means no lock.
+
+/**
+ * D-pad lock: once a press begins inside the circle, the direction is tracked from that input point even after it moves outside the circle. dpadTouchId == -1 means the lock belongs to the mouse; -2 means no lock.
+ */
 static bool    LibretroTouchDpadLocked   = false;
 static int     LibretroTouchDpadTouchId  = -2;
 static Vector2 LibretroTouchDpadLockedPos = {0};
 
-// Idle fade: alpha trends toward 0.25 after 3 s of no touch activity.
+/**
+ * Idle fade: alpha trends toward 0.25 after 3 s of no touch activity.
+ */
 static double LibretroTouchLastActiveTime = -1.0;  // -1 = never touched
 static float  LibretroTouchAlpha = 1.0f;
 
@@ -290,6 +301,7 @@ void UpdateLibretroTouchControls(void) {
     for (int t = 0; t < touchCount && nPoints < 10; t++) {
         points[nPoints++] = GetTouchPosition(t);
     }
+    
     // On the web a touch is also reported as a mouse press at the same
     // position; only sample the mouse when there are no active touches to
     // avoid registering the same point twice.
@@ -485,6 +497,7 @@ void DrawLibretroTouchControls(void) {
         }
     }
 
+    // Buttons
     for (int i = 0; i < LibretroTouchButtonsCount; i++) {
         TouchControlsButton* btns = LibretroTouchButtons;
         int id = btns[i].buttonId;
@@ -498,19 +511,38 @@ void DrawLibretroTouchControls(void) {
         c.a = (unsigned char)(((touchHeld || physicalHeld) ? heldA : restA) * alpha);
         float fcx = btns[i].rect.x + btns[i].rect.width  * 0.5f;
         float fcy = btns[i].rect.y + btns[i].rect.height * 0.5f;
-        if (IsLibretroTouchFaceButton(id)) {
-            DrawCircle((int)fcx, (int)fcy, btns[i].rect.width * 0.5f, c);
+        float radius = btns[i].rect.width * 0.5f;
+        if (IsLibretroTouchFaceButton(id) || isMenuLike) {
+            DrawCircle((int)fcx, (int)fcy, radius, c);
         } else {
             DrawRectangleRounded(btns[i].rect, 0.5f, 6, c);
         }
         Color textColor = fadeTint;
         if (isMenuLike) textColor.a = (unsigned char)(180 * alpha);
-        Font font = GetLibretroTouchFont();
-        float fs = btns[i].rect.height * 0.4f;
-        Vector2 ts = MeasureTextEx(font, btns[i].label, fs, 1.0f);
-        DrawTextEx(font, btns[i].label,
-            (Vector2){ fcx - ts.x * 0.5f, fcy - ts.y * 0.5f },
-            fs, 1.0f, textColor);
+        if (id == RETRO_DEVICE_ID_JOYPAD_START) {
+            // Plus Sign
+            float armLen = radius * 0.55f;
+            float armW   = radius * 0.18f;
+            Rectangle rect = (Rectangle){ fcx - armLen * 0.5f, fcy - armW * 0.5f, armLen, armW };
+            DrawRectangleRec(rect, textColor);
+            rect = (Rectangle){ fcx - armW * 0.5f, fcy - armW * 0.5f - armW, armW, armW };
+            DrawRectangleRec(rect, textColor);
+            rect.y = fcy - armW * 0.5f + armW;
+            DrawRectangleRec(rect, textColor);
+        } else if (id == RETRO_DEVICE_ID_JOYPAD_SELECT) {
+            // Minus Sign
+            float armLen = radius * 0.55f;
+            float armW   = radius * 0.18f;
+            DrawRectangle((int)(fcx - armLen * 0.5f), (int)(fcy - armW * 0.5f), (int)armLen, (int)armW, textColor);
+        } else if (btns[i].label[0] != '\0') {
+            // Text label
+            Font font = GetLibretroTouchFont();
+            float fs = btns[i].rect.height * 0.4f;
+            Vector2 ts = MeasureTextEx(font, btns[i].label, fs, 1.0f);
+            DrawTextEx(font, btns[i].label,
+                (Vector2){ fcx - ts.x * 0.5f, fcy - ts.y * 0.5f },
+                fs, 1.0f, textColor);
+        }
     }
 
     // Menu button
