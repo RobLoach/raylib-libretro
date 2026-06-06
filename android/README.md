@@ -105,7 +105,7 @@ when linking `libmain` to force it to be kept and exported. Without it the APK
 crashes instantly with a blank screen.
 
 ### Cores
-The bundled cores — **fceumm, snes9x, gambatte, mgba, picodrive** — are
+The bundled cores — **fceumm, snes9x, mgba, picodrive** — are
 downloaded at configure time into `app/src/main/assets/cores/`, with a generated
 `cores.list` naming them. They are stored uncompressed (`noCompress 'so'`) so
 they can be read and copied out efficiently. `SetupAndroidEnvironment()` in
