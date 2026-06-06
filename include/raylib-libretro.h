@@ -4026,11 +4026,6 @@ static void LibretroPixelFormatARGB1555ToRGB565(void *output_, const void *input
 }
 
 /**
- * Serialize the current emulator state into a new buffer.
- * @param size Output parameter filled with the size of the returned buffer in bytes.
- * @return Newly allocated buffer containing the serialized state, or NULL on failure.
- * @note The caller is responsible for freeing the returned buffer with MemFree(). */
-/**
  * Size in bytes of the loaded core's serialized state, or 0 if no game is
  * ready. Useful for validating that a buffered state (e.g. a rewind snapshot)
  * still matches the currently loaded content before restoring it.
@@ -4042,6 +4037,11 @@ static unsigned int GetLibretroSerializedSize(void) {
     return (unsigned int)LIBRETRO.core.symbols.retro_serialize_size();
 }
 
+/**
+ * Serialize the current emulator state into a new buffer.
+ * @param size Output parameter filled with the size of the returned buffer in bytes.
+ * @return Newly allocated buffer containing the serialized state, or NULL on failure.
+ * @note The caller is responsible for freeing the returned buffer with MemFree(). */
 static void* GetLibretroSerializedData(unsigned int* size) {
     if (!IsLibretroGameReady()) {
         return NULL;

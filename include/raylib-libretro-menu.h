@@ -2421,7 +2421,7 @@ static void UpdateLibretroMenuVisibility(void) {
         menu.controllersMenu->visible = nk_false;
     }
     if (menu.saveStateButton) {
-        menu.saveStateButton->parent->visible = gameReady;
+        menu.saveStateButton->parent->visible = gameReady && GetLibretroSerializedSize() > 0;
     }
     if (menu.resumeButton) menu.resumeButton->visible = gameReady;
     if (menu.resetGameButton) menu.resetGameButton->visible = gameReady;
