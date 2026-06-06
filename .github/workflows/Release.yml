@@ -98,21 +98,37 @@ jobs:
           fail_on_unmatched_files: true
 
   build-linux-armv7:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Install Dependencies
+
+      - name: Setup Multiarch and Repositories
         run: |
           sudo dpkg --add-architecture armhf
+          
+          # Add ubuntu-ports repositories so apt can find :armhf development packages
+          sudo tee /etc/apt/sources.list.d/armhf.list <<EOF
+          deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports/ noble main restricted universe multiverse
+          deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports/ noble-updates main restricted universe multiverse
+          deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports/ noble-security main restricted universe multiverse
+          EOF
+          
+          # Prevent native packages from breaking by explicitly limiting them to the main sources
+          sudo sed -i 's/deb http/deb [arch=arm64] http/g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+
+      - name: Install Dependencies
+        run: |
           sudo apt-get update
           sudo apt-get install -y \
             gcc-arm-linux-gnueabihf \
             g++-arm-linux-gnueabihf \
             libgles2-mesa-dev:armhf \
             libdrm-dev:armhf \
-            libgbm-dev:armhf
+            libgbm-dev:armhf \
+            zip
+
       - name: Configure
         run: |
           cmake -B build \
@@ -126,16 +142,20 @@ jobs:
             -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
             -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
             -DPLATFORM=DRM
+
       - name: Build
         run: cmake --build build --parallel
+
       - name: Install
         run: cmake --install build
+
       - name: Package
         run: |
           cd install
           zip -r ../raylib-libretro-${{ github.ref_name }}-linux-armv7.zip .
+
       - name: Upload
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           files: raylib-libretro-${{ github.ref_name }}-linux-armv7.zip
           fail_on_unmatched_files: true
