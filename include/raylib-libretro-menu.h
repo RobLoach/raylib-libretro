@@ -1322,7 +1322,7 @@ LibretroMenu* InitLibretroMenu(void) {
     // When trying to go back from the main menu, exit the menu.
     nk_console_add_event(menu.console, NK_CONSOLE_EVENT_BACK, &MenuResumeClicked);
 
-    menu.cfg = rlconfig_load(FileExists(RAYLIB_LIBRETRO_CFG_FILE) ? RAYLIB_LIBRETRO_CFG_FILE : NULL);
+    menu.cfg = rlconfig_load(RAYLIB_LIBRETRO_CFG_FILE);
 
     // Directories
     TextCopy(LIBRETRO.coreDirectory, "cores");
@@ -2304,11 +2304,9 @@ static bool LoadLibretroMenuSettings(void) {
     menu.lockCursor = (nk_bool)(rlconfig_get_int(menu.cfg, "raylib-libretro", "lockCursor", 0) > 0);
 
     // Touch Controls
-#if defined(PLATFORM_WEB)
-    menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 1) > 0;
+#if defined(PLATFORM_WEB) || defined(__ANDROID__) || defined(PLATFORM_ANDROID)
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 1) > 0;
 #else
-    menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 0) > 0;
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 0) > 0;
 #endif
 
