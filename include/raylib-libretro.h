@@ -332,6 +332,9 @@ typedef struct LibretroCoreData {
     // Loaded content path (empty if no content loaded).
     char contentPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 
+    // Temp file written for needFullpath cores when loading from memory (empty if none).
+    char tempGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+
     // Backing storage and struct for RETRO_ENVIRONMENT_GET_GAME_INFO_EXT.
     // Pointers in gameInfoExt reference these buffers (or are NULL).
     char contentDir[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -2572,11 +2575,23 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
         return LoadLibretroGame(NULL);
     }
 
-    // Check if it needs the full path
+    // When the core requires a full path, write to a temp file and load from disk.
     if (LIBRETRO.core.needFullpath) {
-        TraceLog(LOG_ERROR, "LIBRETRO: The core requires the full path, can't load from memory");
-        // TODO: Allow saving to a temporary location and then use LoadLibretroGame()?
-        return false;
+        char tempPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+        TextCopy(tempPath,
+            TextFormat("%s/raylib-libretro-%d.tmp", GetApplicationDirectory(), GetRandomValue(100000, 999999)));
+        if (!SaveFileData(tempPath, fileData, dataSize)) {
+            TraceLog(LOG_ERROR, "LIBRETRO: Failed to write temp file for needFullPath core");
+            return false;
+        }
+        TraceLog(LOG_INFO, "LIBRETRO: Loading from temp file %s", tempPath);
+        bool ok = LoadLibretroGame(tempPath);
+        if (ok) {
+            TextCopy(LIBRETRO.core.tempGamePath, tempPath);
+        } else {
+            FileRemove(tempPath);
+        }
+        return ok;
     }
 
     // Load the game.
@@ -3483,6 +3498,10 @@ static void UnloadLibretroGame(void) {
     LIBRETRO.core.contentDir[0]  = '\0';
     LIBRETRO.core.contentName[0] = '\0';
     LIBRETRO.core.contentExt[0]  = '\0';
+    if (LIBRETRO.core.tempGamePath[0] != '\0') {
+        FileRemove(LIBRETRO.core.tempGamePath);
+        LIBRETRO.core.tempGamePath[0] = '\0';
+    }
     LIBRETRO.core.gameInfoExtValid = false;
     memset(&LIBRETRO.core.gameInfoExt, 0, sizeof(LIBRETRO.core.gameInfoExt));
 
