@@ -133,6 +133,7 @@ typedef struct LibretroMenu {
     int orientationIndex;                 // Android screen orientation: 0 = Landscape, 1 = Portrait, 2 = Auto
     nk_bool hideCursor;
     nk_bool lockCursor;
+    nk_bool integerScaling;
     char cheatBuffer[256];
     char cheatList[1024];
     unsigned cheatIndex;
@@ -468,6 +469,12 @@ static nk_console* LibretroMenuKeyConsole(nk_console* parent, const char* label,
     nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED,
         &LibretroMenuKeyBindingChanged, (void*)(intptr_t)btn, NULL);
     return widget;
+}
+
+static void LibretroMenuIntegerScalingChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    (void)user_data;
+    LIBRETRO.integerScaling = (bool)menu.integerScaling;
 }
 
 static void LibretroMenuSettingChanged(nk_console* widget, void* user_data) {
@@ -1468,6 +1475,11 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* rotation = nk_console_combobox(graphicsMenu, "Rotation", "0 Degrees|90 Degrees|180 Degrees|270 Degrees", '|', &LIBRETRO.core.rotation);
             rotation->tooltip = "Override the display rotation for the running game.";
 
+            // Integer Scaling
+            nk_console* integerScalingCheckbox = nk_console_checkbox(graphicsMenu, "Integer Scaling", &menu.integerScaling);
+            nk_console_add_event_handler(integerScalingCheckbox, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuIntegerScalingChanged, NULL, NULL);
+            integerScalingCheckbox->tooltip = "Scale to exact multiples of the native resolution. Eliminates sub-pixel blurriness on pixel-art content.";
+
             // Theme
             nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", RAYLIB_LIBRETRO_STYLES_NAMES, '|', &menu.themeSelectedIndex);
             nk_console_add_event_handler(themeCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
@@ -2093,6 +2105,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "fps", menu.fpsIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "shader", menu.shaderSelectedIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "textureFilter", LIBRETRO.textureFilter);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "integerScaling", (int)menu.integerScaling);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", LIBRETRO.volume);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
@@ -2284,6 +2297,10 @@ static bool LoadLibretroMenuSettings(void) {
     LIBRETRO.textureFilter = rlconfig_get_int(menu.cfg, "raylib-libretro", "textureFilter", 0);
     if (LIBRETRO.textureFilter < 0 || LIBRETRO.textureFilter > TEXTURE_FILTER_ANISOTROPIC_16X)
         LIBRETRO.textureFilter = 0;
+
+    // Integer Scaling
+    menu.integerScaling = (nk_bool)rlconfig_get_int(menu.cfg, "raylib-libretro", "integerScaling", 0);
+    LIBRETRO.integerScaling = (bool)menu.integerScaling;
 
     // Theme
     menu.themeSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "theme", 0);
