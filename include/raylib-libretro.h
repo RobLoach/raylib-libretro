@@ -2588,7 +2588,7 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
         if (ok) {
             TextCopy(LIBRETRO.core.tempGamePath, tempPath);
         } else {
-            remove(tempPath);
+            FileRemove(tempPath);
         }
         return ok;
     }
@@ -3498,7 +3498,7 @@ static void UnloadLibretroGame(void) {
     LIBRETRO.core.contentName[0] = '\0';
     LIBRETRO.core.contentExt[0]  = '\0';
     if (LIBRETRO.core.tempGamePath[0] != '\0') {
-        remove(LIBRETRO.core.tempGamePath);
+        FileRemove(LIBRETRO.core.tempGamePath);
         LIBRETRO.core.tempGamePath[0] = '\0';
     }
     LIBRETRO.core.gameInfoExtValid = false;
