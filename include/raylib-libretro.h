@@ -3118,17 +3118,16 @@ static void DrawLibretroTint(Color tint) {
 
     // Calculate the optimal visual width/height to fit the screen.
     int visH, visW;
-    if (LIBRETRO.integerScaling && LIBRETRO.core.height > 0) {
-        int scaleFactor = GetScreenHeight() / LIBRETRO.core.height;
+    if (LIBRETRO.integerScaling && GetLibretroHeight() > 0 && visAspect > 0) {
+        // Calculate the best integer scaling size.
+        int maxScaleH = GetScreenHeight() / GetLibretroHeight();
+        int maxScaleW = (int)(GetScreenWidth() / (GetLibretroHeight() * visAspect));
+        int scaleFactor = (maxScaleH < maxScaleW) ? maxScaleH : maxScaleW;
         if (scaleFactor < 1) scaleFactor = 1;
-        visH = LIBRETRO.core.height * scaleFactor;
+        visH = GetLibretroHeight() * scaleFactor;
         visW = (int)(visH * visAspect);
-        while (visW > GetScreenWidth() && scaleFactor > 1) {
-            scaleFactor--;
-            visH = LIBRETRO.core.height * scaleFactor;
-            visW = (int)(visH * visAspect);
-        }
-    } else {
+    }
+    else {
         visH = GetScreenHeight();
         visW = (int)(visH * visAspect);
         if (visW > GetScreenWidth()) {
