@@ -2579,7 +2579,7 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
     if (LIBRETRO.core.needFullpath) {
         char tempPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
         TextCopy(tempPath,
-            TextFormat("%s/raylib-libretro-%d.tmp", GetApplicationDirectory(), GetRandomValue(100000, 999999)));
+            TextFormat("%s/.raylib-libretro-%d.tmp", GetApplicationDirectory(), GetRandomValue(1, 999999)));
         if (!SaveFileData(tempPath, fileData, dataSize)) {
             TraceLog(LOG_ERROR, "LIBRETRO: Failed to write temp file for needFullPath core");
             return false;
