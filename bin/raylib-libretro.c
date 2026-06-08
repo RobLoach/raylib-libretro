@@ -65,6 +65,25 @@
 #include <android_native_app_glue.h>
 // Provided by raylib's Android backend (rcore_android.c); not in raylib.h.
 extern struct android_app *GetAndroidApp(void);
+
+// The ABI this libmain.so was built for. The APK bundles every ABI's cores
+// under assets/cores/<abi>/ (a single APK shares assets across ABIs, but cores
+// are architecture-specific), so the runtime must read from the matching
+// subdirectory. Normally injected by android/app/CMakeLists.txt; fall back to
+// deriving it from the target architecture so a direct compile still works.
+#ifndef RAYLIB_LIBRETRO_ANDROID_ABI
+    #if defined(__aarch64__)
+        #define RAYLIB_LIBRETRO_ANDROID_ABI "arm64-v8a"
+    #elif defined(__arm__)
+        #define RAYLIB_LIBRETRO_ANDROID_ABI "armeabi-v7a"
+    #elif defined(__x86_64__)
+        #define RAYLIB_LIBRETRO_ANDROID_ABI "x86_64"
+    #elif defined(__i386__)
+        #define RAYLIB_LIBRETRO_ANDROID_ABI "x86"
+    #else
+        #define RAYLIB_LIBRETRO_ANDROID_ABI ""
+    #endif
+#endif
 #endif
 
 #ifdef __EMSCRIPTEN__
@@ -153,6 +172,7 @@ typedef struct {
     float rewindTimer;  // seconds accumulated toward the next rewind capture/step
     bool muted;
     bool pendingMenuOpen;
+    int appliedOrientation;  // last orientation pushed to Android; -1 = none yet
 } AppData;
 
 // Breadcrumb logging through startup. On Android these go to logcat (and the
@@ -238,7 +258,7 @@ static void AndroidCopyCore(const char* coreName, const char* destDir) {
     char destPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char assetPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     TextCopy(destPath, TextFormat("%s/%s", destDir, coreName));
-    TextCopy(assetPath, TextFormat("cores/%s", coreName));
+    TextCopy(assetPath, TextFormat("cores/%s/%s", RAYLIB_LIBRETRO_ANDROID_ABI, coreName));
 
     if (FileExists(destPath)) return;  // already installed on a previous launch
 
@@ -367,8 +387,8 @@ static void SetupAndroidEnvironment(LibretroMenu* menu) {
     MakeDirectory(LIBRETRO.saveDirectory);
     MakeDirectory(LIBRETRO.systemDirectory);
 
-    // Install each core listed in the build-generated assets/cores.list.
-    char* list = LoadFileText("cores.list");
+    // Install each core listed in this ABI's build-generated cores.list.
+    char* list = LoadFileText(TextFormat("cores/%s/cores.list", RAYLIB_LIBRETRO_ANDROID_ABI));
     if (list != NULL) {
         int count = 0;
         char** lines = TextSplit(list, '\n', &count);
@@ -413,6 +433,33 @@ static void AndroidEnableImmersiveMode(struct android_app* app) {
     ANativeActivity_setWindowFlags(app->activity,
         AWINDOW_FLAG_FULLSCREEN | AWINDOW_FLAG_KEEP_SCREEN_ON, 0);
 }
+
+// Apply the user's chosen screen orientation via Activity.setRequestedOrientation.
+// index: 0 = Landscape, 1 = Portrait, 2 = Auto. Unlike the view-hierarchy calls
+// avoided in AndroidEnableImmersiveMode, setRequestedOrientation is an Activity
+// method that dispatches through the system server rather than touching a View
+// on the calling thread, so it is safe to invoke from the android_main thread.
+static void AndroidSetOrientation(struct android_app* app, int index) {
+    // android.content.pm.ActivityInfo: SCREEN_ORIENTATION_SENSOR_LANDSCAPE = 6
+    // (either landscape direction), _SENSOR_PORTRAIT = 7, _SENSOR = 4 (free).
+    static const jint orientations[] = { 6, 7, 4 };
+    if (index < 0 || index > 2) index = 0;
+
+    bool needDetach = false;
+    JNIEnv* env = AndroidJNIBegin(app, &needDetach);
+    if (env == NULL) return;
+
+    jclass activityClass = (*env)->GetObjectClass(env, app->activity->clazz);
+    jmethodID setOrientation = activityClass ? (*env)->GetMethodID(env, activityClass,
+        "setRequestedOrientation", "(I)V") : NULL;
+    if (setOrientation != NULL) {
+        (*env)->CallVoidMethod(env, app->activity->clazz, setOrientation, orientations[index]);
+        TraceLog(LOG_INFO, "ANDROID: Set screen orientation (mode %d)", index);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+    AndroidJNIEnd(app, needDetach);
+}
 #endif  // __ANDROID__
 
 bool Init(void** userData, int argc, char** argv) {
@@ -437,6 +484,7 @@ bool Init(void** userData, int argc, char** argv) {
     // Application data.
     AppData* data = (AppData*)MemAlloc(sizeof(AppData));
     memset(data, 0, sizeof(AppData));
+    data->appliedOrientation = -1;  // force the first Update() to apply the saved orientation
     *userData = data;
 
     TraceLog(LOG_INFO, "LIBRETRO: Initializing Audio");
@@ -499,6 +547,15 @@ bool Init(void** userData, int argc, char** argv) {
 
 bool Update(void* userData) {
     AppData* data = (AppData*)userData;
+
+#if defined(__ANDROID__)
+    // Apply the menu's orientation choice when it changes (and the saved value
+    // on the first frame, since appliedOrientation starts at -1).
+    if (data->menu->orientationIndex != data->appliedOrientation) {
+        data->appliedOrientation = data->menu->orientationIndex;
+        AndroidSetOrientation(GetAndroidApp(), data->appliedOrientation);
+    }
+#endif
 
     // Deferred menu open: apply after input has refreshed so the release event
     // that triggered the MENU touch button is gone before Nuklear processes input.

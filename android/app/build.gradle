@@ -18,7 +18,12 @@ android {
 
         externalNativeBuild {
             cmake {
-                abiFilters 'arm64-v8a'
+                // arm64-v8a: modern phones/tablets. armeabi-v7a: older/cheaper
+                // 32-bit devices and many retro handhelds. x86_64: the standard
+                // Android emulator. Each ABI's cores are bundled under
+                // assets/cores/<abi>/ (see CMakeLists.txt) so the one APK runs
+                // everywhere; this multiplies the bundled-core size accordingly.
+                abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
                 arguments '-DANDROID_STL=c++_shared'
             }
         }

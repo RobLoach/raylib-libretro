@@ -23,13 +23,17 @@ an `android.app.NativeActivity` — there is no Java/Kotlin application code
 | compileSdk     | 34                   |
 | minSdk         | 24 (Android 7.0)     |
 | targetSdk      | 34                   |
-| ABI            | `arm64-v8a` only     |
+| ABI            | `arm64-v8a`, `armeabi-v7a`, `x86_64` |
 | STL            | `c++_shared`         |
 | AGP / Gradle   | 8.2.2 / 8.6          |
 
-> **Only `arm64-v8a` is built.** The APK installs on physical arm64 devices but
-> **not** on an x86_64 emulator. To test on an emulator, add `x86_64` to
-> `abiFilters` in [app/build.gradle](app/build.gradle).
+> **The APK is universal across all three ABIs.** `arm64-v8a` covers modern
+> phones and tablets, `armeabi-v7a` covers older 32-bit devices and many retro
+> handhelds, and `x86_64` runs on the standard Android emulator. Because cores
+> are architecture-specific but APK assets are shared across ABIs, each ABI's
+> cores are bundled under `assets/cores/<abi>/`, so the universal APK is larger
+> than a single-ABI build. To trim it, reduce `abiFilters` in
+> [app/build.gradle](app/build.gradle).
 
 ## Build
 
@@ -59,9 +63,10 @@ android/app/build/outputs/apk/debug/app-debug.apk
 Prebuilt APKs are attached to every
 [GitHub Release](https://github.com/RobLoach/raylib-libretro/releases), built by
 [.github/workflows/Release.yml](../.github/workflows/Release.yml) when a release
-is published. The asset is named `raylib-libretro-android-arm64.apk`; its
-`versionName` is taken from the release tag and `versionCode` from the build
-number, so each release is a valid update over the last.
+is published. The asset is named `raylib-libretro-<tag>-android.apk` (a single
+universal APK for all bundled ABIs); its `versionName` is taken from the release
+tag and `versionCode` from the build number, so each release is a valid update
+over the last.
 
 > **Known limitation:** release APKs are signed with the Android **debug key**,
 > which is not stable across builds. Installing a newer release over an existing
@@ -105,15 +110,24 @@ when linking `libmain` to force it to be kept and exported. Without it the APK
 crashes instantly with a blank screen.
 
 ### Cores
-The bundled cores — **fceumm, snes9x, mgba, picodrive** — are
-downloaded at configure time into `app/src/main/assets/cores/`, with a generated
-`cores.list` naming them. They are stored uncompressed (`noCompress 'so'`) so
-they can be read and copied out efficiently. `SetupAndroidEnvironment()` in
-[../bin/raylib-libretro.c](../bin/raylib-libretro.c) installs them into the data
-directory on first launch.
+The bundled cores — **fceumm, snes9x, mgba, picodrive** — are downloaded at
+configure time, once per ABI, into `app/src/main/assets/cores/<abi>/`, each with
+a generated `cores.list` naming that ABI's cores. They are stored uncompressed
+(`noCompress 'so'`) so they can be read and copied out efficiently. A single APK
+bundles every ABI's cores because assets are shared across ABIs; at runtime the
+matching `libmain.so` knows its own ABI (`RAYLIB_LIBRETRO_ANDROID_ABI`, injected
+by [app/CMakeLists.txt](app/CMakeLists.txt)) and `SetupAndroidEnvironment()` in
+[../bin/raylib-libretro.c](../bin/raylib-libretro.c) installs only that ABI's
+cores into the data directory on first launch.
 
 To change the core set, edit the URL list in [app/CMakeLists.txt](app/CMakeLists.txt)
 and rebuild — `cores.list` regenerates automatically.
+
+### Orientation
+The activity starts in `sensorLandscape`. An **Orientation** setting under
+Settings › Gameplay (Landscape / Portrait / Auto) lets you change it at runtime:
+`AndroidSetOrientation()` applies the choice via `Activity.setRequestedOrientation()`,
+and the value persists in the config like other settings.
 
 ### Directories
 The desktop defaults (`cores`, `saves`, `system`) are relative and unusable on
@@ -138,7 +152,7 @@ from [../bin/icon-512.png](../bin/icon-512.png).
 |---------|--------------|
 | `./gradlew: Permission denied` | The wrapper lost its executable bit — `chmod +x gradlew`. |
 | Crashes instantly, blank screen | Missing `ANativeActivity_onCreate` — verify the `-u` link flag survived (`nm -D libmain.so \| grep ANativeActivity_onCreate`). |
-| Installs but won't launch on emulator | Emulator is x86_64; only `arm64-v8a` is built. Add `x86_64` to `abiFilters`. |
+| Installs but won't launch on emulator | The emulator's ABI isn't in `abiFilters`. `x86_64` is built; for an `arm64` emulator image use `arm64-v8a`. |
 | Won't install over an older build (signature mismatch) | Release APKs are debug-signed; uninstall the previous version first. |
 | Menu shows no cores | The core download failed at build time (logged as a CMake warning), or first-launch copy failed — check `adb logcat`. |
 | Can't find ROMs in the browser | All-Files Access not granted, or ROMs are outside the app's storage. |

@@ -130,6 +130,7 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
+    int orientationIndex;                 // Android screen orientation: 0 = Landscape, 1 = Portrait, 2 = Auto
     nk_bool hideCursor;
     nk_bool lockCursor;
     char cheatBuffer[256];
@@ -1496,6 +1497,13 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_checkbox(gameplayMenu, "Touch Haptics", &menu.touchHapticsEnabled);
             #endif
 
+            // Screen Orientation (applied by the Android activity; see bin/raylib-libretro.c)
+            #if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+            nk_console* orientationCombo = nk_console_combobox(gameplayMenu, "Orientation",
+                "Landscape|Portrait|Auto", '|', &menu.orientationIndex);
+            orientationCombo->tooltip = "Lock the screen to landscape or portrait, or follow the sensor";
+            #endif
+
             // Rewind
             nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
             nk_console* analogCombo = nk_console_combobox(gameplayMenu, "Analog to D-Pad",
@@ -2094,6 +2102,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "lockCursor", menu.lockCursor ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchHaptics", menu.touchHapticsEnabled ? 1 : 0);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "orientation", menu.orientationIndex);
 
     rlconfig_set_int(menu.cfg, "raylib-libretro", "saveSlot", menu.saveSlotIndex);
     rlconfig_set(menu.cfg, "raylib-libretro", "username", LIBRETRO.username);
@@ -2309,6 +2318,10 @@ static bool LoadLibretroMenuSettings(void) {
 #else
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 0) > 0;
 #endif
+
+    // Screen Orientation (0 = Landscape, 1 = Portrait, 2 = Auto; applied on Android)
+    menu.orientationIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "orientation", 0);
+    if (menu.orientationIndex < 0 || menu.orientationIndex > 2) menu.orientationIndex = 0;
 
     // Save Slot
     menu.saveSlotIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "saveSlot", 0);

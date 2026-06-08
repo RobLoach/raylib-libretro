@@ -3,12 +3,17 @@ project(raylib-libretro-android C)
 
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
-# Download libretro cores into assets/cores so AGP bundles them inside the APK.
-# Android can only dlopen() a core from a real filesystem path, so at first
+# Download libretro cores into assets/cores/<abi> so AGP bundles them inside the
+# APK. Android can only dlopen() a core from a real filesystem path, so at first
 # launch the app copies these out of the read-only assets into its writable
 # data directory and loads them from there (see SetupAndroidEnvironment() in
 # bin/raylib-libretro.c). cores.list records the bundled cores for the app.
-set(CORES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/main/assets/cores")
+#
+# Cores are architecture-specific, but APK assets are shared across every ABI in
+# a single APK, so each ABI's cores live under their own assets/cores/<abi>/
+# subdirectory. This CMakeLists is configured once per ABI; the matching
+# libmain.so reads only its own subdirectory at runtime.
+set(CORES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/main/assets/cores/${CMAKE_ANDROID_ARCH_ABI}")
 file(MAKE_DIRECTORY "${CORES_DIR}")
 set(CORE_NAMES "")
 foreach(URL IN ITEMS
@@ -42,9 +47,10 @@ foreach(URL IN ITEMS
     list(APPEND CORE_NAMES "${CORE_SO}")
 endforeach()
 
-# Write the manifest of bundled cores the app reads on first launch.
+# Write the manifest of bundled cores the app reads on first launch, alongside
+# this ABI's cores so the runtime reads cores/<abi>/cores.list.
 string(REPLACE ";" "\n" CORE_LIST "${CORE_NAMES}")
-file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/src/main/assets/cores.list" "${CORE_LIST}\n")
+file(WRITE "${CORES_DIR}/cores.list" "${CORE_LIST}\n")
 
 # Build raylib for Android (uses EGL/native window instead of GLFW+X11)
 set(PLATFORM       Android CACHE STRING "" FORCE)
@@ -91,6 +97,9 @@ target_include_directories(main PRIVATE
     ${ANDROID_NDK}/sources/android/native_app_glue
 )
 target_compile_definitions(main PRIVATE
+    # Tells the runtime which assets/cores/<abi>/ subdirectory holds the cores
+    # built for this libmain.so. Kept in sync with the per-ABI CORES_DIR above.
+    RAYLIB_LIBRETRO_ANDROID_ABI="${CMAKE_ANDROID_ARCH_ABI}"
     PHYSFS_SUPPORTS_ZIP=1
     PHYSFS_SUPPORTS_7Z=0
     PHYSFS_SUPPORTS_GRP=0

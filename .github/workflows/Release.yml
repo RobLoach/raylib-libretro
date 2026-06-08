@@ -231,12 +231,14 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: ./gradlew assembleRelease -PappVersionName="${TAG#v}" -PappVersionCode="$RUN_NUMBER"
       # The action names the asset after the file, so rename to the release name.
+      # One APK carries all ABIs (arm64-v8a, armeabi-v7a, x86_64), so it is no
+      # longer arch-specific.
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk raylib-libretro-${{ github.ref_name }}-android-arm64.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk raylib-libretro-${{ github.ref_name }}-android.apk
       - name: Upload
         uses: softprops/action-gh-release@v3
         with:
-          files: raylib-libretro-${{ github.ref_name }}-android-arm64.apk
+          files: raylib-libretro-${{ github.ref_name }}-android.apk
           fail_on_unmatched_files: true
 
   build-web:
