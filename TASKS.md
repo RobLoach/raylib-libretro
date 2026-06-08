@@ -3,7 +3,7 @@
 A roadmap of some interesting features to consider.
 
 ## Quick Fixes
-- [ ] Within raylib-libretro-touch.h, within LibretroTouchJoypadKeyboard(), if the menu is available, then get the menu setting for the related keyboard controls instead of hardcoding the keys.
+- [x] Within raylib-libretro-touch.h, within LibretroTouchJoypadKeyboard(), if the menu is available, then get the menu setting for the related keyboard controls instead of hardcoding the keys.
 - [ ] Within raylib-libretro-touch.h, there is a LibretroTouchJoypadGamepad() function. Isn't there a function like this directly withing raylib-libretro.h we could use instead? Would save some function definitions.
 - [ ] Within raylib-libretro-touch.h, there's a LibretroTouchFadeColor() function. Isn't there a raylib function we could use for this instead?
 - [x] Is there a way to have the Emscripten Fullscreen capabilities be handled through the Settings>Graphics>Fullscreen toggle widget?
