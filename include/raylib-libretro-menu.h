@@ -1091,8 +1091,8 @@ static bool MenuDoLoadGame(const char* gamePath) {
 static void MenuDrawLoadingScreen(const char* gamePath) {
     BeginDrawing();
         // Colors
-        Color background = GRAY;
-        Color foreground = WHITE;
+        Color background = (Color){ 17, 17, 27, 255 };
+        Color foreground = (Color){ 245, 224, 220, 255 };
         if (menu.ctx != NULL) {
             background = NuklearColorToColor(menu.ctx->style.window.background);
             foreground = NuklearColorToColor(menu.ctx->style.button.text_hover);
