@@ -178,38 +178,13 @@ static int LibretroTouchJoypadKeyboard(int buttonId) {
 }
 
 /**
- * Returns the raylib GamepadButton mapped to a joypad button for port 0.
- */
-static int LibretroTouchJoypadGamepad(int buttonId) {
-    switch (buttonId) {
-        case RETRO_DEVICE_ID_JOYPAD_UP:     return GAMEPAD_BUTTON_LEFT_FACE_UP;
-        case RETRO_DEVICE_ID_JOYPAD_DOWN:   return GAMEPAD_BUTTON_LEFT_FACE_DOWN;
-        case RETRO_DEVICE_ID_JOYPAD_LEFT:   return GAMEPAD_BUTTON_LEFT_FACE_LEFT;
-        case RETRO_DEVICE_ID_JOYPAD_RIGHT:  return GAMEPAD_BUTTON_LEFT_FACE_RIGHT;
-        case RETRO_DEVICE_ID_JOYPAD_B:      return GAMEPAD_BUTTON_RIGHT_FACE_DOWN;
-        case RETRO_DEVICE_ID_JOYPAD_A:      return GAMEPAD_BUTTON_RIGHT_FACE_RIGHT;
-        case RETRO_DEVICE_ID_JOYPAD_Y:      return GAMEPAD_BUTTON_RIGHT_FACE_LEFT;
-        case RETRO_DEVICE_ID_JOYPAD_X:      return GAMEPAD_BUTTON_RIGHT_FACE_UP;
-        case RETRO_DEVICE_ID_JOYPAD_SELECT: return GAMEPAD_BUTTON_MIDDLE_LEFT;
-        case RETRO_DEVICE_ID_JOYPAD_START:  return GAMEPAD_BUTTON_MIDDLE_RIGHT;
-        case RETRO_DEVICE_ID_JOYPAD_L:      return GAMEPAD_BUTTON_LEFT_TRIGGER_1;
-        case RETRO_DEVICE_ID_JOYPAD_R:      return GAMEPAD_BUTTON_RIGHT_TRIGGER_1;
-        case RETRO_DEVICE_ID_JOYPAD_L2:     return GAMEPAD_BUTTON_LEFT_TRIGGER_2;
-        case RETRO_DEVICE_ID_JOYPAD_R2:     return GAMEPAD_BUTTON_RIGHT_TRIGGER_2;
-        case RETRO_DEVICE_ID_JOYPAD_L3:     return GAMEPAD_BUTTON_LEFT_THUMB;
-        case RETRO_DEVICE_ID_JOYPAD_R3:     return GAMEPAD_BUTTON_RIGHT_THUMB;
-        default: return GAMEPAD_BUTTON_UNKNOWN;
-    }
-}
-
-/**
  * Returns true if the joypad button is currently held via keyboard or gamepad.
  */
 static bool LibretroTouchIsPhysicalButtonDown(int buttonId) {
     int key = LibretroTouchJoypadKeyboard(buttonId);
     if (key != KEY_NULL && IsKeyDown(key)) return true;
     if (IsGamepadAvailable(0)) {
-        int gbtn = LibretroTouchJoypadGamepad(buttonId);
+        int gbtn = LibretroRetroJoypadButtonToGamepadButton(buttonId);
         if (gbtn != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gbtn)) return true;
     }
     return false;
