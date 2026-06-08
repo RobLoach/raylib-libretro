@@ -2584,6 +2584,7 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
             TraceLog(LOG_ERROR, "LIBRETRO: Failed to write temp file for needFullPath core");
             return false;
         }
+        TraceLog(LOG_INFO, "LIBRETRO: Loading from temp file %s", tempPath);
         bool ok = LoadLibretroGame(tempPath);
         if (ok) {
             TextCopy(LIBRETRO.core.tempGamePath, tempPath);
