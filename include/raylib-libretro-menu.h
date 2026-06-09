@@ -880,8 +880,6 @@ static void ScanLibretroCoreDirectory(void) {
     FreeLibretroCoreInfos();
     if (!dir || !dir[0] || !DirectoryExists(dir)) return;
 
-    rlconfig_clear_section(menu.cfg, "core_cache");
-
     FilePathList files = LoadDirectoryFiles(dir);
     for (unsigned int i = 0; i < files.count; i++) {
         if (!TextIsEqual(GetFileExtension(files.paths[i]), ".info")) continue;
