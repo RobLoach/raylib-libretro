@@ -138,9 +138,10 @@ jobs:
             -DCMAKE_SYSTEM_PROCESSOR=armv7 \
             -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
             -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
+            -DCMAKE_LIBRARY_ARCHITECTURE=arm-linux-gnueabihf \
             -DCMAKE_FIND_ROOT_PATH=/usr/arm-linux-gnueabihf \
             -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
-            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
             -DPLATFORM=DRM
 
       - name: Build
@@ -231,12 +232,14 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: ./gradlew assembleRelease -PappVersionName="${TAG#v}" -PappVersionCode="$RUN_NUMBER"
       # The action names the asset after the file, so rename to the release name.
+      # One APK carries all ABIs (arm64-v8a, armeabi-v7a, x86_64), so it is no
+      # longer arch-specific.
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk raylib-libretro-${{ github.ref_name }}-android-arm64.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk raylib-libretro-${{ github.ref_name }}-android.apk
       - name: Upload
         uses: softprops/action-gh-release@v3
         with:
-          files: raylib-libretro-${{ github.ref_name }}-android-arm64.apk
+          files: raylib-libretro-${{ github.ref_name }}-android.apk
           fail_on_unmatched_files: true
 
   build-web:

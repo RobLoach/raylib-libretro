@@ -68,6 +68,25 @@
 // Provided by raylib's Android backend (rcore_android.c); not in raylib.h.
 extern struct android_app *GetAndroidApp(void);
 
+// The ABI this libmain.so was built for. The APK bundles every ABI's cores
+// under assets/cores/<abi>/ (a single APK shares assets across ABIs, but cores
+// are architecture-specific), so the runtime must read from the matching
+// subdirectory. Normally injected by android/app/CMakeLists.txt; fall back to
+// deriving it from the target architecture so a direct compile still works.
+#ifndef RAYLIB_LIBRETRO_ANDROID_ABI
+    #if defined(__aarch64__)
+        #define RAYLIB_LIBRETRO_ANDROID_ABI "arm64-v8a"
+    #elif defined(__arm__)
+        #define RAYLIB_LIBRETRO_ANDROID_ABI "armeabi-v7a"
+    #elif defined(__x86_64__)
+        #define RAYLIB_LIBRETRO_ANDROID_ABI "x86_64"
+    #elif defined(__i386__)
+        #define RAYLIB_LIBRETRO_ANDROID_ABI "x86"
+    #else
+        #define RAYLIB_LIBRETRO_ANDROID_ABI ""
+    #endif
+#endif
+
 // Thread-safe state for the native file picker result.
 static char gAndroidFilePickerPath[4096] = {0};
 static volatile bool gAndroidFilePickerReady = false;
@@ -161,6 +180,7 @@ typedef struct {
     float rewindTimer;  // seconds accumulated toward the next rewind capture/step
     bool muted;
     bool pendingMenuOpen;
+    int appliedOrientation;  // last orientation pushed to Android; -1 = none yet
 } AppData;
 
 // Breadcrumb logging through startup. On Android these go to logcat (and the
@@ -246,7 +266,7 @@ static void AndroidCopyCore(const char* coreName, const char* destDir) {
     char destPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char assetPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     TextCopy(destPath, TextFormat("%s/%s", destDir, coreName));
-    TextCopy(assetPath, TextFormat("cores/%s", coreName));
+    TextCopy(assetPath, TextFormat("cores/%s/%s", RAYLIB_LIBRETRO_ANDROID_ABI, coreName));
 
     if (FileExists(destPath)) return;  // already installed on a previous launch
 
@@ -375,8 +395,8 @@ static void SetupAndroidEnvironment(LibretroMenu* menu) {
     MakeDirectory(LIBRETRO.saveDirectory);
     MakeDirectory(LIBRETRO.systemDirectory);
 
-    // Install each core listed in the build-generated assets/cores.list.
-    char* list = LoadFileText("cores.list");
+    // Install each core listed in this ABI's build-generated cores.list.
+    char* list = LoadFileText(TextFormat("cores/%s/cores.list", RAYLIB_LIBRETRO_ANDROID_ABI));
     if (list != NULL) {
         int count = 0;
         char** lines = TextSplit(list, '\n', &count);
@@ -420,6 +440,33 @@ static void AndroidEnableImmersiveMode(struct android_app* app) {
     if (app == NULL || app->activity == NULL) return;
     ANativeActivity_setWindowFlags(app->activity,
         AWINDOW_FLAG_FULLSCREEN | AWINDOW_FLAG_KEEP_SCREEN_ON, 0);
+}
+
+// Apply the user's chosen screen orientation via Activity.setRequestedOrientation.
+// index: 0 = Landscape, 1 = Portrait, 2 = Auto. Unlike the view-hierarchy calls
+// avoided in AndroidEnableImmersiveMode, setRequestedOrientation is an Activity
+// method that dispatches through the system server rather than touching a View
+// on the calling thread, so it is safe to invoke from the android_main thread.
+static void AndroidSetOrientation(struct android_app* app, int index) {
+    // android.content.pm.ActivityInfo: SCREEN_ORIENTATION_SENSOR_LANDSCAPE = 6
+    // (either landscape direction), _SENSOR_PORTRAIT = 7, _SENSOR = 4 (free).
+    static const jint orientations[] = { 6, 7, 4 };
+    if (index < 0 || index > 2) index = 0;
+
+    bool needDetach = false;
+    JNIEnv* env = AndroidJNIBegin(app, &needDetach);
+    if (env == NULL) return;
+
+    jclass activityClass = (*env)->GetObjectClass(env, app->activity->clazz);
+    jmethodID setOrientation = activityClass ? (*env)->GetMethodID(env, activityClass,
+        "setRequestedOrientation", "(I)V") : NULL;
+    if (setOrientation != NULL) {
+        (*env)->CallVoidMethod(env, app->activity->clazz, setOrientation, orientations[index]);
+        TraceLog(LOG_INFO, "ANDROID: Set screen orientation (mode %d)", index);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+    AndroidJNIEnd(app, needDetach);
 }
 
 // Copy the file referenced by a content:// URI to a local path.
@@ -622,6 +669,156 @@ static void LibretroMenuAndroidLoadGameClicked(nk_console* widget, void* user_da
 
     AndroidJNIEnd(app, needDetach);
 }
+
+// When the app is launched via ACTION_VIEW (e.g. "Open with" from a file
+// manager), extract the file URI from the intent and copy the content to a
+// local file so libretro can open it. Returns true and fills outPath if a
+// game file was provided; false otherwise.
+static bool AndroidGetIntentFilePath(struct android_app* app, char* outPath, int outSize) {
+    outPath[0] = '\0';
+    bool needDetach = false;
+    JNIEnv* env = AndroidJNIBegin(app, &needDetach);
+    if (env == NULL) return false;
+
+    bool result = false;
+
+    // activity.getIntent()
+    jclass activityClass = (*env)->GetObjectClass(env, app->activity->clazz);
+    jmethodID getIntent = activityClass ? (*env)->GetMethodID(env, activityClass,
+        "getIntent", "()Landroid/content/Intent;") : NULL;
+    jobject intent = getIntent ?
+        (*env)->CallObjectMethod(env, app->activity->clazz, getIntent) : NULL;
+
+    if (intent == NULL) goto done;
+
+    // intent.getData()
+    jclass intentClass = (*env)->GetObjectClass(env, intent);
+    jmethodID getData = (*env)->GetMethodID(env, intentClass,
+        "getData", "()Landroid/net/Uri;");
+    jobject uri = getData ? (*env)->CallObjectMethod(env, intent, getData) : NULL;
+
+    if (uri == NULL) goto done;
+
+    // Check scheme: file:// URIs give a direct path, content:// URIs need
+    // copying through ContentResolver.
+    jclass uriClass = (*env)->GetObjectClass(env, uri);
+    jmethodID getScheme = (*env)->GetMethodID(env, uriClass,
+        "getScheme", "()Ljava/lang/String;");
+    jstring scheme = getScheme ? (jstring)(*env)->CallObjectMethod(env, uri, getScheme) : NULL;
+    const char* schemeUtf = scheme ? (*env)->GetStringUTFChars(env, scheme, NULL) : NULL;
+
+    if (schemeUtf != NULL && TextIsEqual(schemeUtf, "file")) {
+        // file:// URI — use the path directly.
+        jmethodID getPath = (*env)->GetMethodID(env, uriClass,
+            "getPath", "()Ljava/lang/String;");
+        jstring path = getPath ? (jstring)(*env)->CallObjectMethod(env, uri, getPath) : NULL;
+        const char* pathUtf = path ? (*env)->GetStringUTFChars(env, path, NULL) : NULL;
+        if (pathUtf != NULL && pathUtf[0] != '\0') {
+            TextCopy(outPath, pathUtf);
+            result = true;
+        }
+        if (pathUtf) (*env)->ReleaseStringUTFChars(env, path, pathUtf);
+    } else if (schemeUtf != NULL && TextIsEqual(schemeUtf, "content")) {
+        // content:// URI — resolve the display name for the filename, then
+        // stream the bytes into a local temp file via ContentResolver.
+        const char* dataDir = app->activity->internalDataPath;
+        char localPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+
+        // Try to get the display name from the content provider.
+        // ContentResolver cr = activity.getContentResolver();
+        jmethodID getCR = (*env)->GetMethodID(env, activityClass,
+            "getContentResolver", "()Landroid/content/ContentResolver;");
+        jobject cr = getCR ? (*env)->CallObjectMethod(env, app->activity->clazz, getCR) : NULL;
+
+        char filename[256] = "";
+        if (cr != NULL) {
+            // Cursor cursor = cr.query(uri, {DISPLAY_NAME}, null, null, null);
+            jclass crClass = (*env)->GetObjectClass(env, cr);
+            jmethodID query = (*env)->GetMethodID(env, crClass, "query",
+                "(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;"
+                "[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;");
+            jclass stringClass = (*env)->FindClass(env, "java/lang/String");
+            jobjectArray projection = (*env)->NewObjectArray(env, 1, stringClass, NULL);
+            jstring colName = (*env)->NewStringUTF(env, "_display_name");
+            (*env)->SetObjectArrayElement(env, projection, 0, colName);
+            jobject cursor = query ? (*env)->CallObjectMethod(env, cr, query,
+                uri, projection, NULL, NULL, NULL) : NULL;
+
+            if (cursor != NULL) {
+                jclass cursorClass = (*env)->GetObjectClass(env, cursor);
+                jmethodID moveToFirst = (*env)->GetMethodID(env, cursorClass,
+                    "moveToFirst", "()Z");
+                jmethodID getString = (*env)->GetMethodID(env, cursorClass,
+                    "getString", "(I)Ljava/lang/String;");
+                jmethodID close = (*env)->GetMethodID(env, cursorClass,
+                    "close", "()V");
+                if (moveToFirst && (*env)->CallBooleanMethod(env, cursor, moveToFirst)) {
+                    jstring nameStr = getString ?
+                        (jstring)(*env)->CallObjectMethod(env, cursor, getString, 0) : NULL;
+                    const char* nameUtf = nameStr ?
+                        (*env)->GetStringUTFChars(env, nameStr, NULL) : NULL;
+                    if (nameUtf != NULL && nameUtf[0] != '\0') {
+                        snprintf(filename, sizeof(filename), "%s", nameUtf);
+                    }
+                    if (nameUtf) (*env)->ReleaseStringUTFChars(env, nameStr, nameUtf);
+                }
+                if (close) (*env)->CallVoidMethod(env, cursor, close);
+            }
+        }
+
+        // Fall back to "intent_game" if the display name wasn't available.
+        if (filename[0] == '\0') {
+            jmethodID getLastSeg = (*env)->GetMethodID(env, uriClass,
+                "getLastPathSegment", "()Ljava/lang/String;");
+            jstring seg = getLastSeg ?
+                (jstring)(*env)->CallObjectMethod(env, uri, getLastSeg) : NULL;
+            const char* segUtf = seg ? (*env)->GetStringUTFChars(env, seg, NULL) : NULL;
+            if (segUtf && segUtf[0]) snprintf(filename, sizeof(filename), "%s", segUtf);
+            if (segUtf) (*env)->ReleaseStringUTFChars(env, seg, segUtf);
+        }
+        if (filename[0] == '\0') TextCopy(filename, "intent_game");
+
+        snprintf(localPath, sizeof(localPath), "%s/%s", dataDir, filename);
+
+        // InputStream is = cr.openInputStream(uri);
+        jmethodID openIS = cr ? (*env)->GetMethodID(env, (*env)->GetObjectClass(env, cr),
+            "openInputStream",
+            "(Landroid/net/Uri;)Ljava/io/InputStream;") : NULL;
+        jobject is = openIS ? (*env)->CallObjectMethod(env, cr, openIS, uri) : NULL;
+
+        if (is != NULL) {
+            jclass isClass = (*env)->GetObjectClass(env, is);
+            jmethodID readMethod = (*env)->GetMethodID(env, isClass, "read", "([B)I");
+            jmethodID closeIS = (*env)->GetMethodID(env, isClass, "close", "()V");
+
+            FILE* fp = fopen(localPath, "wb");
+            if (fp != NULL && readMethod) {
+                jbyteArray buf = (*env)->NewByteArray(env, 8192);
+                jint bytesRead;
+                while ((bytesRead = (*env)->CallIntMethod(env, is, readMethod, buf)) > 0) {
+                    jbyte* bytes = (*env)->GetByteArrayElements(env, buf, NULL);
+                    fwrite(bytes, 1, (size_t)bytesRead, fp);
+                    (*env)->ReleaseByteArrayElements(env, buf, bytes, JNI_ABORT);
+                }
+                fclose(fp);
+                TextCopy(outPath, localPath);
+                result = true;
+                TraceLog(LOG_INFO, "ANDROID: Copied intent file to %s", localPath);
+            } else {
+                if (fp) fclose(fp);
+                TraceLog(LOG_WARNING, "ANDROID: Failed to open %s for writing", localPath);
+            }
+            if (closeIS) (*env)->CallVoidMethod(env, is, closeIS);
+        }
+    }
+
+    if (schemeUtf) (*env)->ReleaseStringUTFChars(env, scheme, schemeUtf);
+
+done:
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    AndroidJNIEnd(app, needDetach);
+    return result;
+}
 #endif  // __ANDROID__
 
 bool Init(void** userData, int argc, char** argv) {
@@ -646,6 +843,7 @@ bool Init(void** userData, int argc, char** argv) {
     // Application data.
     AppData* data = (AppData*)MemAlloc(sizeof(AppData));
     memset(data, 0, sizeof(AppData));
+    data->appliedOrientation = -1;  // force the first Update() to apply the saved orientation
     *userData = data;
 
     TraceLog(LOG_INFO, "LIBRETRO: Initializing Audio");
@@ -669,6 +867,13 @@ bool Init(void** userData, int argc, char** argv) {
 #if defined(__ANDROID__)
     INIT_TRACE("ANDROID/INIT: android environment");
     SetupAndroidEnvironment(data->menu);
+
+    // If launched via "Open with" (ACTION_VIEW), load the game from the intent.
+    char intentPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    if (AndroidGetIntentFilePath(GetAndroidApp(), intentPath, sizeof(intentPath))) {
+        TraceLog(LOG_INFO, "ANDROID: Intent file: %s", intentPath);
+        if (MenuLoadGame(intentPath)) HideLibretroMenu(); else ShowLibretroMenu();
+    }
 #endif
 
     // Parse the command line arguments.
@@ -708,6 +913,15 @@ bool Init(void** userData, int argc, char** argv) {
 
 bool Update(void* userData) {
     AppData* data = (AppData*)userData;
+
+#if defined(__ANDROID__)
+    // Apply the menu's orientation choice when it changes (and the saved value
+    // on the first frame, since appliedOrientation starts at -1).
+    if (data->menu->orientationIndex != data->appliedOrientation) {
+        data->appliedOrientation = data->menu->orientationIndex;
+        AndroidSetOrientation(GetAndroidApp(), data->appliedOrientation);
+    }
+#endif
 
     // Deferred menu open: apply after input has refreshed so the release event
     // that triggered the MENU touch button is gone before Nuklear processes input.

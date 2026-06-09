@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en-us">
+<html lang="en-US">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>raylib-libretro</title>
+    <meta name="description" content="A libretro frontend built with raylib — play retro games in your browser.">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
 
     <!-- Progressive Web App: installable + standalone "Add to Home Screen" -->
@@ -24,7 +24,7 @@
         width: 100%;
         height: 100vh;
         height: 100dvh;
-        background-color: black;
+        background-color: #11111b;
         overflow: hidden;
         overscroll-behavior: none;
         display: flex;
@@ -40,19 +40,93 @@
         width: 100%;
         height: 100%;
         border: 0;
-        background-color: black;
+        background-color: #11111b;
         outline: none;
         touch-action: none;
         -webkit-tap-highlight-color: transparent;
         -webkit-user-select: none;
         user-select: none;
       }
+      /* Loading / error overlay — see #loading in the body. Shown by default
+         (display:flex) so it covers the black canvas before the runtime is up;
+         hidden from JS once the app starts, or pinned red on a fatal error. */
+      #loading {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 24px;
+        box-sizing: border-box;
+        background-color: #11111b;
+        color: #f5e0dc;
+        font: 14px/1.4 system-ui, -apple-system, sans-serif;
+        text-align: center;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      #loading .spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid #333;
+        border-top-color: #bbb;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      #loading.error .spinner { display: none; }
+      #loading.error #loading-text { color: #a6e3a1; white-space: pre-line; }
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
-<canvas class="emscripten" id="canvas" width="1024" height="768" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <canvas class="emscripten" id="canvas" width="1024" height="768" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+
+    <!-- Loading / error overlay. The page and canvas are both black, so this is
+         the only feedback during the wasm + core preload, the initial IDBFS
+         sync and any ?core=/?game= download — and the only place fatal errors
+         (which otherwise reach the console alone) become visible. JS updates
+         the loading text and pins errors; postRun hides the overlay. -->
+    <div id="loading">
+      <div class="spinner"></div>
+      <div id="loading-text">Loading...</div>
+    </div>
+    <noscript>
+      <!-- Without this the pure-CSS spinner above would animate forever. -->
+      <style>#loading { display: none; }</style>
+      <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#f5e0dc;font:14px/1.4 system-ui,-apple-system,sans-serif;text-align:center;padding:24px">
+        This app needs JavaScript and WebGL to run.
+      </div>
+    </noscript>
+
     <script>
-// Track every AudioContext the app creates so the first user gesture can
+      // --- Loading / error overlay ------------------------------------------
+      // Drives the #loading element in the body. setOverlay() shows progress
+      // text; showOverlayError() pins a red, un-hideable message so a fatal
+      // error survives any later progress/hide call. Hidden once, in postRun.
+      var _overlay       = document.getElementById('loading');
+      var _overlayText   = document.getElementById('loading-text');
+      var _overlayFailed = false;
+      function setOverlay(msg, isError) {
+        if (!_overlay) return;
+        if (_overlayFailed && !isError) return; // a fatal error stays pinned
+        if (isError) _overlayFailed = true;
+        if (msg) {
+          _overlayText.textContent = msg;
+          _overlay.classList.toggle('error', !!isError);
+          _overlay.style.display = 'flex';
+        } else {
+          _overlay.style.display = 'none';
+        }
+      }
+      function showOverlayError(msg) {
+        console.error(msg);
+        setOverlay(msg, true);
+      }
+
+      // Track every AudioContext the app creates so the first user gesture can
       // resume it. iOS Safari and Chrome's autoplay policy start audio contexts
       // suspended, so the emulator is silent until the user interacts. We wrap
       // the constructor (rather than poke raylib/miniaudio internals) before the
@@ -162,6 +236,26 @@
       });
 
       var Module = {
+        totalDependencies: 0,
+        // Surface startup progress and fatal errors on the overlay; without
+        // these the user sees only black until the first frame renders.
+        setStatus: function (text) {
+          if (_overlayFailed || !text) return; // overlay is hidden in postRun
+          // Emscripten reports byte progress as "msg (x/y)" — show a percentage.
+          var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+          if (m) text = m[1].trim() + ' (' + Math.round(100 * m[2] / m[4]) + '%)';
+          setOverlay(text);
+        },
+        monitorRunDependencies: function (left) {
+          if (_overlayFailed) return;
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+          if (left > 0) {
+            setOverlay('Preparing… (' + (this.totalDependencies - left) + '/' + this.totalDependencies + ')');
+          }
+        },
+        onAbort: function (what) {
+          showOverlayError('Failed to start.\n' + (what || '') + '\nPlease reload the page.');
+        },
         // Polyfill for raylib's ToggleFullscreen(), which calls
         // Module.requestFullscreen(lockPointer, resizeCanvas) via EM_ASM.
         // Newer Emscripten no longer exposes this on Module.
@@ -180,9 +274,13 @@
         },
         canvas: (function () {
           var canvas = document.getElementById('canvas');
+          // Non-blocking overlay instead of alert(). raylib's web backend
+          // doesn't recreate GL resources on restore, so a reload is the
+          // reliable recovery; preventDefault keeps the browser from giving up
+          // on the context outright in case the user doesn't reload.
           canvas.addEventListener('webglcontextlost', function (e) {
-            alert('WebGL context lost. Please reload the page.');
             e.preventDefault();
+            showOverlayError('The graphics context was lost.\nPlease reload the page.');
           }, false);
           return canvas;
         })(),
@@ -236,13 +334,30 @@
               ' (if this is a TypeError, check that the server sends Access-Control-Allow-Origin)');
           }
 
+          // SECURITY: ?core=<url> downloads and runs a libretro core — native
+          // code executing in this page's context. A crafted link can therefore
+          // make a visitor's browser run an attacker-chosen core. Cross-origin
+          // fetches are gated by the remote server's CORS policy, but that is
+          // the *only* barrier (any host sending Access-Control-Allow-Origin
+          // qualifies), so treat an external ?core= as untrusted. Games (?game=)
+          // are data, not code, and don't carry this risk. We don't hard-block
+          // cross-origin cores (loading from a CDN is a legitimate use), but we
+          // warn so it's visible in the console.
           var coreUrl = _urlParams.get('core');
           if (coreUrl) {
+            if (new URL(coreUrl, window.location.href).origin !== window.location.origin) {
+              console.warn('Loading a libretro core (executable code) from a different origin: ' + coreUrl);
+            }
             addRunDependency('url-core');
             var coreFilename = coreUrl.split('/').pop().split('?')[0] || 'url-core';
             Module.arguments = (Module.arguments || []).concat(['-L', '/downloads/' + coreFilename]);
             fetchToFS(coreUrl)
-              .catch(function (err) { logFetchError('core', err); })
+              .catch(function (err) {
+                logFetchError('core', err);
+                // The user explicitly requested this core; without it the
+                // session can't run, so pin the error rather than starting black.
+                showOverlayError('Could not load the requested core.\n' + err);
+              })
               .finally(function () { removeRunDependency('url-core'); });
           }
 
@@ -253,6 +368,10 @@
           }
         }],
         postRun: [function () {
+          // Runtime is up and every run-dependency (wasm, core preload, IDBFS
+          // load, ?core= download) has resolved — hide the loading overlay.
+          setOverlay('');
+        }, function () {
           // Size the canvas backing store to physical pixels now that the
           // runtime (and ResizeCanvasFromJS) is available, so the first visible
           // frame is already at device resolution.
@@ -285,6 +404,10 @@
             if (_flushInFlight) return;
             _flushInFlight = true;
             try {
+              // _SaveLibretroAllSettings is reachable because the web build
+              // links with -sMAIN_MODULE=1, which exports all symbols. If that
+              // ever becomes MAIN_MODULE=2, add SaveLibretroAllSettings to
+              // EXPORTED_FUNCTIONS or this safety-net flush silently no-ops.
               if (Module && Module._SaveLibretroAllSettings) {
                 Module._SaveLibretroAllSettings();
               }

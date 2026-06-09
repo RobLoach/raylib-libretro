@@ -332,6 +332,9 @@ typedef struct LibretroCoreData {
     // Loaded content path (empty if no content loaded).
     char contentPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 
+    // Temp file written for needFullpath cores when loading from memory (empty if none).
+    char tempGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+
     // Backing storage and struct for RETRO_ENVIRONMENT_GET_GAME_INFO_EXT.
     // Pointers in gameInfoExt reference these buffers (or are NULL).
     char contentDir[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -371,6 +374,7 @@ typedef struct LibretroData {
     float speed;
     double speedAccumulator;
     int textureFilter; // TextureFilter
+    bool integerScaling;
     int analogToDpadIndex; // 0=None, 1=Left Analog, 2=Right Analog
     int keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
     char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -2572,11 +2576,23 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
         return LoadLibretroGame(NULL);
     }
 
-    // Check if it needs the full path
+    // When the core requires a full path, write to a temp file and load from disk.
     if (LIBRETRO.core.needFullpath) {
-        TraceLog(LOG_ERROR, "LIBRETRO: The core requires the full path, can't load from memory");
-        // TODO: Allow saving to a temporary location and then use LoadLibretroGame()?
-        return false;
+        char tempPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+        TextCopy(tempPath,
+            TextFormat("%s/.raylib-libretro-%d.tmp", GetApplicationDirectory(), GetRandomValue(1, 999999)));
+        if (!SaveFileData(tempPath, fileData, dataSize)) {
+            TraceLog(LOG_ERROR, "LIBRETRO: Failed to write temp file for needFullPath core");
+            return false;
+        }
+        TraceLog(LOG_INFO, "LIBRETRO: Loading from temp file %s", tempPath);
+        bool ok = LoadLibretroGame(tempPath);
+        if (ok) {
+            TextCopy(LIBRETRO.core.tempGamePath, tempPath);
+        } else {
+            FileRemove(tempPath);
+        }
+        return ok;
     }
 
     // Load the game.
@@ -3101,11 +3117,23 @@ static void DrawLibretroTint(Color tint) {
     float visAspect = swapDims ? (1.0f / aspect) : aspect;
 
     // Calculate the optimal visual width/height to fit the screen.
-    int visH = GetScreenHeight();
-    int visW = (int)(visH * visAspect);
-    if (visW > GetScreenWidth()) {
-        visW = GetScreenWidth();
-        visH = (int)(visW / visAspect);
+    int visH, visW;
+    if (LIBRETRO.integerScaling && GetLibretroHeight() > 0 && visAspect > 0) {
+        // Calculate the best integer scaling size.
+        int maxScaleH = GetScreenHeight() / GetLibretroHeight();
+        int maxScaleW = (int)(GetScreenWidth() / (GetLibretroHeight() * visAspect));
+        int scaleFactor = (maxScaleH < maxScaleW) ? maxScaleH : maxScaleW;
+        if (scaleFactor < 1) scaleFactor = 1;
+        visH = GetLibretroHeight() * scaleFactor;
+        visW = (int)(visH * visAspect);
+    }
+    else {
+        visH = GetScreenHeight();
+        visW = (int)(visH * visAspect);
+        if (visW > GetScreenWidth()) {
+            visW = GetScreenWidth();
+            visH = (int)(visW / visAspect);
+        }
     }
 
     // For 90/270 rotations the dest rect dimensions are swapped relative to visual size
@@ -3483,6 +3511,10 @@ static void UnloadLibretroGame(void) {
     LIBRETRO.core.contentDir[0]  = '\0';
     LIBRETRO.core.contentName[0] = '\0';
     LIBRETRO.core.contentExt[0]  = '\0';
+    if (LIBRETRO.core.tempGamePath[0] != '\0') {
+        FileRemove(LIBRETRO.core.tempGamePath);
+        LIBRETRO.core.tempGamePath[0] = '\0';
+    }
     LIBRETRO.core.gameInfoExtValid = false;
     memset(&LIBRETRO.core.gameInfoExt, 0, sizeof(LIBRETRO.core.gameInfoExt));
 

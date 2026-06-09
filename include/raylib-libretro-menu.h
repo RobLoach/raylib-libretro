@@ -130,6 +130,7 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
+    int orientationIndex;                 // Android screen orientation: 0 = Landscape, 1 = Portrait, 2 = Auto
     nk_bool hideCursor;
     nk_bool lockCursor;
     char cheatBuffer[256];
@@ -1095,8 +1096,8 @@ static bool MenuDoLoadGame(const char* gamePath) {
 static void MenuDrawLoadingScreen(const char* gamePath) {
     BeginDrawing();
         // Colors
-        Color background = GRAY;
-        Color foreground = WHITE;
+        Color background = (Color){ 17, 17, 27, 255 };
+        Color foreground = (Color){ 245, 224, 220, 255 };
         if (menu.ctx != NULL) {
             background = NuklearColorToColor(menu.ctx->style.window.background);
             foreground = NuklearColorToColor(menu.ctx->style.button.text_hover);
@@ -1435,6 +1436,11 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* volume = nk_console_slider_float(graphicsMenu, "Volume", 0.0f, &LIBRETRO.volume, 1.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.0f, 1.0f));
             nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
+            // Theme
+            nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", RAYLIB_LIBRETRO_STYLES_NAMES, '|', &menu.themeSelectedIndex);
+            nk_console_add_event_handler(themeCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
+
             // Full Screen
             nk_console* fullscreenCheckbox = nk_console_checkbox(graphicsMenu, "Fullscreen", &menu.fullscreen);
             nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
@@ -1446,6 +1452,10 @@ LibretroMenu* InitLibretroMenu(void) {
             // FPS
             nk_console* fpsCombo = nk_console_combobox(graphicsMenu, "FPS", "Auto|30|60|120|144|240|Unlimited", '|', &menu.fpsIndex);
             nk_console_add_event_handler(fpsCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuVideoChanged, NULL, NULL);
+
+            // Integer Scaling
+            nk_console_checkbox(graphicsMenu, "Integer Scaling", &LIBRETRO.integerScaling)
+                ->tooltip = "Keep pixel graphics looking sharp and crisp.";
 
             // Shader
             static char shaderNames[256] = {0};
@@ -1470,13 +1480,8 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_add_event_handler(textureFilter, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuTextureFilterChanged, NULL, NULL);
 
             // Rotation
-            nk_console* rotation = nk_console_combobox(graphicsMenu, "Rotation", "0 Degrees|90 Degrees|180 Degrees|270 Degrees", '|', &LIBRETRO.core.rotation);
-            rotation->tooltip = "Override the display rotation for the running game.";
-
-            // Theme
-            nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", RAYLIB_LIBRETRO_STYLES_NAMES, '|', &menu.themeSelectedIndex);
-            nk_console_add_event_handler(themeCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
-            SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
+            nk_console_combobox(graphicsMenu, "Rotation", "0 Degrees|90 Degrees|180 Degrees|270 Degrees", '|', &LIBRETRO.core.rotation)
+                ->tooltip = "Override the display rotation for the running game.";
         }
 
         // Gameplay
@@ -1500,6 +1505,13 @@ LibretroMenu* InitLibretroMenu(void) {
             // Touch Haptics
             #if defined(PLATFORM_WEB)
             nk_console_checkbox(gameplayMenu, "Touch Haptics", &menu.touchHapticsEnabled);
+            #endif
+
+            // Screen Orientation (applied by the Android activity; see bin/raylib-libretro.c)
+            #if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+            nk_console* orientationCombo = nk_console_combobox(gameplayMenu, "Orientation",
+                "Landscape|Portrait|Auto", '|', &menu.orientationIndex);
+            orientationCombo->tooltip = "Lock the screen to landscape or portrait, or follow the sensor";
             #endif
 
             // Rewind
@@ -1672,7 +1684,7 @@ LibretroMenu* InitLibretroMenu(void) {
     }
 
     // Quit
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !defined(PLATFORM_ANDROID)
     nk_console* quitButton = nk_console_button(menu.console, "Quit");
     nk_console_add_event(quitButton, NK_CONSOLE_EVENT_CLICKED, &LibretroMenuQuitClicked);
     nk_console_button_set_symbol(quitButton, NK_SYMBOL_X);
@@ -2091,6 +2103,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "fps", menu.fpsIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "shader", menu.shaderSelectedIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "textureFilter", LIBRETRO.textureFilter);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "integerScaling", LIBRETRO.integerScaling ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", LIBRETRO.volume);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
@@ -2100,6 +2113,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "lockCursor", menu.lockCursor ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchHaptics", menu.touchHapticsEnabled ? 1 : 0);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "orientation", menu.orientationIndex);
 
     rlconfig_set_int(menu.cfg, "raylib-libretro", "saveSlot", menu.saveSlotIndex);
     rlconfig_set(menu.cfg, "raylib-libretro", "username", LIBRETRO.username);
@@ -2282,6 +2296,9 @@ static bool LoadLibretroMenuSettings(void) {
     if (LIBRETRO.textureFilter < 0 || LIBRETRO.textureFilter > TEXTURE_FILTER_ANISOTROPIC_16X)
         LIBRETRO.textureFilter = 0;
 
+    // Integer Scaling
+    LIBRETRO.integerScaling = (bool)rlconfig_get_int(menu.cfg, "raylib-libretro", "integerScaling", 0);
+
     // Theme
     menu.themeSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "theme", 0);
     if (menu.themeSelectedIndex < 0 || menu.themeSelectedIndex >= LIBRETRO_MENU_STYLE_COUNT)
@@ -2315,6 +2332,10 @@ static bool LoadLibretroMenuSettings(void) {
 #else
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 0) > 0;
 #endif
+
+    // Screen Orientation (0 = Landscape, 1 = Portrait, 2 = Auto; applied on Android)
+    menu.orientationIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "orientation", 0);
+    if (menu.orientationIndex < 0 || menu.orientationIndex > 2) menu.orientationIndex = 0;
 
     // Save Slot
     menu.saveSlotIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "saveSlot", 0);

@@ -19,12 +19,51 @@
             android:label="@string/app_name"
             android:theme="@style/FullscreenTheme"
             android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize|density|uiMode"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:exported="true">
             <meta-data android:name="android.app.lib_name" android:value="main"/>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:scheme="file"/>
+                <data android:scheme="content"/>
+                <!-- NES (fceumm) -->
+                <data android:mimeType="*/*" android:pathPattern=".*\\.nes"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.fds"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.unf"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.unif"/>
+                <!-- SNES (snes9x) -->
+                <data android:mimeType="*/*" android:pathPattern=".*\\.smc"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.sfc"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.swc"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.fig"/>
+                <!-- Game Boy / GBA (mgba) -->
+                <data android:mimeType="*/*" android:pathPattern=".*\\.gb"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.gbc"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.gba"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.sgb"/>
+                <!-- Genesis / Master System / Game Gear (genesis_plus_gx) -->
+                <data android:mimeType="*/*" android:pathPattern=".*\\.gen"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.smd"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.md"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.sms"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.gg"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.sg"/>
+                <!-- PC Engine (mednafen_pce_fast) -->
+                <data android:mimeType="*/*" android:pathPattern=".*\\.pce"/>
+                <!-- WonderSwan (mednafen_wswan) -->
+                <data android:mimeType="*/*" android:pathPattern=".*\\.ws"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.wsc"/>
+                <!-- Doom (prboom) -->
+                <data android:mimeType="*/*" android:pathPattern=".*\\.wad"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.iwad"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.pwad"/>
+                <!-- Archives -->
+                <data android:mimeType="*/*" android:pathPattern=".*\\.zip"/>
             </intent-filter>
         </activity>
     </application>

@@ -3,20 +3,33 @@ project(raylib-libretro-android C)
 
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
-# Download libretro cores into assets/cores so AGP bundles them inside the APK.
-# Android can only dlopen() a core from a real filesystem path, so at first
+# Read the project version from the root CMakeLists.txt so the Android build
+# stays in sync without duplicating the version string.
+file(STRINGS "${ROOT}/CMakeLists.txt" _ver_line REGEX "VERSION [0-9]")
+string(REGEX MATCH "VERSION ([0-9]+\\.[0-9]+\\.[0-9]+)" _ "${_ver_line}")
+set(RAYLIB_LIBRETRO_VER "${CMAKE_MATCH_1}")
+
+# Download libretro cores into assets/cores/<abi> so AGP bundles them inside the
+# APK. Android can only dlopen() a core from a real filesystem path, so at first
 # launch the app copies these out of the read-only assets into its writable
 # data directory and loads them from there (see SetupAndroidEnvironment() in
 # bin/raylib-libretro.c). cores.list records the bundled cores for the app.
-set(CORES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/main/assets/cores")
+#
+# Cores are architecture-specific, but APK assets are shared across every ABI in
+# a single APK, so each ABI's cores live under their own assets/cores/<abi>/
+# subdirectory. This CMakeLists is configured once per ABI; the matching
+# libmain.so reads only its own subdirectory at runtime.
+set(CORES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/main/assets/cores/${CMAKE_ANDROID_ARCH_ABI}")
 file(MAKE_DIRECTORY "${CORES_DIR}")
 set(CORE_NAMES "")
 foreach(URL IN ITEMS
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/fceumm_libretro_android.so.zip"
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/snes9x_libretro_android.so.zip"
-    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/gambatte_libretro_android.so.zip"
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mgba_libretro_android.so.zip"
-    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/picodrive_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/genesis_plus_gx_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/prboom_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_pce_fast_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_wswan_libretro_android.so.zip"
 )
     get_filename_component(ARCHIVE_NAME "${URL}" NAME)
     get_filename_component(CORE_SO "${ARCHIVE_NAME}" NAME_WLE)  # strip .zip -> *.so
@@ -43,9 +56,10 @@ foreach(URL IN ITEMS
     list(APPEND CORE_NAMES "${CORE_SO}")
 endforeach()
 
-# Write the manifest of bundled cores the app reads on first launch.
+# Write the manifest of bundled cores the app reads on first launch, alongside
+# this ABI's cores so the runtime reads cores/<abi>/cores.list.
 string(REPLACE ";" "\n" CORE_LIST "${CORE_NAMES}")
-file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/src/main/assets/cores.list" "${CORE_LIST}\n")
+file(WRITE "${CORES_DIR}/cores.list" "${CORE_LIST}\n")
 
 # Build raylib for Android (uses EGL/native window instead of GLFW+X11)
 set(PLATFORM       Android CACHE STRING "" FORCE)
@@ -92,6 +106,10 @@ target_include_directories(main PRIVATE
     ${ANDROID_NDK}/sources/android/native_app_glue
 )
 target_compile_definitions(main PRIVATE
+    RAYLIB_LIBRETRO_VERSION="${RAYLIB_LIBRETRO_VER}"
+    # Tells the runtime which assets/cores/<abi>/ subdirectory holds the cores
+    # built for this libmain.so. Kept in sync with the per-ABI CORES_DIR above.
+    RAYLIB_LIBRETRO_ANDROID_ABI="${CMAKE_ANDROID_ARCH_ABI}"
     PHYSFS_SUPPORTS_ZIP=1
     PHYSFS_SUPPORTS_7Z=0
     PHYSFS_SUPPORTS_GRP=0
