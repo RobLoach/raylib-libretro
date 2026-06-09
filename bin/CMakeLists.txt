@@ -79,24 +79,18 @@ function(download_cores)
     endforeach()
 endfunction()
 
-# download_core_info(<name> [<name> ...])
-# Downloads each core's .info metadata file from the libretro-core-info repository.
-function(download_core_info)
+# copy_core_info(<name> [<name> ...])
+# Copies each core's .info metadata file from the libretro-core-info submodule.
+set(CORE_INFO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../vendor/libretro-core-info")
+function(copy_core_info)
     file(MAKE_DIRECTORY "${CORES_DIR}")
     foreach(CORE_NAME IN LISTS ARGN)
-        set(INFO_URL "https://raw.githubusercontent.com/libretro/libretro-core-info/refs/heads/master/${CORE_NAME}.info")
-        set(INFO_PATH "${CORES_DIR}/${CORE_NAME}.info")
-
-        if (NOT EXISTS "${INFO_PATH}")
-            message(STATUS "Downloading ${CORE_NAME}.info")
-            file(DOWNLOAD "${INFO_URL}" "${INFO_PATH}"
-                STATUS DOWNLOAD_STATUS
-            )
-            list(GET DOWNLOAD_STATUS 0 STATUS_CODE)
-            list(GET DOWNLOAD_STATUS 1 STATUS_MSG)
-            if (NOT STATUS_CODE EQUAL 0)
-                message(WARNING "Failed to download ${CORE_NAME}.info: ${STATUS_MSG}")
-            endif()
+        set(INFO_SRC "${CORE_INFO_DIR}/${CORE_NAME}.info")
+        set(INFO_DST "${CORES_DIR}/${CORE_NAME}.info")
+        if (EXISTS "${INFO_SRC}")
+            file(COPY_FILE "${INFO_SRC}" "${INFO_DST}" ONLY_IF_DIFFERENT)
+        else()
+            message(WARNING "${CORE_NAME}.info not found in libretro-core-info submodule")
         endif()
     endforeach()
 endfunction()
@@ -321,7 +315,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
     )
 endif()
 
-download_core_info(${CORE_INFO_NAMES})
+copy_core_info(${CORE_INFO_NAMES})
 
 install(TARGETS raylib-libretro DESTINATION .)
 install(FILES ../README.md DESTINATION .)
