@@ -374,6 +374,7 @@ typedef struct LibretroData {
     float speed;
     double speedAccumulator;
     int textureFilter; // TextureFilter
+    bool integerScaling;
     int analogToDpadIndex; // 0=None, 1=Left Analog, 2=Right Analog
     int keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
     char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -3116,11 +3117,23 @@ static void DrawLibretroTint(Color tint) {
     float visAspect = swapDims ? (1.0f / aspect) : aspect;
 
     // Calculate the optimal visual width/height to fit the screen.
-    int visH = GetScreenHeight();
-    int visW = (int)(visH * visAspect);
-    if (visW > GetScreenWidth()) {
-        visW = GetScreenWidth();
-        visH = (int)(visW / visAspect);
+    int visH, visW;
+    if (LIBRETRO.integerScaling && GetLibretroHeight() > 0 && visAspect > 0) {
+        // Calculate the best integer scaling size.
+        int maxScaleH = GetScreenHeight() / GetLibretroHeight();
+        int maxScaleW = (int)(GetScreenWidth() / (GetLibretroHeight() * visAspect));
+        int scaleFactor = (maxScaleH < maxScaleW) ? maxScaleH : maxScaleW;
+        if (scaleFactor < 1) scaleFactor = 1;
+        visH = GetLibretroHeight() * scaleFactor;
+        visW = (int)(visH * visAspect);
+    }
+    else {
+        visH = GetScreenHeight();
+        visW = (int)(visH * visAspect);
+        if (visW > GetScreenWidth()) {
+            visW = GetScreenWidth();
+            visH = (int)(visW / visAspect);
+        }
     }
 
     // For 90/270 rotations the dest rect dimensions are swapped relative to visual size

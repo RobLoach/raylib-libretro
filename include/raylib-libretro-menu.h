@@ -1430,6 +1430,11 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console* volume = nk_console_slider_float(graphicsMenu, "Volume", 0.0f, &LIBRETRO.volume, 1.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.0f, 1.0f));
             nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
 
+            // Theme
+            nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", RAYLIB_LIBRETRO_STYLES_NAMES, '|', &menu.themeSelectedIndex);
+            nk_console_add_event_handler(themeCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
+            SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
+
             // Full Screen
             nk_console* fullscreenCheckbox = nk_console_checkbox(graphicsMenu, "Fullscreen", &menu.fullscreen);
             nk_console_add_event(fullscreenCheckbox, NK_CONSOLE_EVENT_CHANGED, LibretroMenuFullscreenChanged);
@@ -1441,6 +1446,10 @@ LibretroMenu* InitLibretroMenu(void) {
             // FPS
             nk_console* fpsCombo = nk_console_combobox(graphicsMenu, "FPS", "Auto|30|60|120|144|240|Unlimited", '|', &menu.fpsIndex);
             nk_console_add_event_handler(fpsCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuVideoChanged, NULL, NULL);
+
+            // Integer Scaling
+            nk_console_checkbox(graphicsMenu, "Integer Scaling", &LIBRETRO.integerScaling)
+                ->tooltip = "Keep pixel graphics looking sharp and crisp.";
 
             // Shader
             static char shaderNames[256] = {0};
@@ -1465,13 +1474,8 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_add_event_handler(textureFilter, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuTextureFilterChanged, NULL, NULL);
 
             // Rotation
-            nk_console* rotation = nk_console_combobox(graphicsMenu, "Rotation", "0 Degrees|90 Degrees|180 Degrees|270 Degrees", '|', &LIBRETRO.core.rotation);
-            rotation->tooltip = "Override the display rotation for the running game.";
-
-            // Theme
-            nk_console* themeCombo = nk_console_combobox(graphicsMenu, "Theme", RAYLIB_LIBRETRO_STYLES_NAMES, '|', &menu.themeSelectedIndex);
-            nk_console_add_event_handler(themeCombo, NK_CONSOLE_EVENT_CHANGED, &LibretroMenuSettingChanged, NULL, NULL);
-            SetLibretroMenuStyle((LibretroMenuStyle)menu.themeSelectedIndex);
+            nk_console_combobox(graphicsMenu, "Rotation", "0 Degrees|90 Degrees|180 Degrees|270 Degrees", '|', &LIBRETRO.core.rotation)
+                ->tooltip = "Override the display rotation for the running game.";
         }
 
         // Gameplay
@@ -2093,6 +2097,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "fps", menu.fpsIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "shader", menu.shaderSelectedIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "textureFilter", LIBRETRO.textureFilter);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "integerScaling", LIBRETRO.integerScaling ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", LIBRETRO.volume);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
@@ -2284,6 +2289,9 @@ static bool LoadLibretroMenuSettings(void) {
     LIBRETRO.textureFilter = rlconfig_get_int(menu.cfg, "raylib-libretro", "textureFilter", 0);
     if (LIBRETRO.textureFilter < 0 || LIBRETRO.textureFilter > TEXTURE_FILTER_ANISOTROPIC_16X)
         LIBRETRO.textureFilter = 0;
+
+    // Integer Scaling
+    LIBRETRO.integerScaling = (bool)rlconfig_get_int(menu.cfg, "raylib-libretro", "integerScaling", 0);
 
     // Theme
     menu.themeSelectedIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "theme", 0);
