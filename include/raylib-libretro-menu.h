@@ -149,6 +149,10 @@ typedef struct LibretroMenu {
     char aboutExtensions[256];
     char aboutCoreNames[LIBRETRO_MENU_MAX_LISTED_CORES][128]; // "Available Cores" labels (nk_console keeps the pointers)
     nk_rune keyboardControls[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
+    int coreInfoCount;
+    char coreInfoPaths[LIBRETRO_MENU_MAX_LISTED_CORES][512];
+    char coreInfoExtensions[LIBRETRO_MENU_MAX_LISTED_CORES][200];
+    char coreInfoNames[LIBRETRO_MENU_MAX_LISTED_CORES][200];
     nk_console* corePickerMenu;
     char pendingGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char pendingCorePaths[LIBRETRO_MAX_GAME_CORES][512];
@@ -804,99 +808,100 @@ static void MenuContentDirChanged(nk_console* widget, void* user_data) {
 #endif
 }
 
-#define LIBRETRO_CORE_CACHE_SECTION "core_cache"
-
 static bool IsLibretroCoreFile(const char* path) {
     const char* ext = GetFileExtension(path);
     return TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib") || TextIsEqual(ext, ".wasm");
 }
 
-static int LibretroCoreDirectoryFileCount(const char* dir) {
-    if (!dir || !dir[0] || !DirectoryExists(dir)) return 0;
-    FilePathList files = LoadDirectoryFiles(dir);
-    int count = 0;
-    for (unsigned int i = 0; i < files.count; i++) {
-        if (IsLibretroCoreFile(files.paths[i])) count++;
-    }
-    UnloadDirectoryFiles(files);
-    return count;
-}
+static bool LibretroParseInfoFile(const char* infoPath, char* coreName, int coreNameSize,
+                                   char* extensions, int extensionsSize) {
+    char* text = LoadFileText(infoPath);
+    if (!text) return false;
 
-// True when every cached core file (rebuilt as <dir>/<file>) still exists on
-// disk. A missing entry means a core was moved/removed or the cache predates a
-// path-format change, so the cache should be rebuilt.
-static bool LibretroCoreCacheFilesPresent(const char* dir, int count) {
-    for (int i = 0; i < count; i++) {
-        const char* file = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_path", i));
-        if (!file || !FileExists(TextFormat("%s/%s", dir, file))) return false;
+    coreName[0] = '\0';
+    extensions[0] = '\0';
+    char* pos = text;
+    while (*pos) {
+        char* eol = pos;
+        while (*eol && *eol != '\n' && *eol != '\r') eol++;
+        char saved = *eol;
+        *eol = '\0';
+
+        char* p = pos;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p && *p != '#') {
+            char* eq = strchr(p, '=');
+            if (eq) {
+                *eq = '\0';
+                char* k = p;
+                char* v = eq + 1;
+                char* kEnd = k + strlen(k);
+                while (kEnd > k && (kEnd[-1] == ' ' || kEnd[-1] == '\t')) kEnd--;
+                *kEnd = '\0';
+                while (*v == ' ' || *v == '\t') v++;
+                char* vEnd = v + strlen(v);
+                while (vEnd > v && (vEnd[-1] == ' ' || vEnd[-1] == '\t')) vEnd--;
+                *vEnd = '\0';
+                size_t vlen = (size_t)(vEnd - v);
+                if (vlen >= 2 && v[0] == '"' && v[vlen - 1] == '"') {
+                    v++;
+                    v[vlen - 2] = '\0';
+                }
+                if (strcmp(k, "corename") == 0) {
+                    snprintf(coreName, coreNameSize, "%s", v);
+                } else if (strcmp(k, "supported_extensions") == 0) {
+                    snprintf(extensions, extensionsSize, "%s", v);
+                }
+            }
+        }
+
+        *eol = saved;
+        while (*eol == '\r' || *eol == '\n') eol++;
+        pos = eol;
     }
-    return true;
+
+    UnloadFileText(text);
+    return coreName[0] != '\0';
 }
 
 static void ScanLibretroCoreDirectory(void) {
-    if (!menu.cfg) return;
     const char* dir = LIBRETRO.coreDirectory;
-    if (!dir || !dir[0]) return;
+    menu.coreInfoCount = 0;
+    if (!dir || !dir[0] || !DirectoryExists(dir)) return;
 
-    // If a core is already loaded we can't peek at other cores; just invalidate
-    // so the next launch performs a full rescan.
-    if (IsLibretroReady()) {
-        rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", -1);
-        rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
-        return;
-    }
-
-    // The cache stays valid while it describes the same directory (dir_path)
-    // with the same number of core files (file_count) AND every cached core
-    // file is still present. The existence check catches a core moved/removed
-    // even when the file count is unchanged (a same-count swap), and rebuilds a
-    // cache left by an older path format — all without re-peeking every core.
-    int currentCount = LibretroCoreDirectoryFileCount(dir);
-    int cachedCount = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", -1);
-    const char* cachedDir = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "dir_path");
-    if (cachedCount == currentCount && cachedDir && TextIsEqual(cachedDir, dir)) {
-        int cached = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
-        if (LibretroCoreCacheFilesPresent(dir, cached)) {
-            TraceLog(LOG_INFO, "LIBRETRO: Core cache valid (%d cores)", cached);
-            return;
-        }
-    }
-
-    TraceLog(LOG_INFO, "LIBRETRO: Rescanning cores in %s", dir);
-    rlconfig_clear_section(menu.cfg, LIBRETRO_CORE_CACHE_SECTION);
-    rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "file_count", currentCount);
-    rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "dir_path", dir);
-
-    if (!DirectoryExists(dir)) {
-        rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
-        return;
-    }
+    rlconfig_clear_section(menu.cfg, "core_cache");
 
     FilePathList files = LoadDirectoryFiles(dir);
-    int coreIndex = 0;
-    for (unsigned int i = 0; i < files.count; i++) {
-        if (!IsLibretroCoreFile(files.paths[i])) continue;
-        if (!PeekLibretroCoreInfo(files.paths[i])) continue;
-        if (TextLength(LIBRETRO.core.validExtensions) == 0) {
-            CloseLibretro();
-            continue;
-        }
+    for (unsigned int i = 0; i < files.count && menu.coreInfoCount < LIBRETRO_MENU_MAX_LISTED_CORES; i++) {
+        if (!TextIsEqual(GetFileExtension(files.paths[i]), ".info")) continue;
 
-        // Store only the file name (the directory is dir_path) so the cache is
-        // portable; the full path is rebuilt as <coreDirectory>/<file> on load.
-        // rlconfig_set copies the key immediately, so chained TextFormat keys are safe.
-        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_path", coreIndex), GetFileName(files.paths[i]));
-        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_extensions", coreIndex), LIBRETRO.core.validExtensions);
-        rlconfig_set(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_name", coreIndex), LIBRETRO.core.libraryName);
-        TraceLog(LOG_INFO, "LIBRETRO: Cached %s (%s)", LIBRETRO.core.libraryName, LIBRETRO.core.validExtensions);
-        CloseLibretro();
-        coreIndex++;
+        char infoBase[256];
+        TextCopy(infoBase, GetFileNameWithoutExt(files.paths[i]));
+        const char* coreFile = NULL;
+        for (unsigned int j = 0; j < files.count; j++) {
+            if (!IsLibretroCoreFile(files.paths[j])) continue;
+            char coreBase[256];
+            TextCopy(coreBase, GetFileNameWithoutExt(files.paths[j]));
+            if (TextIsEqual(coreBase, infoBase) ||
+                TextIsEqual(coreBase, TextFormat("%s_android", infoBase))) {
+                coreFile = GetFileName(files.paths[j]);
+                break;
+            }
+        }
+        if (!coreFile) continue;
+
+        int idx = menu.coreInfoCount;
+        if (!LibretroParseInfoFile(files.paths[i],
+                menu.coreInfoNames[idx], (int)sizeof(menu.coreInfoNames[idx]),
+                menu.coreInfoExtensions[idx], (int)sizeof(menu.coreInfoExtensions[idx]))) continue;
+        if (menu.coreInfoExtensions[idx][0] == '\0') continue;
+
+        TextCopy(menu.coreInfoPaths[idx], coreFile);
+        TraceLog(LOG_INFO, "LIBRETRO: Found %s (%s)", menu.coreInfoNames[idx], menu.coreInfoExtensions[idx]);
+        menu.coreInfoCount++;
     }
     UnloadDirectoryFiles(files);
-
-    rlconfig_set_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", coreIndex);
-    rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
-    TraceLog(LOG_INFO, "LIBRETRO: Cached %d cores in %s", coreIndex, dir);
+    TraceLog(LOG_INFO, "LIBRETRO: Found %d cores in %s", menu.coreInfoCount, dir);
 }
 
 /**
@@ -916,9 +921,9 @@ static bool LibretroExtLower(const char* path, char* out) {
  *         (lower-case, no dot) in its valid_extensions.
  */
 static bool LibretroCoreSupportsExt(int index, const char* extLower) {
-    const char* exts = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
-                                    TextFormat("core_%d_extensions", index));
-    if (!exts) return false;
+    if (index < 0 || index >= menu.coreInfoCount) return false;
+    const char* exts = menu.coreInfoExtensions[index];
+    if (!exts[0]) return false;
     int extCount = 0;
     char** extList = TextSplit(exts, '|', &extCount);
     for (int j = 0; j < extCount; j++) {
@@ -933,10 +938,9 @@ static bool LibretroCoreSupportsExt(int index, const char* extLower) {
  * the next raylib text-buffer call, so callers must copy it immediately.
  */
 static const char* LibretroCoreDisplayName(int index) {
-    const char* name = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_name", index));
-    if (name && name[0]) return name;
-    const char* file = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_path", index));
-    return file ? TextReplace(GetFileNameWithoutExt(file), "_libretro", "") : "";
+    if (index < 0 || index >= menu.coreInfoCount) return "";
+    if (menu.coreInfoNames[index][0]) return menu.coreInfoNames[index];
+    return TextReplace(GetFileNameWithoutExt(menu.coreInfoPaths[index]), "_libretro", "");
 }
 
 /**
@@ -959,13 +963,12 @@ static bool FindZipInnerExtensionForCore(const char* zipPath, char* outExt) {
     if (!MountPhysFS(zipPath, "/peek")) return false;
 
     FilePathList entries = LoadDirectoryFilesFromPhysFSEx("/peek", NULL, true);
-    int coreCount = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
     bool found = false;
 
     for (unsigned int e = 0; e < entries.count && !found; e++) {
         char innerLower[32];
         if (!LibretroExtLower(entries.paths[e], innerLower)) continue;
-        for (int i = 0; i < coreCount; i++) {
+        for (int i = 0; i < menu.coreInfoCount; i++) {
             if (LibretroCoreSupportsExt(i, innerLower)) {
                 TextCopy(outExt, innerLower);
                 found = true;
@@ -980,7 +983,7 @@ static bool FindZipInnerExtensionForCore(const char* zipPath, char* outExt) {
 }
 
 static int FindCoresForGame(const char* gamePath, char paths[][512], char names[][128], int maxCount) {
-    if (!menu.cfg || !gamePath || !gamePath[0] || !paths || !names || maxCount <= 0) return 0;
+    if (!gamePath || !gamePath[0] || !paths || !names || maxCount <= 0) return 0;
 
     char gameExtLower[32];
     if (!LibretroExtLower(gamePath, gameExtLower)) return 0;
@@ -993,15 +996,10 @@ static int FindCoresForGame(const char* gamePath, char paths[][512], char names[
     }
 
     int found = 0;
-    int count = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
-    for (int i = 0; i < count && found < maxCount; i++) {
+    for (int i = 0; i < menu.coreInfoCount && found < maxCount; i++) {
         if (!LibretroCoreSupportsExt(i, gameExtLower)) continue;
-        const char* coreFile = rlconfig_get(menu.cfg, LIBRETRO_CORE_CACHE_SECTION,
-                                            TextFormat("core_%d_path", i));
-        if (!coreFile) continue;
         TextCopy(names[found], LibretroCoreDisplayName(i));
-        // The cache stores the file name; rebuild the full path under the core dir.
-        TextCopy(paths[found], TextFormat("%s/%s", LIBRETRO.coreDirectory, coreFile));
+        TextCopy(paths[found], TextFormat("%s/%s", LIBRETRO.coreDirectory, menu.coreInfoPaths[i]));
         found++;
     }
     return found;
@@ -1667,11 +1665,10 @@ LibretroMenu* InitLibretroMenu(void) {
 
             // Available Cores
             nk_console* coresTree = nk_console_tree(aboutMenu, "Available Cores", nk_false);
-            int cachedCores = rlconfig_get_int(menu.cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
-            if (cachedCores <= 0) {
+            if (menu.coreInfoCount <= 0) {
                 nk_console_label(coresTree, "(none found)");
             }
-            for (int i = 0; i < cachedCores && i < LIBRETRO_MENU_MAX_LISTED_CORES; i++) {
+            for (int i = 0; i < menu.coreInfoCount && i < LIBRETRO_MENU_MAX_LISTED_CORES; i++) {
                 TextCopy(menu.aboutCoreNames[i], LibretroCoreDisplayName(i));
                 nk_console_label(coresTree, menu.aboutCoreNames[i]);
             }
@@ -1925,10 +1922,9 @@ static void LibretroMenuUpdateLoadGameFilter(LibretroMenu* m) {
     // later cores get dropped once it fills.
     char allExts[1024] = {0};
     unsigned int allLen = 0;
-    int coreCount = rlconfig_get_int(m->cfg, LIBRETRO_CORE_CACHE_SECTION, "count", 0);
-    for (int i = 0; i < coreCount; i++) {
-        const char* exts = rlconfig_get(m->cfg, LIBRETRO_CORE_CACHE_SECTION, TextFormat("core_%d_extensions", i));
-        if (!exts || exts[0] == '\0') continue;
+    for (int i = 0; i < m->coreInfoCount; i++) {
+        const char* exts = m->coreInfoExtensions[i];
+        if (exts[0] == '\0') continue;
         // Split this core's "ext1|ext2|..." list and add each token once.
         for (const char* tok = exts; *tok != '\0'; ) {
             const char* end = tok;

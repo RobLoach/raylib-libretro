@@ -79,6 +79,38 @@ function(download_cores)
     endforeach()
 endfunction()
 
+# download_core_info(<name> [<name> ...])
+# Downloads each core's .info metadata file from the libretro-core-info repository.
+function(download_core_info)
+    file(MAKE_DIRECTORY "${CORES_DIR}")
+    foreach(CORE_NAME IN LISTS ARGN)
+        set(INFO_URL "https://raw.githubusercontent.com/libretro/libretro-core-info/refs/heads/master/${CORE_NAME}.info")
+        set(INFO_PATH "${CORES_DIR}/${CORE_NAME}.info")
+
+        if (NOT EXISTS "${INFO_PATH}")
+            message(STATUS "Downloading ${CORE_NAME}.info")
+            file(DOWNLOAD "${INFO_URL}" "${INFO_PATH}"
+                STATUS DOWNLOAD_STATUS
+            )
+            list(GET DOWNLOAD_STATUS 0 STATUS_CODE)
+            list(GET DOWNLOAD_STATUS 1 STATUS_MSG)
+            if (NOT STATUS_CODE EQUAL 0)
+                message(WARNING "Failed to download ${CORE_NAME}.info: ${STATUS_MSG}")
+            endif()
+        endif()
+    endforeach()
+endfunction()
+
+set(CORE_INFO_NAMES
+    fceumm_libretro
+    snes9x_libretro
+    mgba_libretro
+    genesis_plus_gx_libretro
+    prboom_libretro
+    mednafen_pce_fast_libretro
+    mednafen_wswan_libretro
+)
+
 if ("${PLATFORM}" STREQUAL "Web")
     set_target_properties(raylib-libretro PROPERTIES OUTPUT_NAME "index")
     set_target_properties(raylib-libretro PROPERTIES SUFFIX ".html")
@@ -288,6 +320,8 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_wswan_libretro_android.so.zip"
     )
 endif()
+
+download_core_info(${CORE_INFO_NAMES})
 
 install(TARGETS raylib-libretro DESTINATION .)
 install(FILES ../README.md DESTINATION .)
