@@ -265,8 +265,17 @@ static void SetupAndroidEnvironment(LibretroMenu* menu) {
     INIT_TRACE("ANDROID/INIT: environment setup complete");
 }
 
+// android.content.pm.ActivityInfo orientation constants.
+#define ANDROID_SCREEN_ORIENTATION_SENSOR_LANDSCAPE  6
+#define ANDROID_SCREEN_ORIENTATION_SENSOR_PORTRAIT   7
+#define ANDROID_SCREEN_ORIENTATION_SENSOR            4
+
 static void AndroidSetOrientation(struct android_app* app, int index) {
-    static const jint orientations[] = { 6, 7, 4 };
+    static const jint orientations[] = {
+        ANDROID_SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
+        ANDROID_SCREEN_ORIENTATION_SENSOR_PORTRAIT,
+        ANDROID_SCREEN_ORIENTATION_SENSOR,
+    };
     if (index < 0 || index > 2) index = 0;
 
     bool needDetach = false;
@@ -279,6 +288,8 @@ static void AndroidSetOrientation(struct android_app* app, int index) {
     if (setOrientation != NULL) {
         (*env)->CallVoidMethod(env, app->activity->clazz, setOrientation, orientations[index]);
         TraceLog(LOG_INFO, "ANDROID: Set screen orientation (mode %d)", index);
+    } else {
+        TraceLog(LOG_WARNING, "ANDROID: Could not find setRequestedOrientation method");
     }
     if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 
@@ -363,7 +374,10 @@ static bool AndroidCopyContentUri(JNIEnv* env, jobject activity, jobject uri,
     jobject pfd = (openFd && modeR) ?
         (*env)->CallObjectMethod(env, resolver, openFd, uri, modeR) : NULL;
     if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); pfd = NULL; }
-    if (!pfd) return false;
+    if (!pfd) {
+        TraceLog(LOG_WARNING, "ANDROID: Could not open content URI via ContentResolver");
+        return false;
+    }
 
     jclass pfdClass = (*env)->GetObjectClass(env, pfd);
     jmethodID detach = (*env)->GetMethodID(env, pfdClass, "detachFd", "()I");
@@ -390,7 +404,10 @@ static bool AndroidCopyContentUri(JNIEnv* env, jobject activity, jobject uri,
 static void AndroidOnActivityResult(ANativeActivity* activity, int32_t requestCode,
                                     int32_t resultCode, void* data) {
     if (requestCode != ANDROID_FILEPICKER_REQUEST_CODE) return;
-    if (resultCode != -1 || data == NULL) return;
+    if (resultCode != -1 || data == NULL) {
+        TraceLog(LOG_INFO, "ANDROID: File picker cancelled or returned no data");
+        return;
+    }
 
     struct android_app* app = GetAndroidApp();
     bool needDetach = false;
@@ -449,32 +466,36 @@ static void LibretroMenuAndroidLoadGameClicked(nk_console* widget, void* user_da
         (*env)->NewObject(env, intentClass, initStr, action) : NULL;
     if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); intent = NULL; }
 
-    if (intent) {
-        jfieldID catField = (*env)->GetStaticFieldID(env, intentClass,
-            "CATEGORY_OPENABLE", "Ljava/lang/String;");
-        jstring category = catField ?
-            (jstring)(*env)->GetStaticObjectField(env, intentClass, catField) : NULL;
-        jmethodID addCat = (*env)->GetMethodID(env, intentClass, "addCategory",
-            "(Ljava/lang/String;)Landroid/content/Intent;");
-        if (category && addCat) (*env)->CallObjectMethod(env, intent, addCat, category);
-        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
-
-        jmethodID setType = (*env)->GetMethodID(env, intentClass, "setType",
-            "(Ljava/lang/String;)Landroid/content/Intent;");
-        jstring mimeAll = (*env)->NewStringUTF(env, "*/*");
-        if (setType && mimeAll) (*env)->CallObjectMethod(env, intent, setType, mimeAll);
-        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
-
-        jclass actClass = (*env)->GetObjectClass(env, app->activity->clazz);
-        jmethodID startForResult = actClass ? (*env)->GetMethodID(env, actClass,
-            "startActivityForResult", "(Landroid/content/Intent;I)V") : NULL;
-        if (startForResult) {
-            (*env)->CallVoidMethod(env, app->activity->clazz, startForResult,
-                intent, (jint)ANDROID_FILEPICKER_REQUEST_CODE);
-            TraceLog(LOG_INFO, "ANDROID: Launched native file picker");
-        }
-        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    if (!intent) {
+        TraceLog(LOG_WARNING, "ANDROID: Could not create ACTION_OPEN_DOCUMENT intent");
+        AndroidJNIEnd(app, needDetach);
+        return;
     }
+
+    jfieldID catField = (*env)->GetStaticFieldID(env, intentClass,
+        "CATEGORY_OPENABLE", "Ljava/lang/String;");
+    jstring category = catField ?
+        (jstring)(*env)->GetStaticObjectField(env, intentClass, catField) : NULL;
+    jmethodID addCat = (*env)->GetMethodID(env, intentClass, "addCategory",
+        "(Ljava/lang/String;)Landroid/content/Intent;");
+    if (category && addCat) (*env)->CallObjectMethod(env, intent, addCat, category);
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+    jmethodID setType = (*env)->GetMethodID(env, intentClass, "setType",
+        "(Ljava/lang/String;)Landroid/content/Intent;");
+    jstring mimeAll = (*env)->NewStringUTF(env, "*/*");
+    if (setType && mimeAll) (*env)->CallObjectMethod(env, intent, setType, mimeAll);
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+    jclass actClass = (*env)->GetObjectClass(env, app->activity->clazz);
+    jmethodID startForResult = actClass ? (*env)->GetMethodID(env, actClass,
+        "startActivityForResult", "(Landroid/content/Intent;I)V") : NULL;
+    if (startForResult) {
+        (*env)->CallVoidMethod(env, app->activity->clazz, startForResult,
+            intent, (jint)ANDROID_FILEPICKER_REQUEST_CODE);
+        TraceLog(LOG_INFO, "ANDROID: Launched native file picker");
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 
     AndroidJNIEnd(app, needDetach);
 }
@@ -500,7 +521,10 @@ static bool AndroidGetIntentFilePath(struct android_app* app, char* outPath, int
         "getData", "()Landroid/net/Uri;");
     jobject uri = getData ? (*env)->CallObjectMethod(env, intent, getData) : NULL;
 
-    if (uri == NULL) goto done;
+    if (uri == NULL) {
+        TraceLog(LOG_INFO, "ANDROID: Intent has no data URI (normal launch)");
+        goto done;
+    }
 
     jclass uriClass = (*env)->GetObjectClass(env, uri);
     jmethodID getScheme = (*env)->GetMethodID(env, uriClass,
