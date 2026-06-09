@@ -3,6 +3,12 @@ project(raylib-libretro-android C)
 
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
+# Read the project version from the root CMakeLists.txt so the Android build
+# stays in sync without duplicating the version string.
+file(STRINGS "${ROOT}/CMakeLists.txt" _ver_line REGEX "VERSION [0-9]")
+string(REGEX MATCH "VERSION ([0-9]+\\.[0-9]+\\.[0-9]+)" _ "${_ver_line}")
+set(RAYLIB_LIBRETRO_VER "${CMAKE_MATCH_1}")
+
 # Download libretro cores into assets/cores/<abi> so AGP bundles them inside the
 # APK. Android can only dlopen() a core from a real filesystem path, so at first
 # launch the app copies these out of the read-only assets into its writable
@@ -100,6 +106,7 @@ target_include_directories(main PRIVATE
     ${ANDROID_NDK}/sources/android/native_app_glue
 )
 target_compile_definitions(main PRIVATE
+    RAYLIB_LIBRETRO_VERSION="${RAYLIB_LIBRETRO_VER}"
     # Tells the runtime which assets/cores/<abi>/ subdirectory holds the cores
     # built for this libmain.so. Kept in sync with the per-ABI CORES_DIR above.
     RAYLIB_LIBRETRO_ANDROID_ABI="${CMAKE_ANDROID_ARCH_ABI}"
