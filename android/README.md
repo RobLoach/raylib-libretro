@@ -110,7 +110,7 @@ when linking `libmain` to force it to be kept and exported. Without it the APK
 crashes instantly with a blank screen.
 
 ### Cores
-The bundled cores — **fceumm, snes9x, mgba, picodrive** — are downloaded at
+The bundled cores — **fceumm, snes9x, mgba, genesis_plus_gx, prboom, mednafen_pce_fast, mednafen_wswan** — are downloaded at
 configure time, once per ABI, into `app/src/main/assets/cores/<abi>/`, each with
 a generated `cores.list` naming that ABI's cores. They are stored uncompressed
 (`noCompress 'so'`) so they can be read and copied out efficiently. A single APK
