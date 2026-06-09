@@ -117,9 +117,7 @@ if ("${PLATFORM}" STREQUAL "Web")
     #   REPO       git URL
     #   MAKEFILE   Makefile filename (e.g. Makefile or Makefile.libretro)
     #   SUBDIR     subdirectory of source to run make in (pass "" for root)
-    #   ARGN...    extra arguments appended to the make command line, used to
-    #              override per-core variables (e.g. STATIC_LINKING=0 forces
-    #              picodrive to include libretro-common in the archive)
+    #   ARGN...    extra arguments appended to the make command line
     function(build_libretro_side_module CORE_NAME REPO MAKEFILE SUBDIR)
         set(EXTRA_MAKE_ARGS "${ARGN}")
         set(SRC_DIR "${CMAKE_BINARY_DIR}/cores-src/${CORE_NAME}")
@@ -196,10 +194,7 @@ if ("${PLATFORM}" STREQUAL "Web")
     build_libretro_side_module(fceumm    "https://github.com/libretro/libretro-fceumm"   "Makefile.libretro" "")
     build_libretro_side_module(snes9x    "https://github.com/libretro/snes9x"            "Makefile"          "libretro")
     build_libretro_side_module(mgba      "https://github.com/libretro/mgba"              "Makefile.libretro" "")
-    # picodrive's Makefile skips libretro-common (including filestream_vfs_init)
-    # when STATIC_LINKING=1, on the assumption that the frontend provides them.
-    # As a self-contained side module the core must include them itself.
-    build_libretro_side_module(picodrive "https://github.com/libretro/picodrive"         "Makefile.libretro" "" STATIC_LINKING=0)
+    build_libretro_side_module(genesis_plus_gx "https://github.com/libretro/Genesis-Plus-GX" "Makefile.libretro" "")
     build_libretro_side_module(prboom        "https://github.com/libretro/libretro-prboom"       "Makefile"          "")
     build_libretro_side_module(mednafen_pce_fast "https://github.com/libretro/beetle-pce-fast-libretro" "Makefile"     "")
     build_libretro_side_module(mednafen_wswan "https://github.com/libretro/beetle-wswan-libretro" "Makefile"          "")
@@ -227,7 +222,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/fceumm_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/snes9x_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mgba_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/picodrive_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/genesis_plus_gx_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/prboom_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mednafen_pce_fast_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mednafen_wswan_libretro.so.zip"
@@ -237,7 +232,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/fceumm_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/snes9x_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mgba_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/picodrive_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/genesis_plus_gx_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/prboom_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mednafen_pce_fast_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mednafen_wswan_libretro.so.zip"
@@ -249,7 +244,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/fceumm_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/snes9x_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mgba_libretro.dll.zip"
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/picodrive_libretro.dll.zip"
+            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/genesis_plus_gx_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/prboom_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mednafen_pce_fast_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mednafen_wswan_libretro.dll.zip"
@@ -266,7 +261,7 @@ elseif (APPLE)
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/fceumm_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/snes9x_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mgba_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/picodrive_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/genesis_plus_gx_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/prboom_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mednafen_pce_fast_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mednafen_wswan_libretro.dylib.zip"
@@ -276,7 +271,7 @@ elseif (APPLE)
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/fceumm_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/snes9x_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mgba_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/picodrive_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/genesis_plus_gx_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/prboom_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mednafen_pce_fast_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mednafen_wswan_libretro.dylib.zip"
@@ -287,7 +282,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/fceumm_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/snes9x_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mgba_libretro_android.so.zip"
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/picodrive_libretro_android.so.zip"
+        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/genesis_plus_gx_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/prboom_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_pce_fast_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_wswan_libretro_android.so.zip"

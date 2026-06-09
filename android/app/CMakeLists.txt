@@ -20,7 +20,10 @@ foreach(URL IN ITEMS
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/fceumm_libretro_android.so.zip"
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/snes9x_libretro_android.so.zip"
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mgba_libretro_android.so.zip"
-    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/picodrive_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/genesis_plus_gx_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/prboom_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_pce_fast_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_wswan_libretro_android.so.zip"
 )
     get_filename_component(ARCHIVE_NAME "${URL}" NAME)
     get_filename_component(CORE_SO "${ARCHIVE_NAME}" NAME_WLE)  # strip .zip -> *.so

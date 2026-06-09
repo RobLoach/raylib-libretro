@@ -7,7 +7,7 @@
 ## Features
 
 - Multi-System Emulator for NES, SNES, GB, GBA, SMS/GG
-- Shipped Cores: fceumm, snes9x, mgba, picodrive, prboom
+- Shipped Cores: fceumm, snes9x, mgba, genesis_plus_gx, prboom
 - Gamepad, Keyboard, On-Screen Controls
 - Audio
 - Fast Forward, Slow Motion, Rewind
@@ -24,7 +24,7 @@
 | Nintendo Entertainment System (NES)** | `fceumm` | `.fds`, `.nes`, `.unf`, `.unif` |
 | Super Nintendo (SNES) | `snes9x` | `.smc`, `.sfc`, `.swc`, `.fig`, `.bs`, `.st` |
 | Game Boy / Color / Advance | `mgba` | `.gba`, `.gb`, `.gbc`, `.sgb` |
-| Sega Genesis / Mega Drive / Master System / Game Gear / 32X / Sega CD | `picodrive` | `.bin`, `.gen`, `.smd`, `.md`, `.32x`, `.cue`, `.iso`, `.chd`, `.m3u`, `.sms`, `.gg`, `.sg`, `.sc`, `.68k`, `.sgd`, `.pco`, `.vgm`, `.vgz` |
+| Sega Genesis / Mega Drive / Master System / Game Gear | `genesis_plus_gx` | `.bin`, `.gen`, `.smd`, `.md`, `.cue`, `.iso`, `.chd`, `.m3u`, `.sms`, `.gg`, `.sg` |
 | PC Engine / TurboGrafx-16 | `mednafen_pce_fast` | `.pce`, `.cue`, `.ccd`, `.chd`, `.toc`, `.m3u` |
 | WonderSwan / WonderSwan Color | `mednafen_wswan` | `.ws`, `.wsc`, `.pc2` |
 | Doom (PrBoom Engine) | `prboom` | `.wad`, `.iwad`, `.pwad`, `.lmp`, `.m3u` |
