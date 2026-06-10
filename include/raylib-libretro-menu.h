@@ -823,6 +823,22 @@ static void FreeLibretroCoreInfos(void) {
     menu.coreInfos = NULL;
 }
 
+/**
+ * Scan the core directory and build the menu's core list.
+ *
+ * Each core's metadata (name, supported extensions, needs_fullpath,
+ * supports_no_game) is read from its sibling `<core>.info` file — fast, no
+ * dlopen. A core binary with no matching `.info` is probed directly via
+ * PeekLibretroCoreInfo() so it still appears rather than vanishing silently.
+ *
+ * IMPORTANT: the `.info` values are PRE-LOAD HINTS for menu filtering only,
+ * never a hard gate. The authoritative values come from the core's runtime
+ * retro_get_system_info() / CONTENT_INFO_OVERRIDE once it is loaded, and the
+ * two can diverge — e.g. genesis_plus_gx declares needs_fullpath="true"
+ * globally (for SegaCD) yet loads cartridge ROMs from memory. Filtering a core
+ * out on a coarse `.info` flag is exactly how zipped Genesis games got wrongly
+ * rejected; let the loader make the final per-content decision.
+ */
 static void ScanLibretroCoreDirectory(void) {
     const char* dir = LIBRETRO.coreDirectory;
     FreeLibretroCoreInfos();
@@ -833,12 +849,12 @@ static void ScanLibretroCoreDirectory(void) {
     for (unsigned int i = 0; i < files.count; i++) {
         if (!TextIsEqual(GetFileExtension(files.paths[i]), ".info")) continue;
 
-        char infoBase[256];
+        char infoBase[RAYLIB_LIBRETRO_VFS_MAX_PATH];
         TextCopy(infoBase, GetFileNameWithoutExt(files.paths[i]));
         const char* coreFile = NULL;
         for (unsigned int j = 0; j < files.count; j++) {
             if (!IsLibretroCoreFile(files.paths[j])) continue;
-            char coreBase[256];
+            char coreBase[RAYLIB_LIBRETRO_VFS_MAX_PATH];
             TextCopy(coreBase, GetFileNameWithoutExt(files.paths[j]));
             if (TextIsEqual(coreBase, infoBase) ||
                 TextIsEqual(coreBase, TextFormat("%s_android", infoBase))) {
@@ -875,6 +891,47 @@ static void ScanLibretroCoreDirectory(void) {
         cvector_push_back(menu.coreInfos, info);
         rlconfig_clear_section(infoCfg, infoBase);
     }
+
+    // Fallback: a core binary with no sibling .info would otherwise be invisible
+    // (the loop above is .info-driven). Probe such cores directly so they still
+    // appear. Guarded on IsLibretroReady(): the probe's CloseLibretro() wipes
+    // LIBRETRO.core, which would tear down a game in progress — and this scan
+    // also runs from MenuCoreDirChanged while in-game. supports_no_game can't be
+    // known without a full init, so it defaults to false for probed cores.
+    if (!IsLibretroReady()) {
+        for (unsigned int i = 0; i < files.count; i++) {
+            if (!IsLibretroCoreFile(files.paths[i])) continue;
+            const char* coreFile = GetFileName(files.paths[i]);
+
+            bool hasInfo = false;
+            for (int k = 0; k < (int)cvector_size(menu.coreInfos); k++) {
+                if (TextIsEqual(menu.coreInfos[k]->path, coreFile)) { hasInfo = true; break; }
+            }
+            if (hasInfo) continue;
+
+            if (PeekLibretroCoreInfo(files.paths[i])) {
+                const char* name = GetLibretroName();
+                const char* exts = GetLibretroValidExtensions();
+                if (name[0] && exts[0]) {
+                    LibretroCoreInfo* info = (LibretroCoreInfo*)MemAlloc(sizeof(LibretroCoreInfo));
+                    TextCopy(info->path, coreFile);
+                    TextCopy(info->supportedExtensions, exts);
+                    TextCopy(info->coreName, name);
+                    TextCopy(info->displayName, name);
+                    info->systemName[0] = '\0';
+                    info->license[0] = '\0';
+                    info->needsFullpath = GetLibretroNeedFullpath(NULL, NULL);
+                    info->supportsNoGame = false;
+                    TraceLog(LOG_INFO, "LIBRETRO: Probed %s (%s) [no .info]", name, exts);
+                    cvector_push_back(menu.coreInfos, info);
+                }
+            }
+            // Always tear down: PeekLibretroCoreInfo leaves the dylib open on
+            // success, and may leave it open on a mid-way symbol-load failure.
+            CloseLibretro();
+        }
+    }
+
     UnloadDirectoryFiles(files);
     rlconfig_free(infoCfg);
     TraceLog(LOG_INFO, "LIBRETRO: Found %d cores in %s", (int)cvector_size(menu.coreInfos), dir);
@@ -985,8 +1042,9 @@ static int FindCoresForGame(const char* gamePath, char paths[][512], char names[
             if (!ci->supportsNoGame) continue;
         } else {
             if (!LibretroCoreSupportsExt(i, gameExtLower)) continue;
-            if (isZip && ci->needsFullpath) continue;
+            // Some cores require "needs_fullpath", like for CD. We allow attempting to load directly from the .zip for now.
         }
+
         TextCopy(names[found], LibretroCoreDisplayName(i));
         if (!ci->path[0]) continue;
         TextCopy(paths[found], TextFormat("%s/%s", LIBRETRO.coreDirectory, ci->path));
@@ -1184,8 +1242,6 @@ static void MenuShowCorePicker(nk_console* widget, void* user_data) {
     ShowLibretroMenu();
     MenuNavigateInto(menu.corePickerMenu);
 }
-
-
 
 static bool MenuLoadGame(const char* gamePath) {
     // Unload the current game if it's a thing.

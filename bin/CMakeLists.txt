@@ -90,7 +90,11 @@ function(copy_core_info)
         if (EXISTS "${INFO_SRC}")
             file(COPY_FILE "${INFO_SRC}" "${INFO_DST}" ONLY_IF_DIFFERENT)
         else()
-            message(WARNING "${CORE_NAME}.info not found in libretro-core-info submodule")
+            # A missing .info means the core ships but silently never appears in
+            # the menu (ScanLibretroCoreDirectory is .info-driven). Fail loudly
+            # for bundled cores rather than discovering it at runtime.
+            message(FATAL_ERROR "${CORE_NAME}.info not found in ${CORE_INFO_DIR}. "
+                "Run: git submodule update --init -- vendor/libretro-core-info")
         endif()
     endforeach()
 endfunction()

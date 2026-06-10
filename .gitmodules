@@ -49,3 +49,5 @@
 [submodule "vendor/libretro-core-info"]
 	path = vendor/libretro-core-info
 	url = https://github.com/libretro/libretro-core-info
+	ignore = dirty
+	branch = master
