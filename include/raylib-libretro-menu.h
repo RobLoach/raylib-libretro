@@ -1175,34 +1175,7 @@ static void MenuShowCorePicker(nk_console* widget, void* user_data) {
     MenuNavigateInto(menu.corePickerMenu);
 }
 
-static void MenuRunCoreClicked(nk_console* widget, void* user_data) {
-    NK_UNUSED(widget);
-    NK_UNUSED(user_data);
-    if (IsLibretroGameReady()) {
-        UnloadLibretroGame();
-    }
 
-    menu.pendingGamePath[0] = '\0';
-    int coreCount = FindCoresForGame(NULL, menu.pendingCorePaths, menu.pendingCoreNames, LIBRETRO_MAX_GAME_CORES);
-    if (coreCount == 0) {
-        nk_console_show_message(menu.console, "No standalone cores available");
-        return;
-    }
-
-    if (coreCount == 1) {
-        SaveLibretroAllSettings();
-        CloseLibretro();
-        if (MenuLoadCoreAndGame(menu.pendingCorePaths[0], NULL)) {
-            HideLibretroMenu();
-        } else {
-            ShowLibretroMenu();
-        }
-        return;
-    }
-
-    menu.pendingCoreCount = coreCount;
-    nk_console_add_event(menu.console, NK_CONSOLE_EVENT_POST_RENDER_ONCE, &MenuShowCorePicker);
-}
 
 static bool MenuLoadGame(const char* gamePath) {
     // Unload the current game if it's a thing.
@@ -1416,9 +1389,6 @@ LibretroMenu* InitLibretroMenu(void) {
     }
 #endif
     LibretroMenuUpdateLoadGameFilter(&menu);
-
-    // Run Core (standalone cores that don't require a game file)
-    nk_console_button_onclick(menu.console, "Run Core", &MenuRunCoreClicked);
 
     // Close Game
     //menu.closeGameButton = nk_console_button_onclick(menu.console, "Close Game", &MenuCloseGameClicked);
