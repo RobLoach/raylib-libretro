@@ -647,34 +647,34 @@ static const char* LibretroMenuPixelFormatName(enum retro_pixel_format fmt) {
 
 static void LibretroMenuUpdateAbout(void) {
     // Frontend / runtime.
-    snprintf(menu.aboutVersion,     sizeof(menu.aboutVersion),     "raylib-libretro: %s", RAYLIB_LIBRETRO_VERSION);
-    snprintf(menu.aboutRenderer,    sizeof(menu.aboutRenderer),    "Renderer:        %s", LibretroMenuRendererName());
-    snprintf(menu.aboutResolution,  sizeof(menu.aboutResolution),  "Window:          %dx%d",
-        GetScreenWidth(), GetScreenHeight());
+    TextCopy(menu.aboutVersion,  TextFormat("raylib-libretro: %s", RAYLIB_LIBRETRO_VERSION));
+    TextCopy(menu.aboutRenderer, TextFormat("Renderer:        %s", LibretroMenuRendererName()));
+    TextCopy(menu.aboutResolution, TextFormat("Window:          %dx%d",
+        GetScreenWidth(), GetScreenHeight()));
 
     // Core.
     const char* coreName = GetLibretroName();
     const char* coreVer  = GetLibretroVersion();
     if (coreName && coreName[0]) {
-        snprintf(menu.aboutCoreName,    sizeof(menu.aboutCoreName),    "Core:            %s", coreName);
-        snprintf(menu.aboutCoreVersion, sizeof(menu.aboutCoreVersion), "Core Version:    %s", coreVer ? coreVer : "");
-        snprintf(menu.aboutCoreResolution, sizeof(menu.aboutCoreResolution), "Core Size:       %ux%u",
-            GetLibretroWidth(), GetLibretroHeight());
-        snprintf(menu.aboutCorePixelFormat, sizeof(menu.aboutCorePixelFormat), "Pixel Format:    %s",
-            LibretroMenuPixelFormatName(LIBRETRO.core.pixelFormat));
-        snprintf(menu.aboutCoreSampleRate, sizeof(menu.aboutCoreSampleRate), "Sample Rate:     %g Hz",
-            LIBRETRO.core.sampleRate);
+        TextCopy(menu.aboutCoreName,    TextFormat("Core:            %s", coreName));
+        TextCopy(menu.aboutCoreVersion, TextFormat("Core Version:    %s", coreVer ? coreVer : ""));
+        TextCopy(menu.aboutCoreResolution, TextFormat("Core Size:       %ux%u",
+            GetLibretroWidth(), GetLibretroHeight()));
+        TextCopy(menu.aboutCorePixelFormat, TextFormat("Pixel Format:    %s",
+            LibretroMenuPixelFormatName(LIBRETRO.core.pixelFormat)));
+        TextCopy(menu.aboutCoreSampleRate, TextFormat("Sample Rate:     %g Hz",
+            LIBRETRO.core.sampleRate));
         float aspect = GetLibretroAspectRatio();
         if (aspect > 0.0f) {
-            snprintf(menu.aboutCoreAspectRatio, sizeof(menu.aboutCoreAspectRatio), "Aspect Ratio:    %.3f", aspect);
+            TextCopy(menu.aboutCoreAspectRatio, TextFormat("Aspect Ratio:    %.3f", aspect));
         } else {
-            snprintf(menu.aboutCoreAspectRatio, sizeof(menu.aboutCoreAspectRatio), "Aspect Ratio:    (auto)");
+            TextCopy(menu.aboutCoreAspectRatio, "Aspect Ratio:    (auto)");
         }
         const char* exts = GetLibretroValidExtensions();
-        snprintf(menu.aboutExtensions, sizeof(menu.aboutExtensions), "Extensions:      %s",
-            (exts && exts[0]) ? exts : "(any)");
+        TextCopy(menu.aboutExtensions, TextFormat("Extensions:      %s",
+            (exts && exts[0]) ? exts : "(any)"));
     } else {
-        snprintf(menu.aboutCoreName, sizeof(menu.aboutCoreName), "Core:            (none)");
+        TextCopy(menu.aboutCoreName, "Core:            (none)");
         menu.aboutCoreVersion[0] = '\0';
         menu.aboutCoreResolution[0] = '\0';
         menu.aboutCorePixelFormat[0] = '\0';
@@ -685,8 +685,8 @@ static void LibretroMenuUpdateAbout(void) {
 
     // Content.
     if (LIBRETRO.core.contentPath[0] != '\0') {
-        snprintf(menu.aboutContent, sizeof(menu.aboutContent), "Content:         %s",
-            GetFileName(LIBRETRO.core.contentPath));
+        TextCopy(menu.aboutContent, TextFormat("Content:         %s",
+            GetFileName(LIBRETRO.core.contentPath)));
     } else {
         menu.aboutContent[0] = '\0';
     }
@@ -1448,7 +1448,7 @@ LibretroMenu* InitLibretroMenu(void) {
                 int offset = 0;
                 for (int i = 0; i < LIBRETRO_SHADER_TYPE_COUNT; ++i) {
                     const char* name = GetLibretroShaderName((LibretroShaderType)i);
-                    int len = (int)strlen(name);
+                    int len = (int)TextLength(name);
                     if (offset + len + 1 < (int)sizeof(shaderNames)) {
                         if (i > 0) shaderNames[offset++] = '|';
                         TextCopy(shaderNames + offset, name);
@@ -1692,8 +1692,7 @@ static void LibretroMenuGetNthToken(const char* str, int n, char* out, int outSi
             int len = (int)(pipe - p);
             if (len < 0) len = 0;
             if (len >= outSize) len = outSize - 1;
-            if (len > 0) memcpy(out, p, (size_t)len);
-            out[len] = '\0';
+            TextCopy(out, TextSubtext(p, 0, len));
             return;
         }
         if (!*pipe) break;
@@ -1762,7 +1761,7 @@ static int LibretroMenuFindTokenIndex(const char* str, const char* value) {
         while (*pipe && *pipe != '|') pipe++;
         int len = (int)(pipe - p);
         char tok[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
-        if (len < LIBRETRO_CORE_VARIABLE_VALUE_LEN) memcpy(tok, p, (size_t)len);
+        if (len < LIBRETRO_CORE_VARIABLE_VALUE_LEN) TextCopy(tok, TextSubtext(p, 0, len));
         if (TextIsEqual(tok, value)) return idx;
         if (!*pipe) break;
         p = pipe + 1;
@@ -1783,7 +1782,7 @@ static bool LibretroMenuValueInList(const char* valuesList, const char* value) {
         while (*pipe && *pipe != '|') pipe++;
         int len = (int)(pipe - p);
         char tok[LIBRETRO_CORE_VARIABLE_VALUE_LEN] = {0};
-        if (len < LIBRETRO_CORE_VARIABLE_VALUE_LEN) memcpy(tok, p, (size_t)len);
+        if (len < LIBRETRO_CORE_VARIABLE_VALUE_LEN) TextCopy(tok, TextSubtext(p, 0, len));
         if (TextIsEqual(tok, value)) return true;
         if (!*pipe) break;
         p = pipe + 1;
@@ -1889,9 +1888,8 @@ static unsigned int LibretroMenuAddExtension(char* list, unsigned int len, size_
     // +2 reserves the '|' separator and the null terminator.
     if (len + tokLen + 2 >= cap) return len;
     if (len > 0) list[len++] = '|';
-    memcpy(list + len, tok, tokLen);
+    TextCopy(list + len, TextSubtext(tok, 0, (int)tokLen));
     len += tokLen;
-    list[len] = '\0';
     return len;
 }
 
@@ -2049,9 +2047,10 @@ void BuildLibretroMenuControllers(LibretroMenu* m) {
         // copying them, so they must persist for the lifetime of the widget.
         char* options = m->portDeviceOptions[port];
         options[0] = '\0';
+        int optLen = 0;
         for (unsigned i = 0; i < info[port].num_types; i++) {
-            if (i > 0) strncat(options, "|", sizeof(m->portDeviceOptions[port]) - strlen(options) - 1);
-            strncat(options, info[port].types[i].desc, sizeof(m->portDeviceOptions[port]) - strlen(options) - 1);
+            if (i > 0) TextAppend(options, "|", &optLen);
+            TextAppend(options, info[port].types[i].desc, &optLen);
         }
 
         unsigned currentDevice = GetLibretroPortDevice(port);
