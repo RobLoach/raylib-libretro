@@ -14,7 +14,7 @@ android {
         // The release workflow overrides these via -PappVersionCode / -PappVersionName
         // (derived from the git tag and run number). Defaults are for local builds.
         versionCode project.hasProperty('appVersionCode') ? project.property('appVersionCode').toString().toInteger() : 1
-        versionName project.hasProperty('appVersionName') ? project.property('appVersionName').toString() : '0.0.28'
+        versionName project.hasProperty('appVersionName') ? project.property('appVersionName').toString() : '0.0.29'
 
         externalNativeBuild {
             cmake {
