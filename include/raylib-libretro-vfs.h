@@ -73,6 +73,16 @@ static int raylib_libretro_vfs_closedir(struct retro_vfs_dir_handle* dirstream);
 extern "C" {
 #endif
 
+// Optional hooks for an alternate read-only filesystem (e.g. PhysFS).
+// When non-NULL, VFS read operations try these before the real filesystem.
+// Signature matches the corresponding raylib / libretro-VFS contracts:
+//   load: returns malloc'd buffer + size, or NULL if not found
+//   stat: returns RETRO_VFS_STAT flags (0 = not found), optionally sets *size
+//   list: returns a FilePathList (may be empty)
+static unsigned char* (*raylib_libretro_vfs_alt_load_file_data)(const char*, int*) = NULL;
+static int (*raylib_libretro_vfs_alt_stat)(const char*, int32_t*) = NULL;
+static FilePathList (*raylib_libretro_vfs_alt_load_dir_files)(const char*) = NULL;
+
 /**
  * Gets the path associated with the given file handle.
  *
@@ -123,7 +133,12 @@ static struct retro_vfs_file_handle* raylib_libretro_vfs_open(const char* path, 
     handle->data = NULL;
 
     if (mode & RETRO_VFS_FILE_ACCESS_READ) {
-        handle->data = LoadFileData(path, &handle->dataSize);
+        if (raylib_libretro_vfs_alt_load_file_data != NULL) {
+            handle->data = raylib_libretro_vfs_alt_load_file_data(path, &handle->dataSize);
+        }
+        if (handle->data == NULL) {
+            handle->data = LoadFileData(path, &handle->dataSize);
+        }
         if (handle->data == NULL) {
             MemFree(handle);
             TraceLog(LOG_ERROR, "LIBRETRO: File not found: %s", path);
@@ -418,6 +433,11 @@ static int raylib_libretro_vfs_rename(const char* old_path, const char* new_path
  * @since VFS API v3
  */
 static int raylib_libretro_vfs_stat(const char* path, int32_t *size) {
+    if (raylib_libretro_vfs_alt_stat != NULL) {
+        int result = raylib_libretro_vfs_alt_stat(path, size);
+        if (result != 0) return result;
+    }
+
     // DirectoryExists must be checked first, because FileExists uses
     // access() which returns true for directories.
     if (DirectoryExists(path)) {
@@ -503,7 +523,12 @@ static struct retro_vfs_dir_handle* raylib_libretro_vfs_opendir(const char* dir,
         return NULL;
     }
 
-    if (!DirectoryExists(dir)) {
+    bool dirFound = false;
+    if (raylib_libretro_vfs_alt_stat != NULL) {
+        int result = raylib_libretro_vfs_alt_stat(dir, NULL);
+        if (result & RETRO_VFS_STAT_IS_DIRECTORY) dirFound = true;
+    }
+    if (!dirFound && !DirectoryExists(dir)) {
         return NULL;
     }
 
@@ -515,7 +540,13 @@ static struct retro_vfs_dir_handle* raylib_libretro_vfs_opendir(const char* dir,
     TextCopy(handle->path, dir);
     handle->include_hidden = include_hidden;
 
-    handle->directoryFiles = LoadDirectoryFiles(handle->path);
+    handle->directoryFiles.count = 0;
+    if (raylib_libretro_vfs_alt_load_dir_files != NULL) {
+        handle->directoryFiles = raylib_libretro_vfs_alt_load_dir_files(handle->path);
+    }
+    if (handle->directoryFiles.count == 0) {
+        handle->directoryFiles = LoadDirectoryFiles(handle->path);
+    }
     handle->directoryFilesIndex = -1;
 
     return handle;
@@ -608,7 +639,12 @@ static bool raylib_libretro_vfs_dirent_is_dir(struct retro_vfs_dir_handle* dirst
         return false;
     }
 
-    return DirectoryExists(dirstream->directoryFiles.paths[dirstream->directoryFilesIndex]);
+    const char* entryPath = dirstream->directoryFiles.paths[dirstream->directoryFilesIndex];
+    if (raylib_libretro_vfs_alt_stat != NULL) {
+        int result = raylib_libretro_vfs_alt_stat(entryPath, NULL);
+        if (result & RETRO_VFS_STAT_IS_DIRECTORY) return true;
+    }
+    return DirectoryExists(entryPath);
 }
 
 /**
