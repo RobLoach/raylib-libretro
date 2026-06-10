@@ -236,18 +236,20 @@ static void RLibretroConfigTrim(char *s) {
     }
 }
 
-static RLibretroConfig* rlconfig_load(const char *filename) {
-    RLibretroConfig *cfg = (RLibretroConfig*)MemAlloc(sizeof(RLibretroConfig));
-    if (!cfg) return NULL;
-    memset(cfg, 0, sizeof(RLibretroConfig));
-
-    if (!filename) return cfg;
+/* Parse an INI/.info file into cfg. Lines are "key = value"; [section] headers
+   switch the active section. defaultSection (may be NULL) is the section keys
+   land in before any header — pass the target section for sectionless .info
+   files, NULL for .cfg files where keys must follow a header. Surrounding
+   double quotes are stripped from values (.info style; harmless for .cfg). */
+static void RLibretroConfigParse(RLibretroConfig *cfg, const char *defaultSection, const char *filename) {
+    if (!cfg || !filename) return;
 
     FILE *f = fopen(filename, "r");
-    if (!f) return cfg;
+    if (!f) return;
 
     char line[RLCONFIG_LINE_MAX];
     char section[RLCONFIG_SECTION_MAX] = {0};
+    if (defaultSection) snprintf(section, sizeof(section), "%s", defaultSection);
 
     while (fgets(line, sizeof(line), f)) {
         RLibretroConfigTrim(line);
@@ -279,33 +281,7 @@ static RLibretroConfig* rlconfig_load(const char *filename) {
         RLibretroConfigTrim(k);
         RLibretroConfigTrim(v);
 
-        if (k[0] != '\0') rlconfig_set(cfg, section, k, v);
-    }
-
-    fclose(f);
-    return cfg;
-}
-
-static void rlconfig_load_info(RLibretroConfig *cfg, const char *section, const char *filename) {
-    if (!cfg || !section || !filename) return;
-
-    FILE *f = fopen(filename, "r");
-    if (!f) return;
-
-    char line[RLCONFIG_LINE_MAX];
-    while (fgets(line, sizeof(line), f)) {
-        RLibretroConfigTrim(line);
-        if (line[0] == '\0' || line[0] == '#' || line[0] == ';') continue;
-
-        char *eq = strchr(line, '=');
-        if (!eq) continue;
-
-        *eq = '\0';
-        char *k = line;
-        char *v = eq + 1;
-        RLibretroConfigTrim(k);
-        RLibretroConfigTrim(v);
-
+        /* Strip surrounding double quotes from the value */
         size_t vlen = strlen(v);
         if (vlen >= 2 && v[0] == '"' && v[vlen - 1] == '"') {
             v[vlen - 1] = '\0';
@@ -316,6 +292,20 @@ static void rlconfig_load_info(RLibretroConfig *cfg, const char *section, const 
     }
 
     fclose(f);
+}
+
+static RLibretroConfig* rlconfig_load(const char *filename) {
+    RLibretroConfig *cfg = (RLibretroConfig*)MemAlloc(sizeof(RLibretroConfig));
+    if (!cfg) return NULL;
+    memset(cfg, 0, sizeof(RLibretroConfig));
+
+    RLibretroConfigParse(cfg, NULL, filename);
+    return cfg;
+}
+
+static void rlconfig_load_info(RLibretroConfig *cfg, const char *section, const char *filename) {
+    if (!section) return;
+    RLibretroConfigParse(cfg, section, filename);
 }
 
 static bool rlconfig_save(RLibretroConfig *cfg, const char *filename) {

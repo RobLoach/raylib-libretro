@@ -2138,6 +2138,24 @@ void BuildLibretroMenuControllers(LibretroMenu* m) {
     m->controllersMenu->visible = (nk_bool)anyWidget;
 }
 
+// Copy a "raylib-libretro" string setting into dest when present; dest is left
+// unchanged if the key is absent, so its existing default stays in place.
+static void LibretroMenuLoadString(const char* key, char* dest) {
+    const char* value = rlconfig_get(menu.cfg, "raylib-libretro", key);
+    if (value) TextCopy(dest, value);
+}
+
+// Write the loaded core's options into its [libraryName] section (no disk flush).
+// No-op when no core is loaded or it exposed no variables.
+static void LibretroMenuWriteCoreOptions(void) {
+    const char* coreName = LIBRETRO.core.libraryName;
+    if (!menu.cfg || !coreName || !coreName[0] || LIBRETRO.core.variableCount == 0) return;
+    rlconfig_clear_section(menu.cfg, coreName);
+    for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
+        rlconfig_set(menu.cfg, coreName, LIBRETRO.core.variableKeys[i], LIBRETRO.core.variableValues[i]);
+    }
+}
+
 static void LibretroMenuUpdateConfig(void) {
     if (!menu.cfg) return;
     if (!IsWindowFullscreen()) {
@@ -2194,13 +2212,9 @@ static bool SaveLibretroMenuSettings(void) {
 }
 
 static bool SaveLibretroCoreOptions(void) {
-    if (!menu.cfg || LIBRETRO.core.variableCount == 0) return false;
     const char *coreName = LIBRETRO.core.libraryName;
-    if (!coreName || !coreName[0]) return false;
-    rlconfig_clear_section(menu.cfg, coreName);
-    for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
-        rlconfig_set(menu.cfg, coreName, LIBRETRO.core.variableKeys[i], LIBRETRO.core.variableValues[i]);
-    }
+    if (!menu.cfg || LIBRETRO.core.variableCount == 0 || !coreName || !coreName[0]) return false;
+    LibretroMenuWriteCoreOptions();
     bool ok = rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
     TraceLog(LOG_INFO, "LIBRETRO: Saved core options to %s", RAYLIB_LIBRETRO_CFG_FILE);
     return ok;
@@ -2286,13 +2300,7 @@ EMSCRIPTEN_KEEPALIVE // expose to JS as Module._SaveLibretroAllSettings
 bool SaveLibretroAllSettings(void) {
     if (!menu.cfg) return false;
     LibretroMenuUpdateConfig();
-    const char *coreName = LIBRETRO.core.libraryName;
-    if (coreName && coreName[0] && LIBRETRO.core.variableCount > 0) {
-        rlconfig_clear_section(menu.cfg, coreName);
-        for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
-            rlconfig_set(menu.cfg, coreName, LIBRETRO.core.variableKeys[i], LIBRETRO.core.variableValues[i]);
-        }
-    }
+    LibretroMenuWriteCoreOptions();
     SaveLibretroPortDevices();
     bool ok = rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
     TraceLog(LOG_INFO, "MENU: Saved all settings to %s", RAYLIB_LIBRETRO_CFG_FILE);
@@ -2388,8 +2396,7 @@ static bool LoadLibretroMenuSettings(void) {
     if (menu.saveSlotIndex < 0 || menu.saveSlotIndex > 9) menu.saveSlotIndex = 0;
 
     // Username
-    const char* username = rlconfig_get(menu.cfg, "raylib-libretro", "username");
-    if (username) TextCopy(LIBRETRO.username, username);
+    LibretroMenuLoadString("username", LIBRETRO.username);
 
     // Hotkey bindings (keyboard + gamepad), keyed by name as "key<Name>"/"gamepad<Name>".
     for (int i = 0; i < LIBRETRO_HOTKEY_COUNT; i++) {
@@ -2412,18 +2419,12 @@ static bool LoadLibretroMenuSettings(void) {
     if (menu.slowMotionSpeed > 0.9f) menu.slowMotionSpeed = 0.9f;
 
     // Directories
-    const char* coreDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreDirectory");
-    if (coreDirectory) TextCopy(LIBRETRO.coreDirectory, coreDirectory);
-    const char* saveDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "saveDirectory");
-    if (saveDirectory) TextCopy(LIBRETRO.saveDirectory, saveDirectory);
-    const char* coreAssetsDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "coreAssetsDirectory");
-    if (coreAssetsDirectory) TextCopy(LIBRETRO.coreAssetsDirectory, coreAssetsDirectory);
-    const char* systemDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "systemDirectory");
-    if (systemDirectory) TextCopy(LIBRETRO.systemDirectory, systemDirectory);
-    const char* playlistsDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "playlistsDirectory");
-    if (playlistsDirectory) TextCopy(LIBRETRO.playlistsDirectory, playlistsDirectory);
-    const char* fileBrowserStartDirectory = rlconfig_get(menu.cfg, "raylib-libretro", "fileBrowserStartDirectory");
-    if (fileBrowserStartDirectory) TextCopy(LIBRETRO.fileBrowserStartDirectory, fileBrowserStartDirectory);
+    LibretroMenuLoadString("coreDirectory", LIBRETRO.coreDirectory);
+    LibretroMenuLoadString("saveDirectory", LIBRETRO.saveDirectory);
+    LibretroMenuLoadString("coreAssetsDirectory", LIBRETRO.coreAssetsDirectory);
+    LibretroMenuLoadString("systemDirectory", LIBRETRO.systemDirectory);
+    LibretroMenuLoadString("playlistsDirectory", LIBRETRO.playlistsDirectory);
+    LibretroMenuLoadString("fileBrowserStartDirectory", LIBRETRO.fileBrowserStartDirectory);
 
     // Keyboard Controls
     for (int i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++) {
