@@ -22,6 +22,12 @@ set(RAYLIB_LIBRETRO_VER "${CMAKE_MATCH_1}")
 set(CORES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/main/assets/cores/${CMAKE_ANDROID_ARCH_ABI}")
 file(MAKE_DIRECTORY "${CORES_DIR}")
 set(CORE_NAMES "")
+
+# The menu scan is .info-driven: each core needs its sibling <core>.info to show
+# up with proper metadata (display name, system, license, supports_no_game) and
+# to skip the slow dlopen probe. Cores are named *_libretro_android.so but their
+# .info is named *_libretro.info, which ScanLibretroCoreDirectory() matches.
+set(CORE_INFO_DIR "${ROOT}/vendor/libretro-core-info")
 foreach(URL IN ITEMS
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/fceumm_libretro_android.so.zip"
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/snes9x_libretro_android.so.zip"
@@ -54,6 +60,20 @@ foreach(URL IN ITEMS
         continue()
     endif()
     list(APPEND CORE_NAMES "${CORE_SO}")
+
+    # Bundle the matching .info next to the core. A missing .info means the core
+    # would fall back to the slow dlopen probe with no metadata, so fail loudly
+    # for bundled cores rather than discovering it at runtime (mirrors the
+    # copy_core_info() guard in bin/CMakeLists.txt).
+    string(REGEX REPLACE "_android\\.so$" "" CORE_BASE "${CORE_SO}")
+    if (EXISTS "${CORE_INFO_DIR}/${CORE_BASE}.info")
+        file(COPY_FILE "${CORE_INFO_DIR}/${CORE_BASE}.info"
+                       "${CORES_DIR}/${CORE_BASE}.info" ONLY_IF_DIFFERENT)
+        list(APPEND CORE_NAMES "${CORE_BASE}.info")
+    else()
+        message(FATAL_ERROR "${CORE_BASE}.info not found in ${CORE_INFO_DIR}. "
+            "Run: git submodule update --init -- vendor/libretro-core-info")
+    endif()
 endforeach()
 
 # Write the manifest of bundled cores the app reads on first launch, alongside
