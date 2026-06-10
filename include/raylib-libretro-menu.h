@@ -1644,9 +1644,11 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_label(systemTree, menu.aboutRenderer);
             nk_console_label(systemTree, "Platform:        " RAYLIB_LIBRETRO_PLATFORM);
             nk_console_label(systemTree, menu.aboutResolution);
+            nk_console_label(systemTree, "License:         zlib/libpng");
+            nk_console_label(systemTree, "https://github.com/RobLoach/raylib-libretro");
 
             // Core
-            nk_console* coreTree = nk_console_tree(aboutMenu, "Core", nk_false);
+            nk_console* coreTree = nk_console_tree(aboutMenu, "Core", nk_true);
             nk_console_label(coreTree, menu.aboutCoreName);
             nk_console_label(coreTree, menu.aboutCoreVersion);
             nk_console_label(coreTree, menu.aboutCoreResolution);
@@ -1657,21 +1659,19 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_label(coreTree, menu.aboutExtensions);
 
             // Available Cores
-            nk_console* coresTree = nk_console_tree(aboutMenu, "Available Cores", nk_false);
+            nk_console* coresTree = nk_console_tree(aboutMenu, "Available Cores", nk_true);
             if (cvector_size(menu.coreInfos) == 0) {
                 nk_console_label(coresTree, "(none found)");
             }
             for (int i = 0; i < (int)cvector_size(menu.coreInfos); i++) {
                 LibretroCoreInfo* ci = menu.coreInfos[i];
-                nk_console* coreTree = nk_console_tree(coresTree, LibretroCoreDisplayName(i), nk_false);
-                if (ci->systemName[0]) nk_console_label(coreTree, TextFormat("System:  %s", ci->systemName));
-                if (ci->license[0]) nk_console_label(coreTree, TextFormat("License: %s", ci->license));
+                nk_console_label(coresTree, LibretroCoreDisplayName(i));
             }
 
-            // License
-            nk_console* licenseTree = nk_console_tree(aboutMenu, "License", nk_false);
-            nk_console_label(licenseTree, "License:         zlib/libpng");
-            nk_console_label(licenseTree, "https://github.com/RobLoach/raylib-libretro");
+            nk_console_rule_horizontal(aboutMenu, nk_rgba(0,0,0,0), nk_false);
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(aboutMenu, "Back", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_LEFT);
         }
     }
 
