@@ -107,7 +107,7 @@ set(CORE_INFO_NAMES
     prboom_libretro
     mednafen_pce_fast_libretro
     mednafen_wswan_libretro
-    swanstation_libretro
+    pcsx_rearmed_libretro
 )
 
 if ("${PLATFORM}" STREQUAL "Web")
@@ -229,6 +229,7 @@ if ("${PLATFORM}" STREQUAL "Web")
     build_libretro_side_module(prboom        "https://github.com/libretro/libretro-prboom"       "Makefile"          "")
     build_libretro_side_module(mednafen_pce_fast "https://github.com/libretro/beetle-pce-fast-libretro" "Makefile"     "")
     build_libretro_side_module(mednafen_wswan "https://github.com/libretro/beetle-wswan-libretro" "Makefile"          "")
+    build_libretro_side_module(pcsx_rearmed  "https://github.com/libretro/pcsx_rearmed"           "Makefile.libretro" "")
 
     if (LIBRETRO_SIDE_MODULES)
         add_custom_target(libretro-side-modules ALL DEPENDS ${LIBRETRO_SIDE_MODULES})
@@ -257,7 +258,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/prboom_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mednafen_pce_fast_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mednafen_wswan_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/swanstation_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/pcsx_rearmed_libretro.so.zip"
         )
     elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
         download_cores(
@@ -268,7 +269,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/prboom_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mednafen_pce_fast_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mednafen_wswan_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/swanstation_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/pcsx_rearmed_libretro.so.zip"
         )
     endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -281,7 +282,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/prboom_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mednafen_pce_fast_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mednafen_wswan_libretro.dll.zip"
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/swanstation_libretro.dll.zip"
+            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/pcsx_rearmed_libretro.dll.zip"
         )
     endif()
 elseif (APPLE)
@@ -299,7 +300,7 @@ elseif (APPLE)
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/prboom_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mednafen_pce_fast_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mednafen_wswan_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/swanstation_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/pcsx_rearmed_libretro.dylib.zip"
         )
     else()
         download_cores(
@@ -310,7 +311,7 @@ elseif (APPLE)
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/prboom_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mednafen_pce_fast_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mednafen_wswan_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/swanstation_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/pcsx_rearmed_libretro.dylib.zip"
         )
     endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -322,7 +323,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/prboom_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_pce_fast_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_wswan_libretro_android.so.zip"
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/swanstation_libretro_android.so.zip"
+        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/pcsx_rearmed_libretro_android.so.zip"
     )
 endif()
 
