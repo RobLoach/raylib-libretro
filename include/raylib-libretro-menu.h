@@ -94,6 +94,8 @@ typedef struct {
     char path[256];
     char displayName[256];
     char coreName[256];
+    char systemName[256];
+    char license[64];
     char supportedExtensions[RLCONFIG_VALUE_MAX];
     bool supportsNoGame;
     bool needsFullpath;
@@ -860,6 +862,10 @@ static void ScanLibretroCoreDirectory(void) {
         TextCopy(info->coreName, coreName);
         const char* displayName = rlconfig_get(infoCfg, infoBase, "display_name");
         TextCopy(info->displayName, (displayName && displayName[0]) ? displayName : coreName);
+        const char* systemName = rlconfig_get(infoCfg, infoBase, "systemname");
+        TextCopy(info->systemName, (systemName && systemName[0]) ? systemName : "");
+        const char* license = rlconfig_get(infoCfg, infoBase, "license");
+        TextCopy(info->license, (license && license[0]) ? license : "");
         const char* noGame = rlconfig_get(infoCfg, infoBase, "supports_no_game");
         info->supportsNoGame = noGame && TextIsEqual(noGame, "true");
         const char* fullpath = rlconfig_get(infoCfg, infoBase, "needs_fullpath");
@@ -1656,7 +1662,10 @@ LibretroMenu* InitLibretroMenu(void) {
                 nk_console_label(coresTree, "(none found)");
             }
             for (int i = 0; i < (int)cvector_size(menu.coreInfos); i++) {
-                nk_console_label(coresTree, LibretroCoreDisplayName(i));
+                LibretroCoreInfo* ci = menu.coreInfos[i];
+                nk_console* coreTree = nk_console_tree(coresTree, LibretroCoreDisplayName(i), nk_false);
+                if (ci->systemName[0]) nk_console_label(coreTree, TextFormat("System:  %s", ci->systemName));
+                if (ci->license[0]) nk_console_label(coreTree, TextFormat("License: %s", ci->license));
             }
 
             // License
