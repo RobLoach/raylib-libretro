@@ -5,12 +5,16 @@
     <title>raylib-libretro</title>
     <meta name="description" content="A libretro frontend built with raylib — play retro games in your browser.">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+    <!-- Render UA surfaces (scrollbars, the pre-paint frame) dark to match the
+         #11111b backdrop and avoid a white flash on first navigation. -->
+    <meta name="color-scheme" content="dark">
 
-    <!-- Progressive Web App: installable + standalone "Add to Home Screen" -->
+    <!-- Progressive Web App: installable + standalone "Add to Home Screen".
+         theme-color matches the page/canvas backdrop (and the manifest) so the
+         browser chrome and PWA splash are seamless with the app. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <meta name="theme-color" content="#000000">
+    <meta name="theme-color" content="#11111b">
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-    <link rel="shortcut icon" href="https://www.raylib.com/favicon.ico">
     <!-- iOS standalone web app -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -243,7 +247,7 @@
           if (_overlayFailed || !text) return; // overlay is hidden in postRun
           // Emscripten reports byte progress as "msg (x/y)" — show a percentage.
           var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
-          if (m) text = m[1].trim() + ' (' + Math.round(100 * m[2] / m[4]) + '%)';
+          if (m && +m[4] > 0) text = m[1].trim() + ' (' + Math.round(100 * m[2] / m[4]) + '%)';
           setOverlay(text);
         },
         monitorRunDependencies: function (left) {
@@ -313,9 +317,17 @@
           // the background and handed to LoadLibretroGameFromJS once main()
           // is running — see postRun below. This lets the UI come up while a
           // large ROM is still downloading.
+
+          // Map a URL to the /downloads path it will be written to. Shared by
+          // fetchToFS and the ?core= block below, which has to build the core's
+          // -L argv synchronously (before the fetch resolves) — deriving the
+          // name in one place keeps the write path and the argv path identical.
+          function fsPathForUrl(url) {
+            return '/downloads/' + (url.split('/').pop().split('?')[0] || 'download');
+          }
+
           function fetchToFS(url) {
-            var filename = url.split('/').pop().split('?')[0] || 'download';
-            var destPath = '/downloads/' + filename;
+            var destPath = fsPathForUrl(url);
             try { FS.mkdir('/downloads'); } catch (e) {}
             return fetch(url)
               .then(function (r) {
@@ -349,8 +361,7 @@
               console.warn('Loading a libretro core (executable code) from a different origin: ' + coreUrl);
             }
             addRunDependency('url-core');
-            var coreFilename = coreUrl.split('/').pop().split('?')[0] || 'url-core';
-            Module.arguments = (Module.arguments || []).concat(['-L', '/downloads/' + coreFilename]);
+            Module.arguments = (Module.arguments || []).concat(['-L', fsPathForUrl(coreUrl)]);
             fetchToFS(coreUrl)
               .catch(function (err) {
                 logFetchError('core', err);
@@ -412,10 +423,17 @@
                 Module._SaveLibretroAllSettings();
               }
             } catch (e) { console.error('flushPersistence: save failed:', e); }
-            FS.syncfs(false, function (err) {
-              if (err) console.error('IDBFS sync failed:', err);
+            try {
+              FS.syncfs(false, function (err) {
+                if (err) console.error('IDBFS sync failed:', err);
+                _flushInFlight = false;
+              });
+            } catch (e) {
+              // A synchronous throw would otherwise leave _flushInFlight pinned
+              // true and silently disable every later flush — reset it.
+              console.error('flushPersistence: syncfs failed:', e);
               _flushInFlight = false;
-            });
+            }
           }
 
           // Periodic safety-net flush. Once a minute is plenty: pagehide /
