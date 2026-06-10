@@ -2795,13 +2795,47 @@ static bool IsLibretroBlockExtract(void) {
 }
 
 /**
+ * Resolve the directory used for temporary content extraction.
+ *
+ * Prefers the configured save directory when it is set and present on disk;
+ * otherwise falls back to the current working directory. The returned pointer is
+ * owned by global/raylib state and must be used immediately, not stored. */
+static const char* LibretroGetTempDirectory(void) {
+    if (LIBRETRO.saveDirectory[0] != '\0' && DirectoryExists(LIBRETRO.saveDirectory)) {
+        return LIBRETRO.saveDirectory;
+    }
+    return GetWorkingDirectory();
+}
+
+/**
+ * Delete leftover temporary content files from previous sessions.
+ *
+ * LibretroExtractContentToTempFile() writes ".raylib-libretro-*" files that are
+ * removed on unload, but a crash can orphan them (including large CD images). Sweep
+ * the temp directory and remove any that aren't backing the current game. */
+static void LibretroCleanupTempFiles(void) {
+    FilePathList files = LoadDirectoryFiles(LibretroGetTempDirectory());
+    for (unsigned int i = 0; i < files.count; i++) {
+        if (TextFindIndex(GetFileName(files.paths[i]), ".raylib-libretro-") != 0) {
+            continue; // Not one of ours.
+        }
+        if (TextIsEqual(files.paths[i], LIBRETRO.core.tempGamePath)) {
+            continue; // Leave the file backing the currently loaded game.
+        }
+        FileRemove(files.paths[i]);
+    }
+    UnloadDirectoryFiles(files);
+}
+
+/**
  * Materialize content that lives only in an alternate filesystem (e.g. inside a
  * mounted .zip) to a real temporary file on disk.
  *
  * need_fullpath cores receive a file path rather than a data buffer, and some of
  * them (notably PlayStation cores opening a CD image) read it with raw stdio rather
  * than the libretro VFS. Such cores cannot see the virtual "/game/..." path served
- * by the PhysFS bridge, so the bytes must be written to a real path first. The
+ * by the PhysFS bridge, so the bytes must be written to a real path first — in the
+ * save directory when one is set, otherwise the current working directory. The
  * original extension is preserved so the core's content-format detection still
  * works. The path is stored in LIBRETRO.core.tempGamePath and removed on unload.
  *
@@ -2813,7 +2847,7 @@ static bool LibretroExtractContentToTempFile(const char* originalName, const uns
     const char* ext = GetFileExtension(originalName);
     if (ext == NULL) ext = "";
     TextCopy(LIBRETRO.core.tempGamePath,
-        TextFormat("%s/.raylib-libretro-%d%s", GetApplicationDirectory(), GetRandomValue(1, 999999), ext));
+        TextFormat("%s/.raylib-libretro-%d%s", LibretroGetTempDirectory(), GetRandomValue(1, 999999), ext));
     if (!SaveFileData(LIBRETRO.core.tempGamePath, (void*)data, size)) {
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to write temp file for full-path core: %s", LIBRETRO.core.tempGamePath);
         LIBRETRO.core.tempGamePath[0] = '\0';
@@ -3040,6 +3074,9 @@ static bool InitLibretro(const char* core) {
     if (!PeekLibretroCoreInfo(core)) {
         return false;
     }
+
+    // Remove any temp content files orphaned by a previous session's crash.
+    LibretroCleanupTempFiles();
 
     // Load all other libretro methods.
     LoadLibretroMethod(retro_init);

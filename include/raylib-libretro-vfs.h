@@ -3,7 +3,7 @@
 
 #include "libretro.h"
 #include "raylib.h"
-
+#include <string.h>  // memcpy
 #ifndef RAYLIB_LIBRETRO_VFS_MAX_PATH
 #define RAYLIB_LIBRETRO_VFS_MAX_PATH 4096
 #endif
@@ -348,19 +348,16 @@ static int64_t raylib_libretro_vfs_read(struct retro_vfs_file_handle* stream, vo
         return -1;
     }
 
-    unsigned char* data = stream->data + stream->position;
-    unsigned char* output = (unsigned char*)s;
-    int64_t bytesRead = 0;
-    for (uint64_t i = 0; i < len; i++) {
-        if (stream->position + i >= stream->dataSize) {
-            break;
-        }
-        output[i] = data[i];
-        bytesRead++;
+    // Clamp the request to the bytes remaining from the current position.
+    if (stream->position < 0 || stream->position >= stream->dataSize) {
+        return 0;
     }
+    uint64_t remaining = (uint64_t)(stream->dataSize - stream->position);
+    uint64_t bytesRead = (len < remaining) ? len : remaining;
 
-    stream->position += bytesRead;
-    return bytesRead;
+    memcpy(s, stream->data + stream->position, (size_t)bytesRead);
+    stream->position += (int64_t)bytesRead;
+    return (int64_t)bytesRead;
 }
 
 /**
@@ -394,11 +391,7 @@ static int64_t raylib_libretro_vfs_write(struct retro_vfs_file_handle* stream, c
         stream->dataSize = (int)end;
     }
 
-    unsigned char* dest = stream->data + stream->position;
-    const unsigned char* src = (const unsigned char*)s;
-    for (uint64_t i = 0; i < len; i++) {
-        dest[i] = src[i];
-    }
+    memcpy(stream->data + stream->position, s, (size_t)len);
 
     stream->position = end;
     return (int64_t)len;
