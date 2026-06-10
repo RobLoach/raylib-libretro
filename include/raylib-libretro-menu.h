@@ -52,15 +52,6 @@
 #define LIBRETRO_MAX_GAME_CORES 16
 #endif
 
-typedef struct LibretroCoreInfo {
-    char path[512];
-    char extensions[200];
-    char coreName[200];
-    char displayName[200];
-    bool supportsNoGame;
-    bool needsFullpath;
-} LibretroCoreInfo;
-
 typedef enum LibretroMenuCombo {
     LIBRETRO_MENU_COMBO_NONE = 0,
     LIBRETRO_MENU_COMBO_SELECT_START,
@@ -152,7 +143,8 @@ typedef struct LibretroMenu {
     char aboutContent[160];
     char aboutExtensions[256];
     nk_rune keyboardControls[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
-    cvector(LibretroCoreInfo*) coreInfos;
+    RLibretroConfig* coreInfoCfg;
+    cvector(char*) coreInfoSections;
     nk_console* corePickerMenu;
     char pendingGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char pendingCorePaths[LIBRETRO_MAX_GAME_CORES][512];
@@ -813,71 +805,30 @@ static bool IsLibretroCoreFile(const char* path) {
     return TextIsEqual(ext, ".so") || TextIsEqual(ext, ".dll") || TextIsEqual(ext, ".dylib") || TextIsEqual(ext, ".wasm");
 }
 
-static bool LibretroParseInfoFile(const char* infoPath, LibretroCoreInfo* info) {
-    char* text = LoadFileText(infoPath);
-    if (!text) return false;
+static const char* LibretroCoreInfoGet(int index, const char* key) {
+    if (index < 0 || index >= (int)cvector_size(menu.coreInfoSections)) return NULL;
+    return rlconfig_get(menu.coreInfoCfg, menu.coreInfoSections[index], key);
+}
 
-    char* pos = text;
-    while (*pos) {
-        char* eol = pos;
-        while (*eol && *eol != '\n' && *eol != '\r') eol++;
-        char saved = *eol;
-        *eol = '\0';
-
-        char* p = pos;
-        while (*p == ' ' || *p == '\t') p++;
-        if (*p && *p != '#') {
-            char* eq = strchr(p, '=');
-            if (eq) {
-                *eq = '\0';
-                char* k = p;
-                char* v = eq + 1;
-                char* kEnd = k + strlen(k);
-                while (kEnd > k && (kEnd[-1] == ' ' || kEnd[-1] == '\t')) kEnd--;
-                *kEnd = '\0';
-                while (*v == ' ' || *v == '\t') v++;
-                char* vEnd = v + strlen(v);
-                while (vEnd > v && (vEnd[-1] == ' ' || vEnd[-1] == '\t')) vEnd--;
-                *vEnd = '\0';
-                size_t vlen = (size_t)(vEnd - v);
-                if (vlen >= 2 && v[0] == '"' && v[vlen - 1] == '"') {
-                    v++;
-                    v[vlen - 2] = '\0';
-                }
-                if (strcmp(k, "corename") == 0) {
-                    snprintf(info->coreName, sizeof(info->coreName), "%s", v);
-                } else if (strcmp(k, "display_name") == 0) {
-                    snprintf(info->displayName, sizeof(info->displayName), "%s", v);
-                } else if (strcmp(k, "supported_extensions") == 0) {
-                    snprintf(info->extensions, sizeof(info->extensions), "%s", v);
-                } else if (strcmp(k, "supports_no_game") == 0) {
-                    info->supportsNoGame = strcmp(v, "true") == 0;
-                } else if (strcmp(k, "needs_fullpath") == 0) {
-                    info->needsFullpath = strcmp(v, "true") == 0;
-                }
-            }
-        }
-
-        *eol = saved;
-        while (*eol == '\r' || *eol == '\n') eol++;
-        pos = eol;
-    }
-
-    UnloadFileText(text);
-    return info->coreName[0] != '\0';
+static bool LibretroCoreInfoBool(int index, const char* key) {
+    const char* v = LibretroCoreInfoGet(index, key);
+    return v && strcmp(v, "true") == 0;
 }
 
 static void FreeLibretroCoreInfos(void) {
-    for (size_t i = 0; i < cvector_size(menu.coreInfos); i++) {
-        MemFree(menu.coreInfos[i]);
+    for (size_t i = 0; i < cvector_size(menu.coreInfoSections); i++) {
+        MemFree(menu.coreInfoSections[i]);
     }
-    cvector_free(menu.coreInfos);
-    menu.coreInfos = NULL;
+    cvector_free(menu.coreInfoSections);
+    menu.coreInfoSections = NULL;
+    rlconfig_free(menu.coreInfoCfg);
+    menu.coreInfoCfg = NULL;
 }
 
 static void ScanLibretroCoreDirectory(void) {
     const char* dir = LIBRETRO.coreDirectory;
     FreeLibretroCoreInfos();
+    menu.coreInfoCfg = rlconfig_load(NULL);
     if (!dir || !dir[0] || !DirectoryExists(dir)) return;
 
     FilePathList files = LoadDirectoryFiles(dir);
@@ -899,19 +850,24 @@ static void ScanLibretroCoreDirectory(void) {
         }
         if (!coreFile) continue;
 
-        LibretroCoreInfo* info = (LibretroCoreInfo*)MemAlloc(sizeof(LibretroCoreInfo));
-        memset(info, 0, sizeof(*info));
-        if (!LibretroParseInfoFile(files.paths[i], info) || info->extensions[0] == '\0') {
-            MemFree(info);
+        rlconfig_load_info(menu.coreInfoCfg, infoBase, files.paths[i]);
+        const char* coreName = rlconfig_get(menu.coreInfoCfg, infoBase, "corename");
+        const char* exts = rlconfig_get(menu.coreInfoCfg, infoBase, "supported_extensions");
+        if (!coreName || !coreName[0] || !exts || !exts[0]) {
+            rlconfig_clear_section(menu.coreInfoCfg, infoBase);
             continue;
         }
 
-        TextCopy(info->path, coreFile);
-        TraceLog(LOG_INFO, "LIBRETRO: Found %s (%s)", info->displayName[0] ? info->displayName : info->coreName, info->extensions);
-        cvector_push_back(menu.coreInfos, info);
+        rlconfig_set(menu.coreInfoCfg, infoBase, "path", coreFile);
+        const char* displayName = rlconfig_get(menu.coreInfoCfg, infoBase, "display_name");
+        TraceLog(LOG_INFO, "LIBRETRO: Found %s (%s)", displayName && displayName[0] ? displayName : coreName, exts);
+
+        char* section = (char*)MemAlloc(256);
+        snprintf(section, 256, "%s", infoBase);
+        cvector_push_back(menu.coreInfoSections, section);
     }
     UnloadDirectoryFiles(files);
-    TraceLog(LOG_INFO, "LIBRETRO: Found %d cores in %s", (int)cvector_size(menu.coreInfos), dir);
+    TraceLog(LOG_INFO, "LIBRETRO: Found %d cores in %s", (int)cvector_size(menu.coreInfoSections), dir);
 }
 
 /**
@@ -931,9 +887,8 @@ static bool LibretroExtLower(const char* path, char* out) {
  *         (lower-case, no dot) in its valid_extensions.
  */
 static bool LibretroCoreSupportsExt(int index, const char* extLower) {
-    if (index < 0 || index >= (int)cvector_size(menu.coreInfos)) return false;
-    const char* exts = menu.coreInfos[index]->extensions;
-    if (!exts[0]) return false;
+    const char* exts = LibretroCoreInfoGet(index, "supported_extensions");
+    if (!exts || !exts[0]) return false;
     int extCount = 0;
     char** extList = TextSplit(exts, '|', &extCount);
     for (int j = 0; j < extCount; j++) {
@@ -948,11 +903,12 @@ static bool LibretroCoreSupportsExt(int index, const char* extLower) {
  * the next raylib text-buffer call, so callers must copy it immediately.
  */
 static const char* LibretroCoreDisplayName(int index) {
-    if (index < 0 || index >= (int)cvector_size(menu.coreInfos)) return "";
-    LibretroCoreInfo* info = menu.coreInfos[index];
-    if (info->displayName[0]) return info->displayName;
-    if (info->coreName[0]) return info->coreName;
-    return TextReplace(GetFileNameWithoutExt(info->path), "_libretro", "");
+    const char* v = LibretroCoreInfoGet(index, "display_name");
+    if (v && v[0]) return v;
+    v = LibretroCoreInfoGet(index, "corename");
+    if (v && v[0]) return v;
+    v = LibretroCoreInfoGet(index, "path");
+    return v ? TextReplace(GetFileNameWithoutExt(v), "_libretro", "") : "";
 }
 
 /**
@@ -980,7 +936,7 @@ static bool FindZipInnerExtensionForCore(const char* zipPath, char* outExt) {
     for (unsigned int e = 0; e < entries.count && !found; e++) {
         char innerLower[32];
         if (!LibretroExtLower(entries.paths[e], innerLower)) continue;
-        for (int i = 0; i < (int)cvector_size(menu.coreInfos); i++) {
+        for (int i = 0; i < (int)cvector_size(menu.coreInfoSections); i++) {
             if (LibretroCoreSupportsExt(i, innerLower)) {
                 TextCopy(outExt, innerLower);
                 found = true;
@@ -1013,15 +969,17 @@ static int FindCoresForGame(const char* gamePath, char paths[][512], char names[
     }
 
     int found = 0;
-    for (int i = 0; i < (int)cvector_size(menu.coreInfos) && found < maxCount; i++) {
+    for (int i = 0; i < (int)cvector_size(menu.coreInfoSections) && found < maxCount; i++) {
         if (noGame) {
-            if (!menu.coreInfos[i]->supportsNoGame) continue;
+            if (!LibretroCoreInfoBool(i, "supports_no_game")) continue;
         } else {
             if (!LibretroCoreSupportsExt(i, gameExtLower)) continue;
-            if (isZip && menu.coreInfos[i]->needsFullpath) continue;
+            if (isZip && LibretroCoreInfoBool(i, "needs_fullpath")) continue;
         }
         TextCopy(names[found], LibretroCoreDisplayName(i));
-        TextCopy(paths[found], TextFormat("%s/%s", LIBRETRO.coreDirectory, menu.coreInfos[i]->path));
+        const char* corePath = LibretroCoreInfoGet(i, "path");
+        if (!corePath) continue;
+        TextCopy(paths[found], TextFormat("%s/%s", LIBRETRO.coreDirectory, corePath));
         found++;
     }
     return found;
@@ -1720,12 +1678,11 @@ LibretroMenu* InitLibretroMenu(void) {
 
             // Available Cores
             nk_console* coresTree = nk_console_tree(aboutMenu, "Available Cores", nk_false);
-            if (cvector_size(menu.coreInfos) == 0) {
+            if (cvector_size(menu.coreInfoSections) == 0) {
                 nk_console_label(coresTree, "(none found)");
             }
-            for (int i = 0; i < (int)cvector_size(menu.coreInfos); i++) {
-                LibretroCoreInfo* ci = menu.coreInfos[i];
-                nk_console_label(coresTree, ci->displayName[0] ? ci->displayName : ci->coreName);
+            for (int i = 0; i < (int)cvector_size(menu.coreInfoSections); i++) {
+                nk_console_label(coresTree, LibretroCoreDisplayName(i));
             }
 
             // License
@@ -1977,9 +1934,9 @@ static void LibretroMenuUpdateLoadGameFilter(LibretroMenu* m) {
     // later cores get dropped once it fills.
     char allExts[1024] = {0};
     unsigned int allLen = 0;
-    for (int i = 0; i < (int)cvector_size(m->coreInfos); i++) {
-        const char* exts = m->coreInfos[i]->extensions;
-        if (exts[0] == '\0') continue;
+    for (int i = 0; i < (int)cvector_size(m->coreInfoSections); i++) {
+        const char* exts = rlconfig_get(m->coreInfoCfg, m->coreInfoSections[i], "supported_extensions");
+        if (!exts || exts[0] == '\0') continue;
         // Split this core's "ext1|ext2|..." list and add each token once.
         for (const char* tok = exts; *tok != '\0'; ) {
             const char* end = tok;

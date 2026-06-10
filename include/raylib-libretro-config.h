@@ -85,6 +85,10 @@ static void rlconfig_clear_section(RLibretroConfig *cfg, const char *section);
 /* Free config and all associated memory. */
 static void rlconfig_free(RLibretroConfig *cfg);
 
+/* Load a sectionless .info file (key = "value") into the given section of cfg.
+   Strips surrounding double quotes from values. */
+static void rlconfig_load_info(RLibretroConfig *cfg, const char *section, const char *filename);
+
 /* --- Implementation --- */
 
 #ifdef RAYLIB_LIBRETRO_CONFIG_IMPLEMENTATION
@@ -280,6 +284,38 @@ static RLibretroConfig* rlconfig_load(const char *filename) {
 
     fclose(f);
     return cfg;
+}
+
+static void rlconfig_load_info(RLibretroConfig *cfg, const char *section, const char *filename) {
+    if (!cfg || !section || !filename) return;
+
+    FILE *f = fopen(filename, "r");
+    if (!f) return;
+
+    char line[RLCONFIG_LINE_MAX];
+    while (fgets(line, sizeof(line), f)) {
+        RLibretroConfigTrim(line);
+        if (line[0] == '\0' || line[0] == '#' || line[0] == ';') continue;
+
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+
+        *eq = '\0';
+        char *k = line;
+        char *v = eq + 1;
+        RLibretroConfigTrim(k);
+        RLibretroConfigTrim(v);
+
+        size_t vlen = strlen(v);
+        if (vlen >= 2 && v[0] == '"' && v[vlen - 1] == '"') {
+            v[vlen - 1] = '\0';
+            v++;
+        }
+
+        if (k[0] != '\0') rlconfig_set(cfg, section, k, v);
+    }
+
+    fclose(f);
 }
 
 static bool rlconfig_save(RLibretroConfig *cfg, const char *filename) {
