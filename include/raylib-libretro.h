@@ -113,6 +113,14 @@ static void SetLibretroDynamicRateControl(bool enabled);
 static bool IsLibretroDynamicRateControlEnabled(void);
 static bool SetLibretroPortDevice(unsigned port, unsigned device);
 static unsigned GetLibretroPortDevice(unsigned port);
+static bool IsLibretroDiskControlActive(void);
+static unsigned GetLibretroDiskImageCount(void);
+static unsigned GetLibretroDiskImageIndex(void);
+static bool GetLibretroDiskEjectState(void);
+static bool SetLibretroDiskEjectState(bool ejected);
+static bool SetLibretroDiskImageIndex(unsigned index);
+static bool GetLibretroDiskImageLabel(unsigned index, char* label, size_t len);
+static bool SwapLibretroDisk(unsigned index);
 
 static void LibretroPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
@@ -366,6 +374,15 @@ typedef struct LibretroCoreData {
     // Memory map from RETRO_ENVIRONMENT_SET_MEMORY_MAPS (owned copy).
     struct retro_memory_descriptor *memoryMapDescriptors;
     unsigned memoryMapDescriptorCount;
+
+    // Disk control interface (RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE / _EXT).
+    // Multi-disc cores (PlayStation, SegaCD, etc.) register this so the frontend can
+    // eject and swap disk images at runtime. The ext callback is a superset of the
+    // basic one, so it serves as the canonical store: the legacy interface fills the
+    // shared fields and leaves the ext-only function pointers NULL.
+    struct retro_disk_control_ext_callback disk_control;
+    bool diskControlActive;      // A core has registered a disk control interface.
+    unsigned diskControlVersion; // 0 = basic interface, 1 = extended interface.
 } LibretroCoreData;
 
 typedef struct LibretroData {
@@ -969,8 +986,25 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE not implemented");
-            return false;
+            const struct retro_disk_control_callback* cb = (const struct retro_disk_control_callback *)data;
+            if (cb == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE no data provided");
+                return false;
+            }
+            // Store into the ext callback (a superset): copy the shared fields and
+            // clear the ext-only ones so probing them stays NULL-safe.
+            memset(&LIBRETRO.core.disk_control, 0, sizeof(LIBRETRO.core.disk_control));
+            LIBRETRO.core.disk_control.set_eject_state     = cb->set_eject_state;
+            LIBRETRO.core.disk_control.get_eject_state     = cb->get_eject_state;
+            LIBRETRO.core.disk_control.get_image_index     = cb->get_image_index;
+            LIBRETRO.core.disk_control.set_image_index     = cb->set_image_index;
+            LIBRETRO.core.disk_control.get_num_images      = cb->get_num_images;
+            LIBRETRO.core.disk_control.replace_image_index = cb->replace_image_index;
+            LIBRETRO.core.disk_control.add_image_index     = cb->add_image_index;
+            LIBRETRO.core.diskControlActive = true;
+            LIBRETRO.core.diskControlVersion = 0;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE");
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_HW_RENDER: {
@@ -1527,13 +1561,31 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION not implemented");
-            return false;
+            unsigned* version = (unsigned *)data;
+            if (version == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION no data provided");
+                return false;
+            }
+            // We handle the extended interface, so cores may use either version.
+            *version = 1;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE not implemented");
-            return false;
+            // The ext call may pass NULL to deregister the existing interface.
+            const struct retro_disk_control_ext_callback* cb = (const struct retro_disk_control_ext_callback *)data;
+            if (cb == NULL) {
+                memset(&LIBRETRO.core.disk_control, 0, sizeof(LIBRETRO.core.disk_control));
+                LIBRETRO.core.diskControlActive = false;
+                LIBRETRO.core.diskControlVersion = 0;
+                TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE deregistered");
+                return true;
+            }
+            LIBRETRO.core.disk_control = *cb;
+            LIBRETRO.core.diskControlActive = true;
+            LIBRETRO.core.diskControlVersion = 1;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE");
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION: {
@@ -2741,6 +2793,34 @@ static bool IsLibretroBlockExtract(void) {
 }
 
 /**
+ * Materialize content that lives only in an alternate filesystem (e.g. inside a
+ * mounted .zip) to a real temporary file on disk.
+ *
+ * need_fullpath cores receive a file path rather than a data buffer, and some of
+ * them (notably PlayStation cores opening a CD image) read it with raw stdio rather
+ * than the libretro VFS. Such cores cannot see the virtual "/game/..." path served
+ * by the PhysFS bridge, so the bytes must be written to a real path first. The
+ * original extension is preserved so the core's content-format detection still
+ * works. The path is stored in LIBRETRO.core.tempGamePath and removed on unload.
+ *
+ * @param originalName Virtual path of the content (used only for its extension).
+ * @param data         File contents to write.
+ * @param size         Number of bytes in \c data.
+ * @return true if the temp file was written, false otherwise. */
+static bool LibretroExtractContentToTempFile(const char* originalName, const unsigned char* data, int size) {
+    const char* ext = GetFileExtension(originalName);
+    if (ext == NULL) ext = "";
+    TextCopy(LIBRETRO.core.tempGamePath,
+        TextFormat("%s/.raylib-libretro-%d%s", GetApplicationDirectory(), GetRandomValue(1, 999999), ext));
+    if (!SaveFileData(LIBRETRO.core.tempGamePath, (void*)data, size)) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to write temp file for full-path core: %s", LIBRETRO.core.tempGamePath);
+        LIBRETRO.core.tempGamePath[0] = '\0';
+        return false;
+    }
+    return true;
+}
+
+/**
  * Load content (ROM/game) into the initialized core.
  * @param gameFile Path to the content file, or NULL for content-less cores.
  * @return true on success, false if loading failed.
@@ -2774,7 +2854,8 @@ static bool LoadLibretroGame(const char* gameFile) {
         return false;
     }
 
-    bool fileFound = FileExists(gameFile);
+    bool existsOnDisk = FileExists(gameFile);
+    bool fileFound = existsOnDisk;
     if (!fileFound && raylib_libretro_vfs_alt_stat != NULL) {
         fileFound = (raylib_libretro_vfs_alt_stat(gameFile, NULL) & RETRO_VFS_STAT_IS_VALID) != 0;
     }
@@ -2794,11 +2875,43 @@ static bool LoadLibretroGame(const char* gameFile) {
         info.meta = "";
         TextCopy(LIBRETRO.core.contentPath, gameFile);
         SetLibretroGameInfoExt(NULL, 0);
+
+        // Hand the core the path as-is first. VFS-aware cores read it through our VFS,
+        // so content inside a mounted .zip is served by the PhysFS bridge — including
+        // multi-file images (e.g. .cue referencing .bin) whose sidecars resolve via
+        // the same bridge.
         if (LIBRETRO.core.symbols.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded content with full path: %s", gameFile);
             LIBRETRO.core.loaded = true;
             return InitLibretroAudioVideo();
         }
+
+        // The as-is load failed. When the content lives only in an alternate
+        // filesystem (e.g. a .chd inside a .zip), cores that open it with raw stdio
+        // rather than the VFS (such as PlayStation CD handling) can't see the virtual
+        // path. Extract the file to a real temp path and retry with that. contentPath
+        // keeps the logical name so save states and SRAM get a stable filename.
+        if (!existsOnDisk && raylib_libretro_vfs_alt_load_file_data != NULL) {
+            int extractedSize = 0;
+            unsigned char* extracted = raylib_libretro_vfs_alt_load_file_data(gameFile, &extractedSize);
+            bool wrote = (extracted != NULL && extractedSize > 0)
+                && LibretroExtractContentToTempFile(gameFile, extracted, extractedSize);
+            UnloadFileData(extracted);
+            if (wrote) {
+                info.path = LIBRETRO.core.tempGamePath;
+                // A core that reads RETRO_ENVIRONMENT_GET_GAME_INFO_EXT must also get
+                // the real path; tempGamePath is persistent so the pointer stays valid.
+                LIBRETRO.core.gameInfoExt.full_path = LIBRETRO.core.tempGamePath;
+                if (LIBRETRO.core.symbols.retro_load_game(&info)) {
+                    TraceLog(LOG_INFO, "LIBRETRO: Loaded archived content via temp file: %s", LIBRETRO.core.tempGamePath);
+                    LIBRETRO.core.loaded = true;
+                    return InitLibretroAudioVideo();
+                }
+                FileRemove(LIBRETRO.core.tempGamePath);
+                LIBRETRO.core.tempGamePath[0] = '\0';
+            }
+        }
+
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load full path: %s", gameFile);
         LIBRETRO.core.loaded = false;
         LIBRETRO.core.contentPath[0] = '\0';
@@ -3328,6 +3441,134 @@ static unsigned GetLibretroPortDevice(unsigned port) {
         return RETRO_DEVICE_NONE;
     }
     return LIBRETRO.core.portDeviceMap[port];
+}
+
+/**
+ * Determine whether the loaded core registered a disk control interface.
+ *
+ * Multi-disc cores (PlayStation, SegaCD, etc.) register this via
+ * RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE / _EXT so the frontend can eject and
+ * swap disk images at runtime.
+ * @return true if a disk control interface is available.
+ */
+static bool IsLibretroDiskControlActive(void) {
+    return LIBRETRO.core.diskControlActive;
+}
+
+/**
+ * Get the number of disk images the core has available to swap between.
+ * @return The image count, or 0 if no disk control interface is active.
+ */
+static unsigned GetLibretroDiskImageCount(void) {
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.get_num_images == NULL) {
+        return 0;
+    }
+    return LIBRETRO.core.disk_control.get_num_images();
+}
+
+/**
+ * Get the index of the disk image currently inserted in the emulated drive.
+ * @return The current image index, or 0 if no disk control interface is active.
+ */
+static unsigned GetLibretroDiskImageIndex(void) {
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.get_image_index == NULL) {
+        return 0;
+    }
+    return LIBRETRO.core.disk_control.get_image_index();
+}
+
+/**
+ * Get the current ejected state of the emulated disk drive.
+ * @return true if the virtual disk tray is open (ejected), false otherwise.
+ */
+static bool GetLibretroDiskEjectState(void) {
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.get_eject_state == NULL) {
+        return false;
+    }
+    return LIBRETRO.core.disk_control.get_eject_state();
+}
+
+/**
+ * Open or close the emulated disk drive's virtual tray.
+ *
+ * The image index may only be changed while the tray is ejected. Most callers should
+ * prefer SwapLibretroDisk(), which performs the full eject/insert/close sequence.
+ * @param ejected true to open the tray, false to close it.
+ * @return true on success, false if the interface is inactive or the core refused.
+ */
+static bool SetLibretroDiskEjectState(bool ejected) {
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.set_eject_state == NULL) {
+        return false;
+    }
+    return LIBRETRO.core.disk_control.set_eject_state(ejected);
+}
+
+/**
+ * Insert the disk image at the given index. The tray must be ejected first.
+ * @param index Image index to insert (0-based).
+ * @return true on success, false if the interface is inactive or the core refused.
+ */
+static bool SetLibretroDiskImageIndex(unsigned index) {
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.set_image_index == NULL) {
+        return false;
+    }
+    return LIBRETRO.core.disk_control.set_image_index(index);
+}
+
+/**
+ * Get a friendly label for a disk image (e.g. "Disc 1"), when the core provides one.
+ *
+ * Only available with the extended disk control interface; the buffer is always
+ * null-terminated, even on failure.
+ * @param index Image index to label (0-based).
+ * @param label Buffer to receive the null-terminated label.
+ * @param len   Size of the label buffer in bytes.
+ * @return true if a label was written, false otherwise.
+ */
+static bool GetLibretroDiskImageLabel(unsigned index, char* label, size_t len) {
+    if (label == NULL || len == 0) {
+        return false;
+    }
+    label[0] = '\0';
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.get_image_label == NULL) {
+        return false;
+    }
+    return LIBRETRO.core.disk_control.get_image_label(index, label, len);
+}
+
+/**
+ * Swap the inserted disk to the image at the given index.
+ *
+ * Performs the standard libretro swap sequence: eject the tray, set the new image
+ * index, then close the tray. This is the simplest way for a frontend to change
+ * discs on a multi-disc game.
+ * @param index Image index to insert (0-based, must be < GetLibretroDiskImageCount()).
+ * @return true if the disk was swapped, false on any failure.
+ */
+static bool SwapLibretroDisk(unsigned index) {
+    if (!LIBRETRO.core.diskControlActive) {
+        TraceLog(LOG_WARNING, "LIBRETRO: SwapLibretroDisk: no disk control interface active");
+        return false;
+    }
+    if (index >= GetLibretroDiskImageCount()) {
+        TraceLog(LOG_WARNING, "LIBRETRO: SwapLibretroDisk: index %u out of range", index);
+        return false;
+    }
+    if (!SetLibretroDiskEjectState(true)) {
+        TraceLog(LOG_WARNING, "LIBRETRO: SwapLibretroDisk: failed to eject disk tray");
+        return false;
+    }
+    if (!SetLibretroDiskImageIndex(index)) {
+        TraceLog(LOG_WARNING, "LIBRETRO: SwapLibretroDisk: failed to set image index %u", index);
+        SetLibretroDiskEjectState(false);
+        return false;
+    }
+    if (!SetLibretroDiskEjectState(false)) {
+        TraceLog(LOG_WARNING, "LIBRETRO: SwapLibretroDisk: failed to close disk tray");
+        return false;
+    }
+    TraceLog(LOG_INFO, "LIBRETRO: Swapped to disk image %u of %u", index, GetLibretroDiskImageCount());
+    return true;
 }
 
 /**
