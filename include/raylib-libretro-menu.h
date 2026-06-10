@@ -1000,6 +1000,21 @@ static bool FindZipInnerExtensionForCore(const char* zipPath, char* outExt) {
     FilePathList entries = LoadDirectoryFilesFromPhysFSEx("/peek", NULL, true);
     bool found = false;
 
+    // Prefer disc metadata (.m3u, .cue) so the core list matches what the
+    // loader will actually hand to the core.
+    for (unsigned int e = 0; e < entries.count && !found; e++) {
+        if (!IsFileExtension(entries.paths[e], ".m3u;.cue")) continue;
+        char innerLower[32];
+        if (!LibretroExtLower(entries.paths[e], innerLower)) continue;
+        for (int i = 0; i < (int)cvector_size(menu.coreInfos); i++) {
+            if (LibretroCoreSupportsExt(i, innerLower)) {
+                TextCopy(outExt, innerLower);
+                found = true;
+                break;
+            }
+        }
+    }
+
     for (unsigned int e = 0; e < entries.count && !found; e++) {
         char innerLower[32];
         if (!LibretroExtLower(entries.paths[e], innerLower)) continue;
