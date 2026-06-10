@@ -991,19 +991,20 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE no data provided");
                 return false;
             }
+
             // Store into the ext callback (a superset): copy the shared fields and
             // clear the ext-only ones so probing them stays NULL-safe.
             memset(&LIBRETRO.core.disk_control, 0, sizeof(LIBRETRO.core.disk_control));
-            LIBRETRO.core.disk_control.set_eject_state     = cb->set_eject_state;
-            LIBRETRO.core.disk_control.get_eject_state     = cb->get_eject_state;
-            LIBRETRO.core.disk_control.get_image_index     = cb->get_image_index;
-            LIBRETRO.core.disk_control.set_image_index     = cb->set_image_index;
-            LIBRETRO.core.disk_control.get_num_images      = cb->get_num_images;
+            LIBRETRO.core.disk_control.set_eject_state = cb->set_eject_state;
+            LIBRETRO.core.disk_control.get_eject_state = cb->get_eject_state;
+            LIBRETRO.core.disk_control.get_image_index = cb->get_image_index;
+            LIBRETRO.core.disk_control.set_image_index = cb->set_image_index;
+            LIBRETRO.core.disk_control.get_num_images = cb->get_num_images;
             LIBRETRO.core.disk_control.replace_image_index = cb->replace_image_index;
-            LIBRETRO.core.disk_control.add_image_index     = cb->add_image_index;
+            LIBRETRO.core.disk_control.add_image_index = cb->add_image_index;
             LIBRETRO.core.diskControlActive = true;
             LIBRETRO.core.diskControlVersion = 0;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE");
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE configured");
             return true;
         }
 
@@ -1387,50 +1388,49 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             }
 
             struct retro_vfs_interface_info * vfs_interface = (struct retro_vfs_interface_info *)data;
-            vfs_interface->iface = &LIBRETRO.core.vfs_interface;
 
-            // VFS 1
-            if (vfs_interface->required_interface_version >= 1) {
-                vfs_interface->iface->get_path = &raylib_libretro_vfs_get_path;
-                vfs_interface->iface->open = &raylib_libretro_vfs_open;
-                vfs_interface->iface->close = &raylib_libretro_vfs_close;
-                vfs_interface->iface->size = &raylib_libretro_vfs_size;
-                vfs_interface->iface->tell = &raylib_libretro_vfs_tell;
-                vfs_interface->iface->seek = &raylib_libretro_vfs_seek;
-                vfs_interface->iface->read = &raylib_libretro_vfs_read;
-                vfs_interface->iface->write = &raylib_libretro_vfs_write;
-                vfs_interface->iface->flush = &raylib_libretro_vfs_flush;
-                vfs_interface->iface->remove = &raylib_libretro_vfs_remove;
-                vfs_interface->iface->rename = &raylib_libretro_vfs_rename;
-            }
-
-            // VFS 2
-            if (vfs_interface->required_interface_version >= 2) {
-                vfs_interface->iface->truncate = &raylib_libretro_vfs_truncate;
-            }
-
-            // VFS 3
-            if (vfs_interface->required_interface_version >= 3) {
-                vfs_interface->iface->stat = &raylib_libretro_vfs_stat;
-                vfs_interface->iface->mkdir = &raylib_libretro_vfs_mkdir;
-                vfs_interface->iface->opendir = &raylib_libretro_vfs_opendir;
-                vfs_interface->iface->readdir = &raylib_libretro_vfs_readdir;
-                vfs_interface->iface->dirent_get_name = &raylib_libretro_vfs_dirent_get_name;
-                vfs_interface->iface->dirent_is_dir = &raylib_libretro_vfs_dirent_is_dir;
-                vfs_interface->iface->closedir = &raylib_libretro_vfs_closedir;
-            }
-
-            // VFS 4
-            if (vfs_interface->required_interface_version >= 4) {
-                vfs_interface->iface->stat_64 = &raylib_libretro_vfs_stat_64;
-            }
-
-            // VFS 5+
-            if (vfs_interface->required_interface_version >= 5) {
-                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_GET_VFS_INTERFACE version 5+ not supported");
+            // Highest VFS API version we implement (v4 adds stat_64).
+            const uint32_t supportedVfsVersion = 4;
+            if (vfs_interface->required_interface_version > supportedVfsVersion) {
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_GET_VFS_INTERFACE version %u not supported (max %u)",
+                    vfs_interface->required_interface_version, supportedVfsVersion);
                 return false;
             }
 
+            // Populate the full interface up to the version we support, regardless of
+            // the requested version.
+            vfs_interface->iface = &LIBRETRO.core.vfs_interface;
+
+            // VFS 1
+            vfs_interface->iface->get_path = &raylib_libretro_vfs_get_path;
+            vfs_interface->iface->open = &raylib_libretro_vfs_open;
+            vfs_interface->iface->close = &raylib_libretro_vfs_close;
+            vfs_interface->iface->size = &raylib_libretro_vfs_size;
+            vfs_interface->iface->tell = &raylib_libretro_vfs_tell;
+            vfs_interface->iface->seek = &raylib_libretro_vfs_seek;
+            vfs_interface->iface->read = &raylib_libretro_vfs_read;
+            vfs_interface->iface->write = &raylib_libretro_vfs_write;
+            vfs_interface->iface->flush = &raylib_libretro_vfs_flush;
+            vfs_interface->iface->remove = &raylib_libretro_vfs_remove;
+            vfs_interface->iface->rename = &raylib_libretro_vfs_rename;
+
+            // VFS 2
+            vfs_interface->iface->truncate = &raylib_libretro_vfs_truncate;
+
+            // VFS 3
+            vfs_interface->iface->stat = &raylib_libretro_vfs_stat;
+            vfs_interface->iface->mkdir = &raylib_libretro_vfs_mkdir;
+            vfs_interface->iface->opendir = &raylib_libretro_vfs_opendir;
+            vfs_interface->iface->readdir = &raylib_libretro_vfs_readdir;
+            vfs_interface->iface->dirent_get_name = &raylib_libretro_vfs_dirent_get_name;
+            vfs_interface->iface->dirent_is_dir = &raylib_libretro_vfs_dirent_is_dir;
+            vfs_interface->iface->closedir = &raylib_libretro_vfs_closedir;
+
+            // VFS 4
+            vfs_interface->iface->stat_64 = &raylib_libretro_vfs_stat_64;
+
+            // Report the version we actually provide.
+            vfs_interface->required_interface_version = supportedVfsVersion;
             return true;
         }
 
@@ -1581,10 +1581,12 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE deregistered");
                 return true;
             }
+
             LIBRETRO.core.disk_control = *cb;
             LIBRETRO.core.diskControlActive = true;
             LIBRETRO.core.diskControlVersion = 1;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE");
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE has been set");
+
             return true;
         }
 

@@ -291,8 +291,13 @@ static int64_t raylib_libretro_vfs_tell(struct retro_vfs_file_handle* stream) {
  * @param stream The file to set the position of.
  * @param offset The new position, in bytes.
  * @param seek_position The position to seek from.
- * @return The new position,
- * or -1 if there was an error.
+ * @return 0 on success, or -1 if there was an error.
+ *
+ * @note The libretro.h docs describe this as returning the new position, but
+ * RetroArch's reference VFS returns fseek-style status (0 on success) for normal
+ * buffered files, and libretro-common's filestream consumers rely on that: e.g.
+ * libchdr checks `core_fseek(...) != 0` and treats a non-zero (positional) return
+ * as a seek error — which made CHD loads fail over this VFS. Match RetroArch.
  * @since VFS API v1
  * @see File Seek Positions
  * @see filestream_seek
@@ -323,7 +328,7 @@ static int64_t raylib_libretro_vfs_seek(struct retro_vfs_file_handle* stream, in
         stream->position = stream->dataSize;
     }
 
-    return stream->position;
+    return 0;
 }
 
 /**
