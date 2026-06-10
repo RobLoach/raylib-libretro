@@ -148,9 +148,15 @@ if ("${PLATFORM}" STREQUAL "Web")
     #   REPO       git URL
     #   MAKEFILE   Makefile filename (e.g. Makefile or Makefile.libretro)
     #   SUBDIR     subdirectory of source to run make in (pass "" for root)
-    #   ARGN...    extra arguments appended to the make command line
+    #   ARGN...    extra flags injected via EMCC_CFLAGS for the make step, so
+    #              every emcc compile/link picks them up regardless of the core's
+    #              Makefile (e.g. -sUSE_ZLIB=1 to give a core zlib's headers/port).
+    #              Pair with a matching flag on the main module's link options so
+    #              the symbols exist there.
     function(build_libretro_side_module CORE_NAME REPO MAKEFILE SUBDIR)
-        set(EXTRA_MAKE_ARGS "${ARGN}")
+        # ARGN carries optional flags for EMCC_CFLAGS (see header above).
+        set(EXTRA_EMCC_CFLAGS "${ARGN}")
+        string(REPLACE ";" " " EXTRA_EMCC_CFLAGS "${EXTRA_EMCC_CFLAGS}")
         set(SRC_DIR "${CMAKE_BINARY_DIR}/cores-src/${CORE_NAME}")
         if (SUBDIR)
             set(BUILD_DIR "${SRC_DIR}/${SUBDIR}")
@@ -204,10 +210,18 @@ if ("${PLATFORM}" STREQUAL "Web")
             endif()
         endif()
 
+        # emcc reads EMCC_CFLAGS and appends it to every compile/link it runs,
+        # so this reaches the core's sources without the Makefile cooperating.
+        if (EXTRA_EMCC_CFLAGS)
+            set(MAKE_ENV ${CMAKE_COMMAND} -E env "EMCC_CFLAGS=${EXTRA_EMCC_CFLAGS}")
+        else()
+            set(MAKE_ENV "")
+        endif()
+
         add_custom_command(
             OUTPUT "${SO_FILE}"
-            COMMAND "${EMMAKE_EXECUTABLE}" make -f "${MAKEFILE}"
-                    platform=emscripten fpic=-fPIC ${EXTRA_MAKE_ARGS} -j
+            COMMAND ${MAKE_ENV} "${EMMAKE_EXECUTABLE}" make -f "${MAKEFILE}"
+                    platform=emscripten fpic=-fPIC -j
             COMMAND ${CMAKE_COMMAND} -E copy "${BC_FILE}" "${A_FILE}"
             COMMAND "${EMCC_EXECUTABLE}" -O2 -sSIDE_MODULE=2
                     "-sEXPORTED_FUNCTIONS=${LIBRETRO_EXPORTS_CSV}"
@@ -229,7 +243,7 @@ if ("${PLATFORM}" STREQUAL "Web")
     build_libretro_side_module(prboom        "https://github.com/libretro/libretro-prboom"       "Makefile"          "")
     build_libretro_side_module(mednafen_pce_fast "https://github.com/libretro/beetle-pce-fast-libretro" "Makefile"     "")
     build_libretro_side_module(mednafen_wswan "https://github.com/libretro/beetle-wswan-libretro" "Makefile"          "")
-    build_libretro_side_module(pcsx_rearmed  "https://github.com/libretro/pcsx_rearmed"           "Makefile.libretro" "")
+    build_libretro_side_module(pcsx_rearmed  "https://github.com/libretro/pcsx_rearmed"           "Makefile.libretro" "" "-sUSE_ZLIB=1")
 
     if (LIBRETRO_SIDE_MODULES)
         add_custom_target(libretro-side-modules ALL DEPENDS ${LIBRETRO_SIDE_MODULES})
@@ -242,6 +256,7 @@ if ("${PLATFORM}" STREQUAL "Web")
     target_link_options(raylib-libretro PUBLIC
         -sUSE_GLFW=3
         -sMAIN_MODULE=1
+        -sUSE_ZLIB=1 # pcsx_rearmed's side module imports zlib symbols at dlopen; provide the port here
         -sALLOW_MEMORY_GROWTH=1
         -sEXPORTED_RUNTIME_METHODS=ccall # shell.html ccalls LoadLibretroGameFromJS / ResizeCanvasFromJS
         -lidbfs.js # Emscripten's File System API
