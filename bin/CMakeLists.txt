@@ -79,35 +79,51 @@ function(download_cores)
     endforeach()
 endfunction()
 
-# copy_core_info(<name> [<name> ...])
-# Copies each core's .info metadata file from the libretro-core-info submodule.
+# download_nightly_cores(<base_url> <ext>)
+# Downloads the canonical core set (CORES) from a libretro nightly buildbot
+# directory. <base_url> is the directory holding the archives; <ext> is the
+# library extension as it appears before .zip (.so, .dll, .dylib, _android.so).
+# Builds "<base_url>/<core>_libretro<ext>.zip" for each core.
+function(download_nightly_cores BASE_URL EXT)
+    set(URLS "")
+    foreach(CORE IN LISTS CORES)
+        list(APPEND URLS "${BASE_URL}/${CORE}_libretro${EXT}.zip")
+    endforeach()
+    download_cores(${URLS})
+endfunction()
+
+# copy_core_info(<core> [<core> ...])
+# Copies each core's <core>_libretro.info metadata from the libretro-core-info
+# submodule into CORES_DIR.
 set(CORE_INFO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../vendor/libretro-core-info")
 function(copy_core_info)
     file(MAKE_DIRECTORY "${CORES_DIR}")
-    foreach(CORE_NAME IN LISTS ARGN)
-        set(INFO_SRC "${CORE_INFO_DIR}/${CORE_NAME}.info")
-        set(INFO_DST "${CORES_DIR}/${CORE_NAME}.info")
+    foreach(CORE IN LISTS ARGN)
+        set(INFO_SRC "${CORE_INFO_DIR}/${CORE}_libretro.info")
+        set(INFO_DST "${CORES_DIR}/${CORE}_libretro.info")
         if (EXISTS "${INFO_SRC}")
             file(COPY_FILE "${INFO_SRC}" "${INFO_DST}" ONLY_IF_DIFFERENT)
         else()
             # A missing .info means the core ships but silently never appears in
             # the menu (ScanLibretroCoreDirectory is .info-driven). Fail loudly
             # for bundled cores rather than discovering it at runtime.
-            message(FATAL_ERROR "${CORE_NAME}.info not found in ${CORE_INFO_DIR}. "
+            message(FATAL_ERROR "${CORE}_libretro.info not found in ${CORE_INFO_DIR}. "
                 "Run: git submodule update --init -- vendor/libretro-core-info")
         endif()
     endforeach()
 endfunction()
 
-set(CORE_INFO_NAMES
-    fceumm_libretro
-    snes9x_libretro
-    mgba_libretro
-    genesis_plus_gx_libretro
-    prboom_libretro
-    mednafen_pce_fast_libretro
-    mednafen_wswan_libretro
-    pcsx_rearmed_libretro
+# The cores bundled with every build, as their short names. Download URLs,
+# .info files and web side-module outputs are all derived as <core>_libretro*.
+set(CORES
+    fceumm
+    snes9x
+    mgba
+    genesis_plus_gx
+    prboom
+    mednafen_pce_fast
+    mednafen_wswan
+    pcsx_rearmed
 )
 
 if ("${PLATFORM}" STREQUAL "Web")
@@ -265,40 +281,13 @@ if ("${PLATFORM}" STREQUAL "Web")
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-        download_cores(
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/fceumm_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/snes9x_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mgba_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/genesis_plus_gx_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/prboom_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mednafen_pce_fast_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mednafen_wswan_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/pcsx_rearmed_libretro.so.zip"
-        )
+        download_nightly_cores("https://buildbot.libretro.com/nightly/linux/aarch64/latest" ".so")
     elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
-        download_cores(
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/fceumm_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/snes9x_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mgba_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/genesis_plus_gx_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/prboom_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mednafen_pce_fast_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mednafen_wswan_libretro.so.zip"
-            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/pcsx_rearmed_libretro.so.zip"
-        )
+        download_nightly_cores("https://buildbot.libretro.com/nightly/linux/x86_64/latest" ".so")
     endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     if (CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
-        download_cores(
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/fceumm_libretro.dll.zip"
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/snes9x_libretro.dll.zip"
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mgba_libretro.dll.zip"
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/genesis_plus_gx_libretro.dll.zip"
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/prboom_libretro.dll.zip"
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mednafen_pce_fast_libretro.dll.zip"
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mednafen_wswan_libretro.dll.zip"
-            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/pcsx_rearmed_libretro.dll.zip"
-        )
+        download_nightly_cores("https://buildbot.libretro.com/nightly/windows/x86_64/latest" ".dll")
     endif()
 elseif (APPLE)
     target_link_libraries(raylib-libretro PUBLIC
@@ -307,42 +296,15 @@ elseif (APPLE)
         "-framework OpenGL"
     )
     if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
-        download_cores(
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/fceumm_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/snes9x_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mgba_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/genesis_plus_gx_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/prboom_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mednafen_pce_fast_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mednafen_wswan_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/pcsx_rearmed_libretro.dylib.zip"
-        )
+        download_nightly_cores("https://buildbot.libretro.com/nightly/apple/osx/arm64/latest" ".dylib")
     else()
-        download_cores(
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/fceumm_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/snes9x_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mgba_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/genesis_plus_gx_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/prboom_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mednafen_pce_fast_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mednafen_wswan_libretro.dylib.zip"
-            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/pcsx_rearmed_libretro.dylib.zip"
-        )
+        download_nightly_cores("https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest" ".dylib")
     endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
-    download_cores(
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/fceumm_libretro_android.so.zip"
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/snes9x_libretro_android.so.zip"
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mgba_libretro_android.so.zip"
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/genesis_plus_gx_libretro_android.so.zip"
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/prboom_libretro_android.so.zip"
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_pce_fast_libretro_android.so.zip"
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_wswan_libretro_android.so.zip"
-        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/pcsx_rearmed_libretro_android.so.zip"
-    )
+    download_nightly_cores("https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}" "_android.so")
 endif()
 
-copy_core_info(${CORE_INFO_NAMES})
+copy_core_info(${CORES})
 
 install(TARGETS raylib-libretro DESTINATION .)
 install(FILES ../README.md DESTINATION .)
