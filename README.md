@@ -6,8 +6,8 @@
 
 ## Features
 
-- Multi-System Emulator for NES, SNES, GB, GBA, SMS/GG
-- Shipped Cores: fceumm, snes9x, mgba, genesis_plus_gx, prboom
+- Multi-System Emulator for NES, SNES, GB, GBA, SMS/GG, PlayStation
+- Shipped Cores: fceumm, snes9x, mgba, genesis_plus_gx, prboom, swanstation
 - Gamepad, Keyboard, On-Screen Controls
 - Audio
 - Fast Forward, Slow Motion, Rewind
@@ -28,6 +28,7 @@
 | PC Engine / TurboGrafx-16 | `mednafen_pce_fast` | `.pce`, `.cue`, `.ccd`, `.chd`, `.toc`, `.m3u` |
 | WonderSwan / WonderSwan Color | `mednafen_wswan` | `.ws`, `.wsc`, `.pc2` |
 | Doom (PrBoom Engine) | `prboom` | `.wad`, `.iwad`, `.pwad`, `.lmp`, `.m3u` |
+| PlayStation | `swanstation` | `.cue`, `.bin`, `.img`, `.iso`, `.chd`, `.pbp`, `.m3u` |
 
 ## Usage
 

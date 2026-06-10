@@ -107,6 +107,7 @@ set(CORE_INFO_NAMES
     prboom_libretro
     mednafen_pce_fast_libretro
     mednafen_wswan_libretro
+    swanstation_libretro
 )
 
 if ("${PLATFORM}" STREQUAL "Web")
@@ -256,6 +257,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/prboom_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mednafen_pce_fast_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mednafen_wswan_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/aarch64/latest/swanstation_libretro.so.zip"
         )
     elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
         download_cores(
@@ -266,6 +268,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/prboom_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mednafen_pce_fast_libretro.so.zip"
             "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mednafen_wswan_libretro.so.zip"
+            "https://buildbot.libretro.com/nightly/linux/x86_64/latest/swanstation_libretro.so.zip"
         )
     endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -278,6 +281,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/prboom_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mednafen_pce_fast_libretro.dll.zip"
             "https://buildbot.libretro.com/nightly/windows/x86_64/latest/mednafen_wswan_libretro.dll.zip"
+            "https://buildbot.libretro.com/nightly/windows/x86_64/latest/swanstation_libretro.dll.zip"
         )
     endif()
 elseif (APPLE)
@@ -295,6 +299,7 @@ elseif (APPLE)
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/prboom_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mednafen_pce_fast_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mednafen_wswan_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/swanstation_libretro.dylib.zip"
         )
     else()
         download_cores(
@@ -305,6 +310,7 @@ elseif (APPLE)
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/prboom_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mednafen_pce_fast_libretro.dylib.zip"
             "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/mednafen_wswan_libretro.dylib.zip"
+            "https://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/swanstation_libretro.dylib.zip"
         )
     endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -316,6 +322,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/prboom_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_pce_fast_libretro_android.so.zip"
         "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_wswan_libretro_android.so.zip"
+        "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/swanstation_libretro_android.so.zip"
     )
 endif()
 
