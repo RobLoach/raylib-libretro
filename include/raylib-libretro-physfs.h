@@ -260,17 +260,35 @@ static bool LoadLibretroGameFromPhysFS(const char* gameFile) {
     // picked ROM (e.g. fceumm declares need_fullpath=false for .nes).
     bool persistent = false;
     if (GetLibretroNeedFullpath(virtualPath, &persistent)) {
-        // Fullpath cores that don't honor the libretro VFS would fopen()
-        // /game/* and fail. Hand them the original OS path; archives are
-        // rejected (unless block_extract pushed them through the regular
-        // file path above).
         if (treatAsArchive) {
-            // Hand the core the PhysFS virtual path. The VFS hooks
-            // installed by InitLibretroPhysFS() let the core read
-            // /game/* transparently from the mounted archive.
-            bool ok = LoadLibretroGame(virtualPath);
-            if (!ok) LibretroPhysFSClearMount();
-            return ok;
+            // Hand the core the PhysFS virtual path directly via
+            // retro_load_game. The VFS hooks installed by
+            // InitLibretroPhysFS() let the core read /game/*
+            // transparently from the mounted archive. We bypass
+            // LoadLibretroGame() because its FileExists() check
+            // only sees the real filesystem.
+            if (IsLibretroGameReady()) UnloadLibretroGame();
+            struct retro_game_info info;
+            info.data = NULL;
+            info.size = 0;
+            info.path = virtualPath;
+            info.meta = "";
+            TextCopy(LIBRETRO.core.contentPath, virtualPath);
+            SetLibretroGameInfoExt(NULL, 0);
+            if (!LIBRETRO.core.symbols.retro_load_game(&info)) {
+                TraceLog(LOG_ERROR, "LIBRETRO: Failed to load from archive: %s", virtualPath);
+                LIBRETRO.core.loaded = false;
+                LIBRETRO.core.contentPath[0] = '\0';
+                LIBRETRO.core.gameInfoExtValid = false;
+                LibretroPhysFSClearMount();
+                return false;
+            }
+            LIBRETRO.core.loaded = InitLibretroAudioVideo();
+            if (!LIBRETRO.core.loaded) {
+                LibretroPhysFSClearMount();
+                return false;
+            }
+            return true;
         }
         bool ok = LoadLibretroGame(gameFile);
         if (!ok) LibretroPhysFSClearMount();
