@@ -228,18 +228,19 @@ if ("${PLATFORM}" STREQUAL "Web")
 
         # emcc reads EMCC_CFLAGS and appends it to every compile/link it runs,
         # so this reaches the core's sources without the Makefile cooperating.
-        if (EXTRA_EMCC_CFLAGS)
-            set(MAKE_ENV ${CMAKE_COMMAND} -E env "EMCC_CFLAGS=${EXTRA_EMCC_CFLAGS}")
-        else()
-            set(MAKE_ENV "")
-        endif()
+        # Force -O3 on every core translation unit for the best emulation
+        # performance, regardless of the core Makefile's own default: EMCC_CFLAGS
+        # is appended last and the last -O on the command line wins.
+        set(CORE_EMCC_CFLAGS "-O3 ${EXTRA_EMCC_CFLAGS}")
+        string(STRIP "${CORE_EMCC_CFLAGS}" CORE_EMCC_CFLAGS)
+        set(MAKE_ENV ${CMAKE_COMMAND} -E env "EMCC_CFLAGS=${CORE_EMCC_CFLAGS}")
 
         add_custom_command(
             OUTPUT "${SO_FILE}"
             COMMAND ${MAKE_ENV} "${EMMAKE_EXECUTABLE}" make -f "${MAKEFILE}"
                     platform=emscripten fpic=-fPIC -j
             COMMAND ${CMAKE_COMMAND} -E copy "${BC_FILE}" "${A_FILE}"
-            COMMAND "${EMCC_EXECUTABLE}" -O2 -sSIDE_MODULE=2
+            COMMAND "${EMCC_EXECUTABLE}" -O3 -sSIDE_MODULE=2
                     "-sEXPORTED_FUNCTIONS=${LIBRETRO_EXPORTS_CSV}"
                     -Wl,--whole-archive "${A_FILE}" -Wl,--no-whole-archive
                     -o "${SO_FILE}"

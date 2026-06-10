@@ -6,6 +6,23 @@ project(raylib-libretro
     LANGUAGES C
 )
 
+# Release performance: enable link-time / interprocedural optimization (LTO).
+# Applied to the Release config only — Debug builds stay fast to compile — and
+# set before any target is created so it also covers the vendored raylib. Gated
+# on check_ipo_supported so toolchains without LTO configure cleanly instead of
+# erroring. Skipped on Web: LTO interacts badly with Emscripten's
+# MAIN_MODULE/SIDE_MODULE dynamic linking (cores are dlopen'd at runtime).
+if (NOT "${PLATFORM}" STREQUAL "Web")
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT RAYLIB_LIBRETRO_IPO_SUPPORTED OUTPUT RAYLIB_LIBRETRO_IPO_ERROR LANGUAGES C)
+    if (RAYLIB_LIBRETRO_IPO_SUPPORTED)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+        message(STATUS "raylib-libretro: LTO enabled for Release builds")
+    else()
+        message(STATUS "raylib-libretro: LTO unavailable, building without it: ${RAYLIB_LIBRETRO_IPO_ERROR}")
+    endif()
+endif()
+
 # raylib
 find_package(raylib QUIET)
 if (NOT raylib_FOUND)
