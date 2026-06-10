@@ -861,9 +861,9 @@ static void ScanLibretroCoreDirectory(void) {
         const char* displayName = rlconfig_get(infoCfg, infoBase, "display_name");
         TextCopy(info->displayName, (displayName && displayName[0]) ? displayName : coreName);
         const char* noGame = rlconfig_get(infoCfg, infoBase, "supports_no_game");
-        info->supportsNoGame = noGame && strcmp(noGame, "true") == 0;
+        info->supportsNoGame = noGame && TextIsEqual(noGame, "true");
         const char* fullpath = rlconfig_get(infoCfg, infoBase, "needs_fullpath");
-        info->needsFullpath = fullpath && strcmp(fullpath, "true") == 0;
+        info->needsFullpath = fullpath && TextIsEqual(fullpath, "true");
 
         TraceLog(LOG_INFO, "LIBRETRO: Found %s (%s)", info->displayName, exts);
         cvector_push_back(menu.coreInfos, info);
