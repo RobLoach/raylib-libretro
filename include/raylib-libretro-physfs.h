@@ -59,6 +59,49 @@ typedef struct rLibretroPhysFS {
 static rLibretroPhysFS LibretroPhysFS = {0};
 
 /**
+ * PhysFS-backed VFS hook: load file data from the PhysFS search path.
+ * Returns NULL silently when the file is not found in any mount.
+ */
+static unsigned char* LibretroPhysFSVfsLoadFileData(const char* fileName, int* bytesRead) {
+    if (!IsPhysFSReady() || !FileExistsInPhysFS(fileName)) {
+        *bytesRead = 0;
+        return NULL;
+    }
+    return LoadFileDataFromPhysFS(fileName, bytesRead);
+}
+
+/**
+ * PhysFS-backed VFS hook: stat a path in the PhysFS search path.
+ * Returns RETRO_VFS_STAT flags, or 0 if not found.
+ */
+static int LibretroPhysFSVfsStat(const char* path, int32_t* size) {
+    if (!IsPhysFSReady()) return 0;
+    PHYSFS_Stat stat;
+    if (PHYSFS_stat(path, &stat) == 0) return 0;
+
+    if (stat.filetype == PHYSFS_FILETYPE_DIRECTORY) {
+        return RETRO_VFS_STAT_IS_DIRECTORY | RETRO_VFS_STAT_IS_VALID;
+    }
+    if (stat.filetype == PHYSFS_FILETYPE_REGULAR) {
+        if (size != NULL) *size = (int32_t)stat.filesize;
+        return RETRO_VFS_STAT_IS_VALID;
+    }
+    return 0;
+}
+
+/**
+ * PhysFS-backed VFS hook: list directory contents from the PhysFS search path.
+ * Returns an empty list when the directory is not found.
+ */
+static FilePathList LibretroPhysFSVfsLoadDirFiles(const char* dirPath) {
+    if (IsPhysFSReady() && DirectoryExistsInPhysFS(dirPath)) {
+        return LoadDirectoryFilesFromPhysFS(dirPath);
+    }
+    FilePathList empty = {0};
+    return empty;
+}
+
+/**
  * Unmounts the game mount.
  */
 static void LibretroPhysFSClearMount(void) {
@@ -79,6 +122,9 @@ static bool InitLibretroPhysFS(void) {
         TraceLog(LOG_WARNING, "LIBRETRO: Failed to initialize PhysFS");
         return false;
     }
+    raylib_libretro_vfs_alt_load_file_data = LibretroPhysFSVfsLoadFileData;
+    raylib_libretro_vfs_alt_stat = LibretroPhysFSVfsStat;
+    raylib_libretro_vfs_alt_load_dir_files = LibretroPhysFSVfsLoadDirFiles;
     LibretroPhysFS.ready = true;
     return true;
 }
@@ -89,6 +135,9 @@ static bool InitLibretroPhysFS(void) {
 static void CloseLibretroPhysFS(void) {
     LibretroPhysFSClearMount();
     if (LibretroPhysFS.ready) {
+        raylib_libretro_vfs_alt_load_file_data = NULL;
+        raylib_libretro_vfs_alt_stat = NULL;
+        raylib_libretro_vfs_alt_load_dir_files = NULL;
         ClosePhysFS();
         LibretroPhysFS.ready = false;
     }
@@ -97,9 +146,12 @@ static void CloseLibretroPhysFS(void) {
 /**
  * Pick the ROM file inside /game after the caller has already mounted a zip file.
  *
- * Will find the first entry that matches...
- *   1. The same basename without the extension. For example: mario.zip > mario.nes
- *   2. The first entry whose extension appears in the core's retro_system_info::valid_extensions
+ * Tries each strategy in turn, stopping at the first match:
+ *   1. Disc metadata — the first .m3u playlist, then the first .cue sheet, so
+ *      CD-based cores receive the descriptor rather than a raw track/bin. Only
+ *      considered when the loaded core advertises that extension.
+ *   2. The same basename without the extension. For example: mario.zip > mario.nes
+ *   3. The first entry whose extension appears in the core's retro_system_info::valid_extensions
  *
  * Subdirectories are searched recursively.
  *
@@ -118,21 +170,43 @@ static bool LibretroPhysFSPickFileInZip(const char* zipFile, char* outPath) {
     const char* zipBase = GetFileNameWithoutExt(zipFile);
     bool found = false;
 
-    // Pass 1: basename match (any depth).
-    for (unsigned int i = 0; i < entries.count; i++) {
+    // The loaded core's valid extensions, as an IsFileExtension pattern.
+    const char* exts = GetLibretroValidExtensions();
+    bool hasExts = exts != NULL && exts[0] != '\0';
+    char pattern[256] = {0};
+    if (hasExts) {
+        GetLibretroFileExtensionPattern(exts, pattern, sizeof(pattern));
+    }
+
+    // Pass 1: disc metadata — .m3u playlists, then .cue sheets — but only when
+    // the loaded core advertises support for them, so a core that takes raw
+    // tracks (e.g. .bin) isn't handed a descriptor it can't parse.
+    for (unsigned int i = 0; !found && i < entries.count; i++) {
+        if (IsFileExtension(entries.paths[i], ".m3u") &&
+            (!hasExts || IsFileExtension(entries.paths[i], pattern))) {
+            TextCopy(outPath, entries.paths[i]);
+            found = true;
+        }
+    }
+    for (unsigned int i = 0; !found && i < entries.count; i++) {
+        if (IsFileExtension(entries.paths[i], ".cue") &&
+            (!hasExts || IsFileExtension(entries.paths[i], pattern))) {
+            TextCopy(outPath, entries.paths[i]);
+            found = true;
+        }
+    }
+
+    // Pass 2: basename match (any depth).
+    for (unsigned int i = 0; !found && i < entries.count; i++) {
         const char* name = GetFileName(entries.paths[i]);
         if (TextIsEqual(GetFileNameWithoutExt(name), zipBase)) {
             TextCopy(outPath, entries.paths[i]);
             found = true;
-            break;
         }
     }
 
-    // Pass 2: first entry whose extension is in validExtensions (any depth).
-    const char* exts = GetLibretroValidExtensions();
-    if (!found && exts != NULL && exts[0] != '\0') {
-        char pattern[256];
-        GetLibretroFileExtensionPattern(exts, pattern, sizeof(pattern));
+    // Pass 3: first entry whose extension is in validExtensions (any depth).
+    if (!found && hasExts) {
         for (unsigned int i = 0; i < entries.count; i++) {
             const char* name = GetFileName(entries.paths[i]);
             if (IsFileExtension(name, pattern)) {
@@ -198,14 +272,10 @@ static bool LoadLibretroGameFromPhysFS(const char* gameFile) {
     // picked ROM (e.g. fceumm declares need_fullpath=false for .nes).
     bool persistent = false;
     if (GetLibretroNeedFullpath(virtualPath, &persistent)) {
-        // Fullpath cores that don't honor the libretro VFS would fopen()
-        // /game/* and fail. Hand them the original OS path; archives are
-        // rejected (unless block_extract pushed them through the regular
-        // file path above).
         if (treatAsArchive) {
-            TraceLog(LOG_ERROR, "LIBRETRO: Core requires a real file path; .zip not supported");
-            LibretroPhysFSClearMount();
-            return false;
+            bool ok = LoadLibretroGame(virtualPath);
+            if (!ok) LibretroPhysFSClearMount();
+            return ok;
         }
         bool ok = LoadLibretroGame(gameFile);
         if (!ok) LibretroPhysFSClearMount();

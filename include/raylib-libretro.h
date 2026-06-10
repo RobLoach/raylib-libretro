@@ -2774,7 +2774,11 @@ static bool LoadLibretroGame(const char* gameFile) {
         return false;
     }
 
-    if (!FileExists(gameFile)) {
+    bool fileFound = FileExists(gameFile);
+    if (!fileFound && raylib_libretro_vfs_alt_stat != NULL) {
+        fileFound = (raylib_libretro_vfs_alt_stat(gameFile, NULL) & RETRO_VFS_STAT_IS_VALID) != 0;
+    }
+    if (!fileFound) {
         TraceLog(LOG_ERROR, "LIBRETRO: Given content does not exist: %s", gameFile);
         LIBRETRO.core.loaded = false;
         return false;

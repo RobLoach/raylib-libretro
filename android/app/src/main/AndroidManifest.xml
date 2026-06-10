@@ -63,6 +63,12 @@
                 <data android:mimeType="*/*" android:pathPattern=".*\\.wad"/>
                 <data android:mimeType="*/*" android:pathPattern=".*\\.iwad"/>
                 <data android:mimeType="*/*" android:pathPattern=".*\\.pwad"/>
+                <!-- Self-contained disc images (genesis_plus_gx, mednafen_pce_fast).
+                     Multi-file descriptors (.cue/.ccd/.toc/.m3u) are intentionally
+                     omitted: a single content-URI copy can't bring sibling tracks
+                     along, so those should be delivered zipped. -->
+                <data android:mimeType="*/*" android:pathPattern=".*\\.chd"/>
+                <data android:mimeType="*/*" android:pathPattern=".*\\.iso"/>
                 <!-- Archives -->
                 <data android:mimeType="*/*" android:pathPattern=".*\\.zip"/>
             </intent-filter>

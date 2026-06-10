@@ -29,6 +29,10 @@ The menu builds its core list (`ScanLibretroCoreDirectory`) from sibling `<core>
 
 The `.info` fields (`supported_extensions`, `needs_fullpath`, `supports_no_game`) are **pre-load hints for menu filtering only — never a hard gate**. Authoritative values come from the core's runtime `retro_get_system_info()` / `RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE` once loaded, and the two can diverge: e.g. `genesis_plus_gx` declares `needs_fullpath="true"` globally (for SegaCD) yet loads cartridge ROMs from memory. Filtering a core out on a coarse `.info` flag is how zipped Genesis games got wrongly rejected — let the loader make the final per-content decision.
 
+### VFS alt-filesystem bridge
+
+The core VFS layer (`raylib-libretro-vfs.h`) exposes three nullable global function-pointer hooks — `raylib_libretro_vfs_alt_load_file_data` / `_stat` / `_load_dir_files`. When set, VFS read/stat/listdir operations consult them *before* the real filesystem and fall back if they return not-found. This is the bridge that lets a `needs_fullpath` core read content that lives **inside a mounted archive**: the PhysFS layer (`raylib-libretro-physfs.h`) installs PhysFS-backed implementations in `InitLibretroPhysFS()` (and clears them in `CloseLibretroPhysFS()`), so when such a core `fopen`s a `/game/...` virtual path, the VFS serves it from the zip. The core layer stays PhysFS-free; the dependency points one way (frontend → core globals).
+
 ## Build
 
 ```sh
