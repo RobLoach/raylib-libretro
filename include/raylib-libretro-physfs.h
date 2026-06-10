@@ -146,9 +146,12 @@ static void CloseLibretroPhysFS(void) {
 /**
  * Pick the ROM file inside /game after the caller has already mounted a zip file.
  *
- * Will find the first entry that matches...
- *   1. The same basename without the extension. For example: mario.zip > mario.nes
- *   2. The first entry whose extension appears in the core's retro_system_info::valid_extensions
+ * Tries each strategy in turn, stopping at the first match:
+ *   1. Disc metadata — the first .m3u playlist, then the first .cue sheet, so
+ *      CD-based cores receive the descriptor rather than a raw track/bin. Only
+ *      considered when the loaded core advertises that extension.
+ *   2. The same basename without the extension. For example: mario.zip > mario.nes
+ *   3. The first entry whose extension appears in the core's retro_system_info::valid_extensions
  *
  * Subdirectories are searched recursively.
  *
@@ -167,15 +170,27 @@ static bool LibretroPhysFSPickFileInZip(const char* zipFile, char* outPath) {
     const char* zipBase = GetFileNameWithoutExt(zipFile);
     bool found = false;
 
-    // Pass 1: disc metadata — .m3u playlists, then .cue sheets.
+    // The loaded core's valid extensions, as an IsFileExtension pattern.
+    const char* exts = GetLibretroValidExtensions();
+    bool hasExts = exts != NULL && exts[0] != '\0';
+    char pattern[256] = {0};
+    if (hasExts) {
+        GetLibretroFileExtensionPattern(exts, pattern, sizeof(pattern));
+    }
+
+    // Pass 1: disc metadata — .m3u playlists, then .cue sheets — but only when
+    // the loaded core advertises support for them, so a core that takes raw
+    // tracks (e.g. .bin) isn't handed a descriptor it can't parse.
     for (unsigned int i = 0; !found && i < entries.count; i++) {
-        if (IsFileExtension(entries.paths[i], ".m3u")) {
+        if (IsFileExtension(entries.paths[i], ".m3u") &&
+            (!hasExts || IsFileExtension(entries.paths[i], pattern))) {
             TextCopy(outPath, entries.paths[i]);
             found = true;
         }
     }
     for (unsigned int i = 0; !found && i < entries.count; i++) {
-        if (IsFileExtension(entries.paths[i], ".cue")) {
+        if (IsFileExtension(entries.paths[i], ".cue") &&
+            (!hasExts || IsFileExtension(entries.paths[i], pattern))) {
             TextCopy(outPath, entries.paths[i]);
             found = true;
         }
@@ -191,10 +206,7 @@ static bool LibretroPhysFSPickFileInZip(const char* zipFile, char* outPath) {
     }
 
     // Pass 3: first entry whose extension is in validExtensions (any depth).
-    const char* exts = GetLibretroValidExtensions();
-    if (!found && exts != NULL && exts[0] != '\0') {
-        char pattern[256];
-        GetLibretroFileExtensionPattern(exts, pattern, sizeof(pattern));
+    if (!found && hasExts) {
         for (unsigned int i = 0; i < entries.count; i++) {
             const char* name = GetFileName(entries.paths[i]);
             if (IsFileExtension(name, pattern)) {

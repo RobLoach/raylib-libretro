@@ -73,15 +73,44 @@ static int raylib_libretro_vfs_closedir(struct retro_vfs_dir_handle* dirstream);
 extern "C" {
 #endif
 
-// Optional hooks for an alternate read-only filesystem (e.g. PhysFS).
-// When non-NULL, VFS read operations try these before the real filesystem.
-// Signature matches the corresponding raylib / libretro-VFS contracts:
-//   load: returns malloc'd buffer + size, or NULL if not found
-//   stat: returns RETRO_VFS_STAT flags (0 = not found), optionally sets *size
-//   list: returns a FilePathList (may be empty)
-static unsigned char* (*raylib_libretro_vfs_alt_load_file_data)(const char*, int*) = NULL;
-static int (*raylib_libretro_vfs_alt_stat)(const char*, int32_t*) = NULL;
-static FilePathList (*raylib_libretro_vfs_alt_load_dir_files)(const char*) = NULL;
+/**
+ * Optional hook to read a file from an alternate read-only filesystem (e.g. PhysFS).
+ *
+ * When non-NULL, VFS read operations try this before the real filesystem. The
+ * signature matches raylib's \c LoadFileData contract.
+ *
+ * @param fileName The path to load.
+ * @param dataSize Out parameter set to the number of bytes read.
+ * @return A \c MemAlloc'd buffer holding the file contents, or \c NULL if the
+ * file was not found in the alternate filesystem.
+ * @see raylib_libretro_vfs_alt_stat
+ * @see raylib_libretro_vfs_alt_load_dir_files
+ */
+static unsigned char* (*raylib_libretro_vfs_alt_load_file_data)(const char* fileName, int* dataSize) = NULL;
+
+/**
+ * Optional hook to stat a path on an alternate read-only filesystem (e.g. PhysFS).
+ *
+ * When non-NULL, VFS stat operations try this before the real filesystem.
+ *
+ * @param path The path to stat.
+ * @param size Optional out parameter set to the file size in bytes when non-NULL.
+ * @return A bitmask of \c RETRO_VFS_STAT_* flags, or 0 if the path was not found
+ * in the alternate filesystem.
+ * @see raylib_libretro_vfs_alt_load_file_data
+ */
+static int (*raylib_libretro_vfs_alt_stat)(const char* path, int32_t* size) = NULL;
+
+/**
+ * Optional hook to list a directory on an alternate read-only filesystem (e.g. PhysFS).
+ *
+ * When non-NULL, VFS directory listings try this before the real filesystem.
+ *
+ * @param dirPath The directory to enumerate.
+ * @return A \c FilePathList of the directory's entries, which may be empty.
+ * @see raylib_libretro_vfs_alt_load_file_data
+ */
+static FilePathList (*raylib_libretro_vfs_alt_load_dir_files)(const char* dirPath) = NULL;
 
 /**
  * Gets the path associated with the given file handle.

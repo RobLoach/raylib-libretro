@@ -979,8 +979,12 @@ static const char* LibretroCoreDisplayName(int index) {
 }
 
 /**
- * Peek inside a .zip and return the first inner-file extension that any
- * cached core advertises in its valid_extensions.
+ * Peek inside a .zip and return an inner-file extension that any cached core
+ * advertises in its valid_extensions.
+ *
+ * Disc metadata (.m3u, .cue) is preferred over other entries so the core list
+ * matches what LibretroPhysFSPickFileInZip will actually hand to the core;
+ * otherwise the first matching entry wins.
  *
  * Mounts the archive at a scratch PhysFS namespace ("/peek") so an active
  * /game mount used by an in-flight load is not disturbed, enumerates the
