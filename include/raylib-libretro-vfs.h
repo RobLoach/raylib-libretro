@@ -3,7 +3,7 @@
 
 #include "libretro.h"
 #include "raylib.h"
-
+#include <string.h>  // memcpy
 #ifndef RAYLIB_LIBRETRO_VFS_MAX_PATH
 #define RAYLIB_LIBRETRO_VFS_MAX_PATH 4096
 #endif
@@ -291,8 +291,13 @@ static int64_t raylib_libretro_vfs_tell(struct retro_vfs_file_handle* stream) {
  * @param stream The file to set the position of.
  * @param offset The new position, in bytes.
  * @param seek_position The position to seek from.
- * @return The new position,
- * or -1 if there was an error.
+ * @return 0 on success, or -1 if there was an error.
+ *
+ * @note The libretro.h docs describe this as returning the new position, but
+ * RetroArch's reference VFS returns fseek-style status (0 on success) for normal
+ * buffered files, and libretro-common's filestream consumers rely on that: e.g.
+ * libchdr checks `core_fseek(...) != 0` and treats a non-zero (positional) return
+ * as a seek error — which made CHD loads fail over this VFS. Match RetroArch.
  * @since VFS API v1
  * @see File Seek Positions
  * @see filestream_seek
@@ -302,28 +307,31 @@ static int64_t raylib_libretro_vfs_seek(struct retro_vfs_file_handle* stream, in
         return -1;
     }
 
+    int64_t newPosition;
     switch (seek_position) {
         case RAYLIB_LIBRETRO_VFS_SEEK_SET:
-            stream->position = offset;
+            newPosition = offset;
             break;
         case RAYLIB_LIBRETRO_VFS_SEEK_CUR:
-            stream->position += offset;
+            newPosition = stream->position + offset;
             break;
         case RAYLIB_LIBRETRO_VFS_SEEK_END:
-            stream->position = stream->dataSize + offset;
+            newPosition = stream->dataSize + offset;
             break;
         default:
             return -1;
     }
 
-    if (stream->position < 0) {
-        stream->position = 0;
-    }
-    else if (stream->position > stream->dataSize) {
-        stream->position = stream->dataSize;
+    // Seeking before the start of the file is an error, matching fseek(). Seeking
+    // past the end is allowed and not clamped: reads there return 0 (EOF) and
+    // writes grow the buffer, zero-filling any gap. Clamping here would corrupt
+    // write offsets and make tell() report the wrong position.
+    if (newPosition < 0) {
+        return -1;
     }
 
-    return stream->position;
+    stream->position = newPosition;
+    return 0;
 }
 
 /**
@@ -343,19 +351,16 @@ static int64_t raylib_libretro_vfs_read(struct retro_vfs_file_handle* stream, vo
         return -1;
     }
 
-    unsigned char* data = stream->data + stream->position;
-    unsigned char* output = (unsigned char*)s;
-    int64_t bytesRead = 0;
-    for (uint64_t i = 0; i < len; i++) {
-        if (stream->position + i >= stream->dataSize) {
-            break;
-        }
-        output[i] = data[i];
-        bytesRead++;
+    // Clamp the request to the bytes remaining from the current position.
+    if (stream->position < 0 || stream->position >= stream->dataSize) {
+        return 0;
     }
+    uint64_t remaining = (uint64_t)(stream->dataSize - stream->position);
+    uint64_t bytesRead = (len < remaining) ? len : remaining;
 
-    stream->position += bytesRead;
-    return bytesRead;
+    memcpy(s, stream->data + stream->position, (size_t)bytesRead);
+    stream->position += (int64_t)bytesRead;
+    return (int64_t)bytesRead;
 }
 
 /**
@@ -386,14 +391,16 @@ static int64_t raylib_libretro_vfs_write(struct retro_vfs_file_handle* stream, c
             return -1;
         }
         stream->data = resized;
+        // Zero-fill any gap left by a seek past the previous end of file,
+        // matching standard fwrite() semantics. Uses the old dataSize, so this
+        // must run before dataSize is updated.
+        if (stream->position > stream->dataSize) {
+            memset(stream->data + stream->dataSize, 0, (size_t)(stream->position - stream->dataSize));
+        }
         stream->dataSize = (int)end;
     }
 
-    unsigned char* dest = stream->data + stream->position;
-    const unsigned char* src = (const unsigned char*)s;
-    for (uint64_t i = 0; i < len; i++) {
-        dest[i] = src[i];
-    }
+    memcpy(stream->data + stream->position, s, (size_t)len);
 
     stream->position = end;
     return (int64_t)len;
