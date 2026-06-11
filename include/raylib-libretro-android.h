@@ -17,8 +17,6 @@
 #include <jni.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <pthread.h>
-#include <unistd.h>
 #include <android/log.h>
 #include <android/window.h>
 #include <android_native_app_glue.h>
@@ -38,12 +36,6 @@ extern struct android_app *GetAndroidApp(void);
         #define RAYLIB_LIBRETRO_ANDROID_ABI ""
     #endif
 #endif
-
-#define ANDROID_FILEPICKER_REQUEST_CODE 42
-
-static char gAndroidFilePickerPath[4096] = {0};
-static volatile bool gAndroidFilePickerReady = false;
-static pthread_mutex_t gAndroidFilePickerMutex = PTHREAD_MUTEX_INITIALIZER;
 
 #endif /* __ANDROID__ */
 #endif /* RAYLIB_LIBRETRO_ANDROID_H */
@@ -216,6 +208,42 @@ static void AndroidEnableImmersiveMode(struct android_app* app) {
         AWINDOW_FLAG_FULLSCREEN | AWINDOW_FLAG_KEEP_SCREEN_ON, 0);
 }
 
+// Resolve the user-visible shared storage root (e.g. /storage/emulated/0), where
+// ROMs typically live, via Environment.getExternalStorageDirectory(). Querying the
+// path needs no permission; reading its contents requires MANAGE_EXTERNAL_STORAGE
+// (requested by AndroidRequestStorageAccess before the user browses).
+static bool AndroidGetExternalStorageDir(struct android_app* app, char* out) {
+    out[0] = '\0';
+    bool needDetach = false;
+    JNIEnv* env = AndroidJNIBegin(app, &needDetach);
+    if (env == NULL) return false;
+
+    bool result = false;
+    jclass environmentClass = (*env)->FindClass(env, "android/os/Environment");
+    jmethodID getDir = environmentClass ? (*env)->GetStaticMethodID(env, environmentClass,
+        "getExternalStorageDirectory", "()Ljava/io/File;") : NULL;
+    jobject file = getDir ?
+        (*env)->CallStaticObjectMethod(env, environmentClass, getDir) : NULL;
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); file = NULL; }
+
+    if (file != NULL) {
+        jclass fileClass = (*env)->GetObjectClass(env, file);
+        jmethodID getPath = (*env)->GetMethodID(env, fileClass,
+            "getAbsolutePath", "()Ljava/lang/String;");
+        jstring path = getPath ? (jstring)(*env)->CallObjectMethod(env, file, getPath) : NULL;
+        const char* pathUtf = path ? (*env)->GetStringUTFChars(env, path, NULL) : NULL;
+        if (pathUtf != NULL && pathUtf[0] != '\0') {
+            TextCopy(out, pathUtf);
+            result = true;
+        }
+        if (pathUtf) (*env)->ReleaseStringUTFChars(env, path, pathUtf);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+    AndroidJNIEnd(app, needDetach);
+    return result;
+}
+
 static void SetupAndroidEnvironment(LibretroMenu* menu) {
     struct android_app* app = GetAndroidApp();
     if (app == NULL || app->activity == NULL || app->activity->internalDataPath == NULL) {
@@ -228,8 +256,12 @@ static void SetupAndroidEnvironment(LibretroMenu* menu) {
     if (LIBRETRO.coreDirectory[0]   != '/') TextCopy(LIBRETRO.coreDirectory,   TextFormat("%s/cores", dataDir));
     if (LIBRETRO.saveDirectory[0]   != '/') TextCopy(LIBRETRO.saveDirectory,   TextFormat("%s/saves", dataDir));
     if (LIBRETRO.systemDirectory[0] != '/') TextCopy(LIBRETRO.systemDirectory, TextFormat("%s/system", dataDir));
-    if (LIBRETRO.fileBrowserStartDirectory[0] == '\0' && externalDir != NULL) {
-        TextCopy(LIBRETRO.fileBrowserStartDirectory, externalDir);
+    if (LIBRETRO.fileBrowserStartDirectory[0] == '\0') {
+        // Default the file browser to the shared storage root (where ROMs live),
+        // falling back to the app-private external dir if JNI is unavailable.
+        if (!AndroidGetExternalStorageDir(app, LIBRETRO.fileBrowserStartDirectory) && externalDir != NULL) {
+            TextCopy(LIBRETRO.fileBrowserStartDirectory, externalDir);
+        }
     }
 
     MakeDirectory(LIBRETRO.coreDirectory);
@@ -290,210 +322,6 @@ static void AndroidSetOrientation(struct android_app* app, int index) {
         TraceLog(LOG_INFO, "ANDROID: Set screen orientation (mode %d)", index);
     } else {
         TraceLog(LOG_WARNING, "ANDROID: Could not find setRequestedOrientation method");
-    }
-    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
-
-    AndroidJNIEnd(app, needDetach);
-}
-
-static bool AndroidCopyContentUri(JNIEnv* env, jobject activity, jobject uri,
-                                   const char* destDir, char* outPath, int outPathLen) {
-    jclass actClass = (*env)->GetObjectClass(env, activity);
-    jmethodID getResolver = actClass ? (*env)->GetMethodID(env, actClass,
-        "getContentResolver", "()Landroid/content/ContentResolver;") : NULL;
-    jobject resolver = getResolver ? (*env)->CallObjectMethod(env, activity, getResolver) : NULL;
-    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return false; }
-    if (!resolver) return false;
-
-    const char* displayName = "rom";
-    jstring jDisplayName = NULL;
-    jclass resolverClass = (*env)->GetObjectClass(env, resolver);
-    jclass mediaClass = (*env)->FindClass(env, "android/provider/MediaStore$MediaColumns");
-    jfieldID dnField = mediaClass ? (*env)->GetStaticFieldID(env, mediaClass,
-        "DISPLAY_NAME", "Ljava/lang/String;") : NULL;
-    jstring dnCol = dnField ? (jstring)(*env)->GetStaticObjectField(env, mediaClass, dnField) : NULL;
-    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); dnCol = NULL; }
-
-    if (dnCol) {
-        jobjectArray proj = (*env)->NewObjectArray(env, 1,
-            (*env)->FindClass(env, "java/lang/String"), dnCol);
-        jmethodID query = proj ? (*env)->GetMethodID(env, resolverClass, "query",
-            "(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;"
-            "[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;") : NULL;
-        jobject cursor = query ? (*env)->CallObjectMethod(env, resolver, query,
-            uri, proj, NULL, NULL, NULL) : NULL;
-        if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); cursor = NULL; }
-
-        if (cursor) {
-            jclass cursorClass = (*env)->GetObjectClass(env, cursor);
-            jmethodID moveFirst = (*env)->GetMethodID(env, cursorClass, "moveToFirst", "()Z");
-            jboolean ok = moveFirst ? (*env)->CallBooleanMethod(env, cursor, moveFirst) : JNI_FALSE;
-            if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); ok = JNI_FALSE; }
-
-            if (ok) {
-                jmethodID getColIdx = (*env)->GetMethodID(env, cursorClass,
-                    "getColumnIndex", "(Ljava/lang/String;)I");
-                jint idx = getColIdx ? (*env)->CallIntMethod(env, cursor, getColIdx, dnCol) : -1;
-                if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); idx = -1; }
-                if (idx >= 0) {
-                    jmethodID getString = (*env)->GetMethodID(env, cursorClass,
-                        "getString", "(I)Ljava/lang/String;");
-                    jDisplayName = getString ?
-                        (jstring)(*env)->CallObjectMethod(env, cursor, getString, idx) : NULL;
-                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); jDisplayName = NULL; }
-                    if (jDisplayName) {
-                        displayName = (*env)->GetStringUTFChars(env, jDisplayName, NULL);
-                    }
-                }
-            }
-            jmethodID close = (*env)->GetMethodID(env, (*env)->GetObjectClass(env, cursor),
-                "close", "()V");
-            if (close) (*env)->CallVoidMethod(env, cursor, close);
-            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
-        }
-    }
-
-    char safeName[256] = {0};
-    int j = 0;
-    for (int i = 0; displayName[i] && j < (int)sizeof(safeName) - 1; i++) {
-        char c = displayName[i];
-        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-            (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_') {
-            safeName[j++] = c;
-        }
-    }
-    if (j == 0) { safeName[0] = 'r'; safeName[1] = 'o'; safeName[2] = 'm'; }
-
-    if (jDisplayName && displayName) {
-        (*env)->ReleaseStringUTFChars(env, jDisplayName, displayName);
-    }
-
-    jmethodID openFd = (*env)->GetMethodID(env, resolverClass, "openFileDescriptor",
-        "(Landroid/net/Uri;Ljava/lang/String;)Landroid/os/ParcelFileDescriptor;");
-    jstring modeR = (*env)->NewStringUTF(env, "r");
-    jobject pfd = (openFd && modeR) ?
-        (*env)->CallObjectMethod(env, resolver, openFd, uri, modeR) : NULL;
-    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); pfd = NULL; }
-    if (!pfd) {
-        TraceLog(LOG_WARNING, "ANDROID: Could not open content URI via ContentResolver");
-        return false;
-    }
-
-    jclass pfdClass = (*env)->GetObjectClass(env, pfd);
-    jmethodID detach = (*env)->GetMethodID(env, pfdClass, "detachFd", "()I");
-    jint fd = detach ? (*env)->CallIntMethod(env, pfd, detach) : -1;
-    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); fd = -1; }
-    if (fd < 0) return false;
-
-    snprintf(outPath, outPathLen, "%s/%s", destDir, safeName);
-    FILE* out = fopen(outPath, "wb");
-    bool success = false;
-    if (out) {
-        char buf[65536];
-        ssize_t n;
-        while ((n = read(fd, buf, sizeof(buf))) > 0) {
-            fwrite(buf, 1, (size_t)n, out);
-        }
-        fclose(out);
-        success = true;
-    }
-    close(fd);
-    return success;
-}
-
-static void AndroidOnActivityResult(ANativeActivity* activity, int32_t requestCode,
-                                    int32_t resultCode, void* data) {
-    if (requestCode != ANDROID_FILEPICKER_REQUEST_CODE) return;
-    if (resultCode != -1 || data == NULL) {
-        TraceLog(LOG_INFO, "ANDROID: File picker cancelled or returned no data");
-        return;
-    }
-
-    struct android_app* app = GetAndroidApp();
-    bool needDetach = false;
-    JNIEnv* env = AndroidJNIBegin(app, &needDetach);
-    if (!env) return;
-
-    jobject intent = (jobject)data;
-    jclass intentClass = (*env)->GetObjectClass(env, intent);
-    jmethodID getData = intentClass ? (*env)->GetMethodID(env, intentClass, "getData",
-        "()Landroid/net/Uri;") : NULL;
-    jobject uri = getData ? (*env)->CallObjectMethod(env, intent, getData) : NULL;
-    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); uri = NULL; }
-
-    if (uri) {
-        const char* destDir = app->activity->externalDataPath ?
-            app->activity->externalDataPath : app->activity->internalDataPath;
-        if (destDir) {
-            char tempPath[4096] = {0};
-            if (AndroidCopyContentUri(env, activity->clazz, uri, destDir, tempPath, sizeof(tempPath))) {
-                pthread_mutex_lock(&gAndroidFilePickerMutex);
-                TextCopy(gAndroidFilePickerPath, tempPath);
-                gAndroidFilePickerReady = true;
-                pthread_mutex_unlock(&gAndroidFilePickerMutex);
-                TraceLog(LOG_INFO, "ANDROID: File picker copied to %s", tempPath);
-            } else {
-                TraceLog(LOG_WARNING, "ANDROID: Failed to copy file picker selection");
-            }
-        }
-    }
-
-    AndroidJNIEnd(app, needDetach);
-}
-
-static void LibretroMenuAndroidLoadGameClicked(nk_console* widget, void* user_data) {
-    (void)widget;
-    (void)user_data;
-
-    struct android_app* app = GetAndroidApp();
-    bool needDetach = false;
-    JNIEnv* env = AndroidJNIBegin(app, &needDetach);
-    if (!env) {
-        TraceLog(LOG_WARNING, "ANDROID: Could not attach JNI for file picker");
-        return;
-    }
-
-    app->activity->callbacks->onActivityResult = AndroidOnActivityResult;
-
-    jclass intentClass = (*env)->FindClass(env, "android/content/Intent");
-    jfieldID actionField = intentClass ? (*env)->GetStaticFieldID(env, intentClass,
-        "ACTION_OPEN_DOCUMENT", "Ljava/lang/String;") : NULL;
-    jstring action = actionField ?
-        (jstring)(*env)->GetStaticObjectField(env, intentClass, actionField) : NULL;
-    jmethodID initStr = intentClass ? (*env)->GetMethodID(env, intentClass, "<init>",
-        "(Ljava/lang/String;)V") : NULL;
-    jobject intent = (initStr && action) ?
-        (*env)->NewObject(env, intentClass, initStr, action) : NULL;
-    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); intent = NULL; }
-
-    if (!intent) {
-        TraceLog(LOG_WARNING, "ANDROID: Could not create ACTION_OPEN_DOCUMENT intent");
-        AndroidJNIEnd(app, needDetach);
-        return;
-    }
-
-    jfieldID catField = (*env)->GetStaticFieldID(env, intentClass,
-        "CATEGORY_OPENABLE", "Ljava/lang/String;");
-    jstring category = catField ?
-        (jstring)(*env)->GetStaticObjectField(env, intentClass, catField) : NULL;
-    jmethodID addCat = (*env)->GetMethodID(env, intentClass, "addCategory",
-        "(Ljava/lang/String;)Landroid/content/Intent;");
-    if (category && addCat) (*env)->CallObjectMethod(env, intent, addCat, category);
-    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
-
-    jmethodID setType = (*env)->GetMethodID(env, intentClass, "setType",
-        "(Ljava/lang/String;)Landroid/content/Intent;");
-    jstring mimeAll = (*env)->NewStringUTF(env, "*/*");
-    if (setType && mimeAll) (*env)->CallObjectMethod(env, intent, setType, mimeAll);
-    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
-
-    jclass actClass = (*env)->GetObjectClass(env, app->activity->clazz);
-    jmethodID startForResult = actClass ? (*env)->GetMethodID(env, actClass,
-        "startActivityForResult", "(Landroid/content/Intent;I)V") : NULL;
-    if (startForResult) {
-        (*env)->CallVoidMethod(env, app->activity->clazz, startForResult,
-            intent, (jint)ANDROID_FILEPICKER_REQUEST_CODE);
-        TraceLog(LOG_INFO, "ANDROID: Launched native file picker");
     }
     if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 

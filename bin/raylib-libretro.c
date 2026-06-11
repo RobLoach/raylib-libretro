@@ -267,21 +267,6 @@ bool Update(void* userData) {
         data->pendingMenuOpen = false;
     }
 
-#if defined(__ANDROID__)
-    // Apply a file picker result delivered by AndroidOnActivityResult.
-    if (gAndroidFilePickerReady) {
-        char pickedPath[4096] = {0};
-        pthread_mutex_lock(&gAndroidFilePickerMutex);
-        TextCopy(pickedPath, gAndroidFilePickerPath);
-        gAndroidFilePickerReady = false;
-        pthread_mutex_unlock(&gAndroidFilePickerMutex);
-        if (pickedPath[0] != '\0') {
-            if (MenuLoadGame(pickedPath)) HideLibretroMenu();
-            else ShowLibretroMenu();
-        }
-    }
-#endif
-
     // Update virtual joypad from touch controls.
     if (data->menu->touchControls) {
         SetTouchHapticsEnabled(data->menu->touchHapticsEnabled);

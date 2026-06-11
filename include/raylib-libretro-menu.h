@@ -245,10 +245,6 @@ static void LibretroMenuEmscriptenLoadGameClicked(nk_console* widget, void* user
 }
 #else
 #define LibretroFlushPersistentStorage() ((void)0)
-#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
-// Defined in bin/raylib-libretro.c after the JNI headers are included.
-static void LibretroMenuAndroidLoadGameClicked(nk_console* widget, void* user_data);
-#endif
 #endif /* __EMSCRIPTEN__ */
 
 #define RAYLIB_NUKLEAR_IMPLEMENTATION
@@ -1464,9 +1460,10 @@ LibretroMenu* InitLibretroMenu(void) {
     // Load Game
 #if defined(__EMSCRIPTEN__) || defined(PLATFORM_WEB)
     menu.loadGameWidget = nk_console_button_onclick(menu.console, "Load Game", &LibretroMenuEmscriptenLoadGameClicked);
-#elif defined(__ANDROID__) || defined(PLATFORM_ANDROID)
-    menu.loadGameWidget = nk_console_button_onclick(menu.console, "Load Game", &LibretroMenuAndroidLoadGameClicked);
 #else
+    // Desktop and Android both use the in-app file browser. On Android the app
+    // holds MANAGE_EXTERNAL_STORAGE, so raylib file I/O can read shared storage;
+    // SetupAndroidEnvironment() points this widget at fileBrowserStartDirectory.
     menu.loadGameWidget = nk_console_file_action(menu.console, "Load Game", menu.loadGamePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
     nk_console_add_event_handler(menu.loadGameWidget, NK_CONSOLE_EVENT_CHANGED, &MenuGameFileChanged, menu.loadGamePath, NULL);
     if (LIBRETRO.fileBrowserStartDirectory[0] != '\0') {
