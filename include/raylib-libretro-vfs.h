@@ -307,27 +307,30 @@ static int64_t raylib_libretro_vfs_seek(struct retro_vfs_file_handle* stream, in
         return -1;
     }
 
+    int64_t newPosition;
     switch (seek_position) {
         case RAYLIB_LIBRETRO_VFS_SEEK_SET:
-            stream->position = offset;
+            newPosition = offset;
             break;
         case RAYLIB_LIBRETRO_VFS_SEEK_CUR:
-            stream->position += offset;
+            newPosition = stream->position + offset;
             break;
         case RAYLIB_LIBRETRO_VFS_SEEK_END:
-            stream->position = stream->dataSize + offset;
+            newPosition = stream->dataSize + offset;
             break;
         default:
             return -1;
     }
 
-    if (stream->position < 0) {
-        stream->position = 0;
-    }
-    else if (stream->position > stream->dataSize) {
-        stream->position = stream->dataSize;
+    // Seeking before the start of the file is an error, matching fseek(). Seeking
+    // past the end is allowed and not clamped: reads there return 0 (EOF) and
+    // writes grow the buffer, zero-filling any gap. Clamping here would corrupt
+    // write offsets and make tell() report the wrong position.
+    if (newPosition < 0) {
+        return -1;
     }
 
+    stream->position = newPosition;
     return 0;
 }
 
@@ -388,6 +391,12 @@ static int64_t raylib_libretro_vfs_write(struct retro_vfs_file_handle* stream, c
             return -1;
         }
         stream->data = resized;
+        // Zero-fill any gap left by a seek past the previous end of file,
+        // matching standard fwrite() semantics. Uses the old dataSize, so this
+        // must run before dataSize is updated.
+        if (stream->position > stream->dataSize) {
+            memset(stream->data + stream->dataSize, 0, (size_t)(stream->position - stream->dataSize));
+        }
         stream->dataSize = (int)end;
     }
 
