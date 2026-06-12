@@ -60,6 +60,7 @@ typedef enum LibretroHotkey {
     LIBRETRO_HOTKEY_MUTE,
     LIBRETRO_HOTKEY_FAST_FORWARD,
     LIBRETRO_HOTKEY_SLOW_MOTION,
+    LIBRETRO_HOTKEY_GAME_FOCUS,
     LIBRETRO_HOTKEY_COUNT,
 } LibretroHotkey;
 
@@ -109,6 +110,7 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
+    nk_bool gameFocusActive;              // Game Focus mode: pass all keys to the core, suspend frontend hotkeys.
     int orientationIndex;                 // Android screen orientation: 0 = Landscape, 1 = Portrait, 2 = Auto
     nk_bool hideCursor;
     nk_bool lockCursor;
@@ -390,6 +392,12 @@ static LibretroMenu menu = {
             .name = "Slow Motion",
             .defaultKey = (nk_rune)'G',
             .key = (nk_rune)'G',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_GAME_FOCUS] = {
+            .name = "Game Focus",
+            .defaultKey = NK_CONSOLE_KEY_F12,
+            .key = NK_CONSOLE_KEY_F12,
             .gamepad = NK_GAMEPAD_BUTTON_INVALID
         },
     },

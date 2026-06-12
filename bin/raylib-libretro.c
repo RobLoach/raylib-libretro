@@ -271,7 +271,7 @@ bool Update(void* userData) {
 
         if (IsLibretroGameReady()) {
             KeyboardKey rewindKey = LibretroHotkeyToKeyboardKey(data->menu->hotkeys[LIBRETRO_HOTKEY_REWIND].key);
-            rewinding = data->menu->rewindEnabled && (IsKeyDown(rewindKey) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_REWIND].gamepad));
+            rewinding = data->menu->rewindEnabled && !data->menu->gameFocusActive && (IsKeyDown(rewindKey) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_REWIND].gamepad));
 
             // Capture and playback both run at REWIND_CAPTURES_PER_SECOND.
             if (data->menu->rewindEnabled) {
@@ -321,10 +321,14 @@ bool Update(void* userData) {
                     RewindBufferFree(&data->rewind);
                 }
 
-                // Fast Forward
+                // Fast Forward / Slow Motion — suspended in Game Focus mode so the bound
+                // keys can reach the core instead of changing playback speed.
                 KeyboardKey key = LibretroHotkeyToKeyboardKey(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].key);
                 KeyboardKey slowMotionKey = LibretroHotkeyToKeyboardKey(data->menu->hotkeys[LIBRETRO_HOTKEY_SLOW_MOTION].key);
-                if (IsKeyDown(key) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
+                if (data->menu->gameFocusActive) {
+                    // Skip the FF/SM key handling block.
+                }
+                else if (IsKeyDown(key) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
                     if (IsKeyPressed(key) || LibretroHotkeyGPPressed(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
                         // Halve audio stream volume during fast-forward without touching
                         // LIBRETRO.volume so restore is just re-applying the stored value.
@@ -400,6 +404,18 @@ bool Update(void* userData) {
 
     // Hot Keys
     if (!menu.active) {
+
+        // Game Focus toggle — must run before the gameFocusActive gate so the user
+        // can always switch it back off.
+        if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_GAME_FOCUS].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_GAME_FOCUS].gamepad)) {
+            menu.gameFocusActive = !menu.gameFocusActive;
+            SetLibretroMessage(menu.gameFocusActive ? "Game Focus ON" : "Game Focus OFF", 2.0);
+        }
+    }
+
+    // The rest of the hotkey block is suspended in Game Focus mode so keys like
+    // F1–F7, Esc, and arrow keys can reach the core unmolested.
+    if (!menu.active && !menu.gameFocusActive) {
 
         // Screenshot
         if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_SCREENSHOT].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_SCREENSHOT].gamepad) && IsLibretroGameReady()) {
