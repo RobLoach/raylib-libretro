@@ -110,7 +110,9 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
-    nk_bool gameFocusActive;              // Game Focus mode: pass all keys to the core, suspend frontend hotkeys.
+    nk_bool gameFocusActive; // Game Focus mode: pass all keys to the core, suspend frontend hotkeys.
+    int sramAutoSaveIndex; // combobox index for the SRAM auto-save interval (Off / 15s / 30s / 60s / 2min / 5min / 10min)
+    float sramAutoSaveAccumulator; // seconds since the last successful auto-save
     int orientationIndex;                 // Android screen orientation: 0 = Landscape, 1 = Portrait, 2 = Auto
     nk_bool hideCursor;
     nk_bool lockCursor;
@@ -1130,6 +1132,37 @@ static bool MenuSaveGameSRAM(void) {
     return ok;
 }
 
+/**
+ * Return the number of seconds for the given Auto Save SRAM interval.
+ */
+static int MenuSRAMAutoSaveIntervalSeconds(int index) {
+    switch (index) {
+        case 1: return 15;
+        case 2: return 30;
+        case 3: return 60;
+        case 4: return 120;
+        case 5: return 300;
+        case 6: return 600;
+        case 0:
+        default: return 0;
+    }
+}
+
+// Accumulate frame time and flush SRAM to disk when the configured interval
+// elapses. Safe to call every frame; no-ops when auto-save is off, the menu is
+// open (game paused), or no game is loaded.
+static void MenuTickSRAMAutoSave(void) {
+    if (menu.sramAutoSaveIndex <= 0 || menu.active || !IsLibretroGameReady()) {
+        return;
+    }
+
+    menu.sramAutoSaveAccumulator += GetFrameTime();
+    if (menu.sramAutoSaveAccumulator >= MenuSRAMAutoSaveIntervalSeconds(menu.sramAutoSaveIndex)) {
+        menu.sramAutoSaveAccumulator = 0.0f;
+        MenuSaveGameSRAM();
+    }
+}
+
 static bool MenuDoLoadGame(const char* gamePath) {
     if (!LoadLibretroGameFromPhysFS(gamePath)) {
         if (IsLibretroGameRequired()) {
@@ -1577,9 +1610,11 @@ LibretroMenu* InitLibretroMenu(void) {
 
             // Rewind
             nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
-            nk_console* analogCombo = nk_console_combobox(gameplayMenu, "Analog to D-Pad",
-                "None|Left Analog|Right Analog", '|', &LIBRETRO.analogToDpadIndex);
-            analogCombo->tooltip = "Map an analog stick to D-Pad inputs";
+
+            // Analog to D-Pad
+            nk_console_combobox(gameplayMenu, "Analog to D-Pad",
+                "None|Left Analog|Right Analog", '|', &LIBRETRO.analogToDpadIndex)
+                ->tooltip = "Map an analog stick to D-Pad inputs";
 
             // Cursor
             nk_console_checkbox(gameplayMenu, "Hide Cursor", &menu.hideCursor);
@@ -1589,6 +1624,13 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_combobox(gameplayMenu, "Save Slot",
                 "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
                 '|', &menu.saveSlotIndex);
+
+            // SRAM Auto-Save
+            nk_console_combobox(gameplayMenu, "SRAM Auto-Save",
+                "Off|15s|30s|1m|2m|5m|10m", '|', &menu.sramAutoSaveIndex)
+                ->tooltip = "Periodically save battery data to disk";
+
+            // Username
             nk_console_textedit(gameplayMenu, "Username", LIBRETRO.username, 128);
         }
 
@@ -2194,6 +2236,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "orientation", menu.orientationIndex);
 
     rlconfig_set_int(menu.cfg, "raylib-libretro", "saveSlot", menu.saveSlotIndex);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "sramAutoSave", menu.sramAutoSaveIndex);
     rlconfig_set(menu.cfg, "raylib-libretro", "username", LIBRETRO.username);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "fastForwardSpeed", menu.fastForwardSpeed);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "slowMotionSpeed", menu.slowMotionSpeed);
@@ -2407,6 +2450,7 @@ static bool LoadLibretroMenuSettings(void) {
 
     // Save Slot
     menu.saveSlotIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "saveSlot", 0);
+    menu.sramAutoSaveIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "sramAutoSave", menu.sramAutoSaveIndex);
     if (menu.saveSlotIndex < 0 || menu.saveSlotIndex > 9) menu.saveSlotIndex = 0;
 
     // Username
@@ -2526,10 +2570,12 @@ static nk_bool LibretroHotkeyGPPressed(enum nk_gamepad_button btn) {
     return btn != NK_GAMEPAD_BUTTON_INVALID && nk_gamepad_is_button_pressed(&menu.gamepads, -1, btn);
 }
 
-void UpdateLibretroMenu(void) {// If there is no menu, skip.
+void UpdateLibretroMenu(void) { // If there is no menu, skip.
     if (menu.ctx == NULL) {
         return;
     }
+
+    MenuTickSRAMAutoSave();
 
     // Update the gamepad state, so that menu inputs can still be found.
     nk_gamepad_update(nk_console_get_gamepads(menu.console));
