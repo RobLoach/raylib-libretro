@@ -89,6 +89,7 @@ typedef struct LibretroMenu {
     int portDeviceIndex[16];              // per-port combobox selection index
     char portDeviceOptions[16][512];      // per-port pipe-separated device list (must outlive the combobox)
     char portDeviceLabel[16][16];         // per-port "Port N" label (must outlive the combobox)
+    char gamepadRebindPortLabel[16][16];  // per-port "Port N" label for the Gamepad Controls submenu
     nk_console* loadGameWidget;
     nk_console* saveStateButton;
     nk_console* loadStateButton;
@@ -1632,6 +1633,56 @@ LibretroMenu* InitLibretroMenu(void) {
             LibretroMenuKeyConsole(kbMenu, "R3",     RETRO_DEVICE_ID_JOYPAD_R3);
         }
 
+        // Gamepad Controls — per-port remap of libretro buttons to physical raylib gamepad buttons.
+        // Combobox indices align with the raylib GamepadButton enum so they can be written straight
+        // into LIBRETRO.gamepadButtonMap[port][btn]; index 0 (GAMEPAD_BUTTON_UNKNOWN) means "use default".
+        {
+            static const char* gamepadButtonNames =
+                "(Default)|D-Pad Up|D-Pad Right|D-Pad Down|D-Pad Left|"
+                "Face Up (Y/Triangle)|Face Right (B/Circle)|Face Down (A/Cross)|Face Left (X/Square)|"
+                "L1|L2|R1|R2|Select|Home|Start|L3|R3";
+
+            nk_console* gpMenu = nk_console_button(settings, "Gamepad Controls");
+            nk_console_button_set_symbol(gpMenu, NK_SYMBOL_TRIANGLE_RIGHT);
+            nk_console_add_event(gpMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(gpMenu, "Gamepad Controls", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_UP);
+
+            for (int port = 0; port < 4; port++) {
+                TextCopy(menu.gamepadRebindPortLabel[port], TextFormat("Port %d", port + 1));
+                nk_console* portMenu = nk_console_button(gpMenu, menu.gamepadRebindPortLabel[port]);
+                nk_console_button_set_symbol(portMenu, NK_SYMBOL_TRIANGLE_RIGHT);
+                nk_console_add_event(portMenu, NK_CONSOLE_EVENT_BACK, &MenuCommitSettings);
+                nk_console_button_set_symbol(
+                    nk_console_button_onclick(portMenu, menu.gamepadRebindPortLabel[port], &nk_console_button_back),
+                    NK_SYMBOL_TRIANGLE_UP);
+
+                static const struct { const char* label; int btn; } rows[] = {
+                    {"B",      RETRO_DEVICE_ID_JOYPAD_B},
+                    {"Y",      RETRO_DEVICE_ID_JOYPAD_Y},
+                    {"Select", RETRO_DEVICE_ID_JOYPAD_SELECT},
+                    {"Start",  RETRO_DEVICE_ID_JOYPAD_START},
+                    {"Up",     RETRO_DEVICE_ID_JOYPAD_UP},
+                    {"Down",   RETRO_DEVICE_ID_JOYPAD_DOWN},
+                    {"Left",   RETRO_DEVICE_ID_JOYPAD_LEFT},
+                    {"Right",  RETRO_DEVICE_ID_JOYPAD_RIGHT},
+                    {"A",      RETRO_DEVICE_ID_JOYPAD_A},
+                    {"X",      RETRO_DEVICE_ID_JOYPAD_X},
+                    {"L",      RETRO_DEVICE_ID_JOYPAD_L},
+                    {"R",      RETRO_DEVICE_ID_JOYPAD_R},
+                    {"L2",     RETRO_DEVICE_ID_JOYPAD_L2},
+                    {"R2",     RETRO_DEVICE_ID_JOYPAD_R2},
+                    {"L3",     RETRO_DEVICE_ID_JOYPAD_L3},
+                    {"R3",     RETRO_DEVICE_ID_JOYPAD_R3},
+                };
+                for (size_t r = 0; r < sizeof(rows)/sizeof(rows[0]); r++) {
+                    nk_console_combobox(portMenu, rows[r].label, gamepadButtonNames, '|',
+                        &LIBRETRO.gamepadButtonMap[port][rows[r].btn]);
+                }
+            }
+        }
+
         // Directories
         {
             nk_console* dirMenu = nk_console_button(settings, "Directories");
@@ -2207,6 +2258,15 @@ static void LibretroMenuUpdateConfig(void) {
     for (int i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++) {
         rlconfig_set_int(menu.cfg, "raylib-libretro", TextFormat("keyboard%d", i), LIBRETRO.keyboardPlayer1[i]);
     }
+
+    // Per-port gamepad button remap ([inputPort0], [inputPort1], …). Each key is the libretro
+    // button index; the value is a raylib GamepadButton, or 0 to fall back to the default.
+    for (int port = 0; port < 16; port++) {
+        const char* section = TextFormat("inputPort%d", port);
+        for (int i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++) {
+            rlconfig_set_int(menu.cfg, section, TextFormat("button%d", i), LIBRETRO.gamepadButtonMap[port][i]);
+        }
+    }
 }
 
 static bool SaveLibretroMenuSettings(void) {
@@ -2435,6 +2495,14 @@ static bool LoadLibretroMenuSettings(void) {
     // Keyboard Controls
     for (int i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++) {
         LIBRETRO.keyboardPlayer1[i] = rlconfig_get_int(menu.cfg, "raylib-libretro", TextFormat("keyboard%d", i), LIBRETRO.keyboardPlayer1[i]);
+    }
+
+    // Per-port gamepad button remap
+    for (int port = 0; port < 16; port++) {
+        const char* section = TextFormat("inputPort%d", port);
+        for (int i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++) {
+            LIBRETRO.gamepadButtonMap[port][i] = rlconfig_get_int(menu.cfg, section, TextFormat("button%d", i), LIBRETRO.gamepadButtonMap[port][i]);
+        }
     }
 
     TraceLog(LOG_INFO, "MENU: Loaded menu settings from %s", RAYLIB_LIBRETRO_CFG_FILE);
