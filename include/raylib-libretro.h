@@ -261,8 +261,8 @@ typedef struct LibretroCoreData {
     bool loaded;
     uint64_t serializationQuirks; /** Bitmask from RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS. */
 
-    // The last performance counter registered. TODO: Make it a linked list.
-    struct retro_perf_counter* perf_counter_last;
+    struct retro_perf_counter** perf_counters;
+    unsigned perf_counter_count;
     struct retro_frame_time_callback runloop_frame_time;
     retro_usec_t runloop_frame_time_last;
     struct retro_audio_callback audio_callback;
@@ -762,7 +762,7 @@ static bool InitLibretroVideo(void) {
  * @return retro_time_t The current in-game time in microseconds.
  */
 static retro_time_t GetLibretroTimeUSEC(void) {
-    return (retro_time_t)(LIBRETRO.core.gameTimeNSEC / 1000);
+    return (retro_time_t)(LIBRETRO.core.gameTimeNSEC / (retro_perf_tick_t)1000);
 }
 
 /**
@@ -791,7 +791,15 @@ static retro_perf_tick_t GetLibretroPerfCounter(void) {
  * @see retro_perf_register_t
  */
 static void SetLibretroPerformanceCounter(struct retro_perf_counter* counter) {
-    LIBRETRO.core.perf_counter_last = counter;
+    // Ignore counters already in the array, otherwise a core that registers the
+    // same counter twice would get two slots pointing at it.
+    if (counter == NULL || counter->registered) {
+        return;
+    }
+    LIBRETRO.core.perf_counters = (struct retro_perf_counter**)MemRealloc(
+        LIBRETRO.core.perf_counters,
+        (LIBRETRO.core.perf_counter_count + 1) * sizeof(struct retro_perf_counter*));
+    LIBRETRO.core.perf_counters[LIBRETRO.core.perf_counter_count++] = counter;
     counter->registered = true;
 }
 
@@ -801,8 +809,12 @@ static void SetLibretroPerformanceCounter(struct retro_perf_counter* counter) {
  * @see retro_perf_start_t
  */
 static void StartLibretroPerformanceCounter(struct retro_perf_counter* counter) {
+    if (counter == NULL) {
+        return;
+    }
     if (counter->registered) {
         counter->start = GetLibretroPerfCounter();
+        counter->call_cnt++;
     }
 }
 
@@ -812,7 +824,12 @@ static void StartLibretroPerformanceCounter(struct retro_perf_counter* counter) 
  * @see retro_perf_stop_t
  */
 static void StopLibretroPerformanceCounter(struct retro_perf_counter* counter) {
-    counter->total = GetLibretroPerfCounter() - counter->start;
+    if (counter == NULL) {
+        return;
+    }
+    // Accumulate across every start/stop pair; total is the sum of all measured
+    // intervals, not just the most recent one.
+    counter->total += GetLibretroPerfCounter() - counter->start;
 }
 
 /**
@@ -821,11 +838,14 @@ static void StopLibretroPerformanceCounter(struct retro_perf_counter* counter) {
  * @see retro_perf_log_t
  */
 static void LogLibretroPerformanceCounter(void) {
-    // TODO: Use a linked list of counters, and loop through them all.
-    if (LIBRETRO.core.perf_counter_last == NULL) {
-        return;
+    for (unsigned i = 0; i < LIBRETRO.core.perf_counter_count; i++) {
+        struct retro_perf_counter* c = LIBRETRO.core.perf_counters[i];
+        TraceLog(LOG_INFO, "LIBRETRO: Timer #%d %s: %llu ticks across %llu calls",
+            i + 1,
+            c->ident != NULL ? c->ident : "",
+            (unsigned long long)c->total,
+            (unsigned long long)c->call_cnt);
     }
-    TraceLog(LOG_INFO, "LIBRETRO: Timer %s: %i - %i", LIBRETRO.core.perf_counter_last->ident, LIBRETRO.core.perf_counter_last->start, LIBRETRO.core.perf_counter_last->total);
 }
 
 static bool SetLibretroRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
@@ -3874,6 +3894,10 @@ static void CloseLibretro(void) {
     // Close the dynamically loaded handle.
     if (LIBRETRO.core.symbols.handle != NULL) {
         dylib_close(LIBRETRO.core.symbols.handle);
+    }
+
+    if (LIBRETRO.core.perf_counters != NULL) {
+        MemFree(LIBRETRO.core.perf_counters);
     }
 
     // Release owned pointers before the memset wipes them.
