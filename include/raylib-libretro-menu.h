@@ -596,19 +596,36 @@ static bool LibretroMenuComboTriggered(int gamepad) {
     }
 }
 
+#ifdef __EMSCRIPTEN__
+// requestFullscreen() must originate from a user-gesture event handler.
+// Raylib buffers input between frames, so by the time this callback fires
+// we are inside requestAnimationFrame — the gesture context is gone.
+// We defer by registering a one-shot listener for the next gesture event.
+// emscripten_request_fullscreen's deferUntilInEventHandler only hooks
+// mousedown, which is never synthesised on mobile when touch-action:none
+// is set on the canvas — so we register for touch/pointer events too.
+EM_JS(void, LibretroMenuRequestFullscreen, (int enter), {
+    if (!enter) {
+        if (document.exitFullscreen) document.exitFullscreen();
+        return;
+    }
+    var types = ['mousedown', 'touchend', 'pointerup'];
+    function onGesture() {
+        types.forEach(function(t) { document.removeEventListener(t, onGesture, true); });
+        var el = document.documentElement;
+        if (el.requestFullscreen) {
+            el.requestFullscreen({navigationUI: 'hide'}).catch(function(){});
+        }
+    }
+    types.forEach(function(t) { document.addEventListener(t, onGesture, true); });
+});
+#endif
+
 static void LibretroMenuFullscreenChanged(nk_console* widget, void* user_data) {
     (void)widget;
     (void)user_data;
 #ifdef __EMSCRIPTEN__
-    // requestFullscreen() must originate from a user-gesture event handler.
-    // Raylib buffers input between frames, so by the time this callback fires
-    // we are inside requestAnimationFrame — the gesture context is gone.
-    // deferUntilInEventHandler=1 queues the request until the next user input.
-    if (menu.fullscreen) {
-        emscripten_request_fullscreen("#canvas", 1);
-    } else {
-        emscripten_exit_fullscreen();
-    }
+    LibretroMenuRequestFullscreen(menu.fullscreen ? 1 : 0);
 #else
     ToggleFullscreen();
     menu.fullscreen = IsWindowFullscreen();
@@ -2335,7 +2352,7 @@ static bool LoadLibretroMenuSettings(void) {
     // Queue a deferred fullscreen request so the saved preference is applied on
     // the first user interaction after page load (the only timing browsers allow).
     if (savedFullscreen) {
-        emscripten_request_fullscreen("#canvas", 1);
+        LibretroMenuRequestFullscreen(1);
     }
 #else
     if (savedFullscreen != (nk_bool)IsWindowFullscreen()) ToggleFullscreen();
