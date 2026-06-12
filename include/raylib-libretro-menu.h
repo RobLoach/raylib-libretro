@@ -1611,6 +1611,10 @@ LibretroMenu* InitLibretroMenu(void) {
             // Rewind
             nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
 
+            // Game Focus: pass all keys to the core, suspend frontend hotkeys.
+            nk_console_checkbox(gameplayMenu, "Game Focus", &menu.gameFocusActive)
+                ->tooltip = "Pass all keys to the core and suspend frontend hotkeys";
+
             // Analog to D-Pad
             nk_console_combobox(gameplayMenu, "Analog to D-Pad",
                 "None|Left Analog|Right Analog", '|', &LIBRETRO.analogToDpadIndex)
