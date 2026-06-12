@@ -762,7 +762,7 @@ static bool InitLibretroVideo(void) {
  * @return retro_time_t The current in-game time in microseconds.
  */
 static retro_time_t GetLibretroTimeUSEC(void) {
-    return (retro_time_t)(LIBRETRO.core.gameTimeNSEC / 1000);
+    return (retro_time_t)(LIBRETRO.core.gameTimeNSEC / (retro_perf_tick_t)1000);
 }
 
 /**
@@ -791,6 +791,11 @@ static retro_perf_tick_t GetLibretroPerfCounter(void) {
  * @see retro_perf_register_t
  */
 static void SetLibretroPerformanceCounter(struct retro_perf_counter* counter) {
+    // Ignore counters already in the array, otherwise a core that registers the
+    // same counter twice would get two slots pointing at it.
+    if (counter == NULL || counter->registered) {
+        return;
+    }
     LIBRETRO.core.perf_counters = (struct retro_perf_counter**)MemRealloc(
         LIBRETRO.core.perf_counters,
         (LIBRETRO.core.perf_counter_count + 1) * sizeof(struct retro_perf_counter*));
@@ -804,8 +809,12 @@ static void SetLibretroPerformanceCounter(struct retro_perf_counter* counter) {
  * @see retro_perf_start_t
  */
 static void StartLibretroPerformanceCounter(struct retro_perf_counter* counter) {
+    if (counter == NULL) {
+        return;
+    }
     if (counter->registered) {
         counter->start = GetLibretroPerfCounter();
+        counter->call_cnt++;
     }
 }
 
@@ -815,7 +824,12 @@ static void StartLibretroPerformanceCounter(struct retro_perf_counter* counter) 
  * @see retro_perf_stop_t
  */
 static void StopLibretroPerformanceCounter(struct retro_perf_counter* counter) {
-    counter->total = GetLibretroPerfCounter() - counter->start;
+    if (counter == NULL) {
+        return;
+    }
+    // Accumulate across every start/stop pair; total is the sum of all measured
+    // intervals, not just the most recent one.
+    counter->total += GetLibretroPerfCounter() - counter->start;
 }
 
 /**
@@ -826,7 +840,11 @@ static void StopLibretroPerformanceCounter(struct retro_perf_counter* counter) {
 static void LogLibretroPerformanceCounter(void) {
     for (unsigned i = 0; i < LIBRETRO.core.perf_counter_count; i++) {
         struct retro_perf_counter* c = LIBRETRO.core.perf_counters[i];
-        TraceLog(LOG_INFO, "LIBRETRO: Timer %s: %i - %i", c->ident, c->start, c->total);
+        TraceLog(LOG_INFO, "LIBRETRO: Timer #%d %s: %llu ticks across %llu calls",
+            i + 1,
+            c->ident != NULL ? c->ident : "",
+            (unsigned long long)c->total,
+            (unsigned long long)c->call_cnt);
     }
 }
 
