@@ -2,6 +2,8 @@
 *
 *   raylib-libretro-physfs - PhysFS-backed game loader for raylib-libretro.
 *
+*   LICENSE: zlib/libpng
+*
 *   Wraps LoadLibretroGame so that .zip archives are mounted at /game and the
 *   ROM inside is handed to the core (data or path, per RETRO_ENVIRONMENT_SET_
 *   CONTENT_INFO_OVERRIDE). Frontends opt in by including this header; the core

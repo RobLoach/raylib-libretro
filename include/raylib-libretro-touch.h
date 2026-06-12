@@ -12,7 +12,7 @@
 *   regardless of aspect ratio or window size.
 *
 *   LICENSE: zlib/libpng
-*   Copyright (c) 2020 Rob Loach (@RobLoach)
+*   Copyright (c) 2026 Rob Loach (@RobLoach)
 *
 **********************************************************************************************/
 
@@ -276,7 +276,7 @@ void UpdateLibretroTouchControls(void) {
     for (int t = 0; t < touchCount && nPoints < 10; t++) {
         points[nPoints++] = GetTouchPosition(t);
     }
-    
+
     // On the web a touch is also reported as a mouse press at the same
     // position; only sample the mouse when there are no active touches to
     // avoid registering the same point twice.

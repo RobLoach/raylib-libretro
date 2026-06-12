@@ -1,3 +1,11 @@
+/**********************************************************************************************
+*
+*   raylib-libretro-config - Config system for raylib-libretro
+*
+*   LICENSE: GPL-3.0-or-later
+*
+**********************************************************************************************/
+
 #ifndef RAYLIB_LIBRETRO_CONFIG_H
 #define RAYLIB_LIBRETRO_CONFIG_H
 

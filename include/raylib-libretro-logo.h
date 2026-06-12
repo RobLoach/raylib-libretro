@@ -15,7 +15,7 @@
 *   GetLibretroLogoEx() to control the pixel scale and colors.
 *
 *   LICENSE: zlib/libpng
-*   Copyright (c) 2020 Rob Loach (@RobLoach)
+*   Copyright (c) 2026 Rob Loach (@RobLoach)
 *
 **********************************************************************************************/
 

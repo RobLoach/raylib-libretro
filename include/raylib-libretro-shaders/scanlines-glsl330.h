@@ -1,3 +1,6 @@
+/**
+ * https://github.com/raysan5/raylib/blob/master/examples/shaders/resources/shaders/glsl330/scanlines.fs
+ */
 "#version 330\n"
 "in vec2 fragTexCoord;\n"
 "in vec4 fragColor;\n"

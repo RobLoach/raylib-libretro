@@ -1,3 +1,6 @@
+/**
+ * https://github.com/raysan5/raylib/blob/master/examples/shaders/resources/shaders/glsl100/scanlines.fs
+ */
 "#version 100\n"
 "precision mediump float;\n"
 "varying vec2 fragTexCoord;\n"

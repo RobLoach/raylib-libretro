@@ -1,11 +1,8 @@
 /**********************************************************************************************
 *
-*   raylib-libretro-android.h — Android-specific helpers (JNI, file picker, intents).
+*   raylib-libretro-android - Android integrations for raylib-libretro.
 *
-*   Guarded by __ANDROID__; compiles to nothing on other platforms. Define
-*   RAYLIB_LIBRETRO_ANDROID_IMPLEMENTATION in exactly one translation unit.
-*
-*   LICENSE: zlib/libpng
+*   LICENSE: GPL-3.0-or-later
 *
 **********************************************************************************************/
 
