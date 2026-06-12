@@ -109,8 +109,8 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
-    int sramAutoSaveIndex;                // combobox index for the SRAM auto-save interval (Off / 15s / 30s / 60s / 2min / 5min)
-    double sramAutoSaveAccumulator;       // seconds since the last successful auto-save
+    int sramAutoSaveIndex; // combobox index for the SRAM auto-save interval (Off / 15s / 30s / 60s / 2min / 5min / 10min)
+    float sramAutoSaveAccumulator; // seconds since the last successful auto-save
     int orientationIndex;                 // Android screen orientation: 0 = Landscape, 1 = Portrait, 2 = Auto
     nk_bool hideCursor;
     nk_bool lockCursor;
@@ -291,7 +291,6 @@ static LibretroMenu menu = {
     .fastForwardSpeed   = 3.0f,
     .slowMotionSpeed    = 0.5f,
     .menuComboIndex     = LIBRETRO_MENU_COMBO_SELECT_START,
-    .sramAutoSaveIndex  = 3, // 1 minute (matches RetroArch's default)
     .hotkeys = {
         [LIBRETRO_HOTKEY_SCREENSHOT] = {
             .name = "Screenshot",
@@ -1125,17 +1124,19 @@ static bool MenuSaveGameSRAM(void) {
     return ok;
 }
 
-// Resolve the SRAM auto-save combobox index to an interval in seconds.
-// Index 0 disables auto-save.
-static float MenuSRAMAutoSaveIntervalSeconds(int index) {
+/**
+ * Return the number of seconds for the given Auto Save SRAM interval.
+ */
+static int MenuSRAMAutoSaveIntervalSeconds(int index) {
     switch (index) {
-        case 1: return 15.0f;
-        case 2: return 30.0f;
-        case 3: return 60.0f;
-        case 4: return 120.0f;
-        case 5: return 300.0f;
+        case 1: return 15;
+        case 2: return 30;
+        case 3: return 60;
+        case 4: return 120;
+        case 5: return 300;
+        case 6: return 600;
         case 0:
-        default: return 0.0f;
+        default: return 0;
     }
 }
 
@@ -1143,13 +1144,13 @@ static float MenuSRAMAutoSaveIntervalSeconds(int index) {
 // elapses. Safe to call every frame; no-ops when auto-save is off, the menu is
 // open (game paused), or no game is loaded.
 static void MenuTickSRAMAutoSave(void) {
-    float interval = MenuSRAMAutoSaveIntervalSeconds(menu.sramAutoSaveIndex);
-    if (interval <= 0.0f || menu.active || !IsLibretroGameReady()) {
+    if (menu.sramAutoSaveIndex <= 0 || menu.active || !IsLibretroGameReady()) {
         return;
     }
+
     menu.sramAutoSaveAccumulator += GetFrameTime();
-    if (menu.sramAutoSaveAccumulator >= (double)interval) {
-        menu.sramAutoSaveAccumulator = 0.0;
+    if (menu.sramAutoSaveAccumulator >= MenuSRAMAutoSaveIntervalSeconds(menu.sramAutoSaveIndex)) {
+        menu.sramAutoSaveAccumulator = 0.0f;
         MenuSaveGameSRAM();
     }
 }
@@ -1601,9 +1602,11 @@ LibretroMenu* InitLibretroMenu(void) {
 
             // Rewind
             nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
-            nk_console* analogCombo = nk_console_combobox(gameplayMenu, "Analog to D-Pad",
-                "None|Left Analog|Right Analog", '|', &LIBRETRO.analogToDpadIndex);
-            analogCombo->tooltip = "Map an analog stick to D-Pad inputs";
+
+            // Analog to D-Pad
+            nk_console_combobox(gameplayMenu, "Analog to D-Pad",
+                "None|Left Analog|Right Analog", '|', &LIBRETRO.analogToDpadIndex)
+                ->tooltip = "Map an analog stick to D-Pad inputs";
 
             // Cursor
             nk_console_checkbox(gameplayMenu, "Hide Cursor", &menu.hideCursor);
@@ -1613,9 +1616,13 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_combobox(gameplayMenu, "Save Slot",
                 "Slot 1|Slot 2|Slot 3|Slot 4|Slot 5|Slot 6|Slot 7|Slot 8|Slot 9|Slot 10",
                 '|', &menu.saveSlotIndex);
-            nk_console* sramAutoSaveCombo = nk_console_combobox(gameplayMenu, "SRAM Auto-Save",
-                "Off|15s|30s|1m|2m|5m", '|', &menu.sramAutoSaveIndex);
-            sramAutoSaveCombo->tooltip = "Periodically flush battery saves to disk so crashes don't lose progress";
+
+            // SRAM Auto-Save
+            nk_console_combobox(gameplayMenu, "SRAM Auto-Save",
+                "Off|15s|30s|1m|2m|5m|10m", '|', &menu.sramAutoSaveIndex)
+                ->tooltip = "Periodically save battery data to disk";
+
+            // Username
             nk_console_textedit(gameplayMenu, "Username", LIBRETRO.username, 128);
         }
 
@@ -2555,7 +2562,7 @@ static nk_bool LibretroHotkeyGPPressed(enum nk_gamepad_button btn) {
     return btn != NK_GAMEPAD_BUTTON_INVALID && nk_gamepad_is_button_pressed(&menu.gamepads, -1, btn);
 }
 
-void UpdateLibretroMenu(void) {// If there is no menu, skip.
+void UpdateLibretroMenu(void) { // If there is no menu, skip.
     if (menu.ctx == NULL) {
         return;
     }
