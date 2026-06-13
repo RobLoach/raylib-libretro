@@ -100,7 +100,7 @@ A roadmap of some interesting features to consider.
 - [x] Multitap (`RETRO_DEVICE_JOYPAD_MULTITAP`)
 - [ ] On-screen overlay touch layouts (PNG, auto-scale, snap-to-edges)
 - [ ] Analog stick deadzone + sensitivity per port
-- [ ] Game-Focus mode (pass all keys through, ignore hotkeys)
+- [x] Game-Focus mode (pass all keys through, ignore hotkeys)
 
 ## Performance / Latency
 

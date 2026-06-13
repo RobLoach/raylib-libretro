@@ -60,7 +60,7 @@ typedef enum LibretroHotkey {
     LIBRETRO_HOTKEY_MUTE,
     LIBRETRO_HOTKEY_FAST_FORWARD,
     LIBRETRO_HOTKEY_SLOW_MOTION,
-    LIBRETRO_HOTKEY_GAME_FOCUS,
+    LIBRETRO_HOTKEY_DISABLE_HOTKEYS,
     LIBRETRO_HOTKEY_COUNT,
 } LibretroHotkey;
 
@@ -110,7 +110,7 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
-    nk_bool gameFocusActive; // Game Focus mode: pass all keys to the core, suspend frontend hotkeys.
+    nk_bool disableHotKeysActive; // Disable HotKeys: pass all keys to the core, suspend frontend hotkeys.
     int sramAutoSaveIndex; // combobox index for the SRAM auto-save interval (Off / 15s / 30s / 60s / 2min / 5min / 10min)
     float sramAutoSaveAccumulator; // seconds since the last successful auto-save
     int orientationIndex;                 // Android screen orientation: 0 = Landscape, 1 = Portrait, 2 = Auto
@@ -396,8 +396,8 @@ static LibretroMenu menu = {
             .key = (nk_rune)'G',
             .gamepad = NK_GAMEPAD_BUTTON_INVALID
         },
-        [LIBRETRO_HOTKEY_GAME_FOCUS] = {
-            .name = "Game Focus",
+        [LIBRETRO_HOTKEY_DISABLE_HOTKEYS] = {
+            .name = "Disable Hot Keys",
             .defaultKey = NK_CONSOLE_KEY_F12,
             .key = NK_CONSOLE_KEY_F12,
             .gamepad = NK_GAMEPAD_BUTTON_INVALID
@@ -1611,9 +1611,9 @@ LibretroMenu* InitLibretroMenu(void) {
             // Rewind
             nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
 
-            // Game Focus: pass all keys to the core, suspend frontend hotkeys.
-            nk_console_checkbox(gameplayMenu, "Game Focus", &menu.gameFocusActive)
-                ->tooltip = "Pass all keys to the core and suspend frontend hotkeys";
+            // Disable Hot Keys
+            nk_console_checkbox(gameplayMenu, "Disable Hot Keys", &menu.disableHotKeysActive)
+                ->tooltip = "Pass all keyboard input to the core and suspend frontend hotkeys";
 
             // Analog to D-Pad
             nk_console_combobox(gameplayMenu, "Analog to D-Pad",
@@ -2600,7 +2600,7 @@ void UpdateLibretroMenu(void) { // If there is no menu, skip.
     }
 
     // Menu Key
-    if ((IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_MENU].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_MENU].gamepad)) && !menu.active) {
+    if ((!menu.disableHotKeysActive && IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_MENU].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_MENU].gamepad)) && !menu.active) {
         ShowLibretroMenu();
     }
 
