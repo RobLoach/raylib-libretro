@@ -71,6 +71,8 @@ make
 
 ## API Usage
 
+See [raylib-libretro-basic.c](example/raylib-libretro-basic.c) for an example of using the API:
+
 ```c
 InitLibretro("fceumm.so");
 LoadLibretroGame("mario.nes");
@@ -158,4 +160,8 @@ doxygen .Doxyfile
 
 ## License
 
-[zlib/libpng](LICENSE)
+See the individual files to see which license applies.
+
+- `raylib-libretro` the application is licensed under [GPL-3.0-or-later](LICENSE)
+- [`raylib-libretro-basic`](example/raylib-libretro-basic.c) the sample application is licensed under zlib/libpng
+- [`raylib-libretro.h`](include/raylib-libretro.h) the API is licensed under zlib/libpng
