@@ -271,7 +271,7 @@ bool Update(void* userData) {
 
         if (IsLibretroGameReady()) {
             KeyboardKey rewindKey = LibretroHotkeyToKeyboardKey(data->menu->hotkeys[LIBRETRO_HOTKEY_REWIND].key);
-            rewinding = data->menu->rewindEnabled && (IsKeyDown(rewindKey) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_REWIND].gamepad));
+            rewinding = data->menu->rewindEnabled && !data->menu->disableHotKeysActive && (IsKeyDown(rewindKey) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_REWIND].gamepad));
 
             // Capture and playback both run at REWIND_CAPTURES_PER_SECOND.
             if (data->menu->rewindEnabled) {
@@ -321,10 +321,13 @@ bool Update(void* userData) {
                     RewindBufferFree(&data->rewind);
                 }
 
-                // Fast Forward
+                // Fast Forward / Slow Motion
                 KeyboardKey key = LibretroHotkeyToKeyboardKey(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].key);
                 KeyboardKey slowMotionKey = LibretroHotkeyToKeyboardKey(data->menu->hotkeys[LIBRETRO_HOTKEY_SLOW_MOTION].key);
-                if (IsKeyDown(key) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
+                if (data->menu->disableHotKeysActive) {
+                    // Skip the Fast Forward / Slow Motion entirely.
+                }
+                else if (IsKeyDown(key) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
                     if (IsKeyPressed(key) || LibretroHotkeyGPPressed(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
                         // Halve audio stream volume during fast-forward without touching
                         // LIBRETRO.volume so restore is just re-applying the stored value.
@@ -393,13 +396,24 @@ bool Update(void* userData) {
         SaveLibretroAllSettings();
         UnloadLibretroGame();
         CloseLibretro();
+        ShowLibretroMenu();
     }
     if (data->menu->shouldQuit) {
         return false;
     }
 
-    // Hot Keys
+    // Hot Key
     if (!menu.active) {
+        // Disable HotKeys Button
+        if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_DISABLE_HOTKEYS].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_DISABLE_HOTKEYS].gamepad)) {
+            menu.disableHotKeysActive = !menu.disableHotKeysActive;
+            SetLibretroMessage(menu.disableHotKeysActive ? "Hot Keys Disabled" : "Hot Keys Enabled", 2.0);
+            return true;
+        }
+    }
+
+    // Check all the other Hot Keys
+    if (!menu.active && !menu.disableHotKeysActive) {
 
         // Screenshot
         if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_SCREENSHOT].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_SCREENSHOT].gamepad) && IsLibretroGameReady()) {

@@ -60,6 +60,7 @@ typedef enum LibretroHotkey {
     LIBRETRO_HOTKEY_MUTE,
     LIBRETRO_HOTKEY_FAST_FORWARD,
     LIBRETRO_HOTKEY_SLOW_MOTION,
+    LIBRETRO_HOTKEY_DISABLE_HOTKEYS,
     LIBRETRO_HOTKEY_COUNT,
 } LibretroHotkey;
 
@@ -109,6 +110,7 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
+    nk_bool disableHotKeysActive; // Disable HotKeys: pass all keys to the core, suspend frontend hotkeys.
     int sramAutoSaveIndex; // combobox index for the SRAM auto-save interval (Off / 15s / 30s / 60s / 2min / 5min / 10min)
     float sramAutoSaveAccumulator; // seconds since the last successful auto-save
     int orientationIndex;                 // Android screen orientation: 0 = Landscape, 1 = Portrait, 2 = Auto
@@ -392,6 +394,12 @@ static LibretroMenu menu = {
             .name = "Slow Motion",
             .defaultKey = (nk_rune)'G',
             .key = (nk_rune)'G',
+            .gamepad = NK_GAMEPAD_BUTTON_INVALID
+        },
+        [LIBRETRO_HOTKEY_DISABLE_HOTKEYS] = {
+            .name = "Disable Hot Keys",
+            .defaultKey = NK_CONSOLE_KEY_F12,
+            .key = NK_CONSOLE_KEY_F12,
             .gamepad = NK_GAMEPAD_BUTTON_INVALID
         },
     },
@@ -1603,6 +1611,10 @@ LibretroMenu* InitLibretroMenu(void) {
             // Rewind
             nk_console_checkbox(gameplayMenu, "Rewind", &menu.rewindEnabled);
 
+            // Disable Hot Keys
+            nk_console_checkbox(gameplayMenu, "Disable Hot Keys", &menu.disableHotKeysActive)
+                ->tooltip = "Pass all keyboard input to the core and suspend frontend hotkeys";
+
             // Analog to D-Pad
             nk_console_combobox(gameplayMenu, "Analog to D-Pad",
                 "None|Left Analog|Right Analog", '|', &LIBRETRO.analogToDpadIndex)
@@ -2219,6 +2231,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "theme", menu.themeSelectedIndex);
     rlconfig_set_float(menu.cfg, "raylib-libretro", "volume", LIBRETRO.volume);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "rewind", menu.rewindEnabled ? 1 : 0);
+    rlconfig_set_int(menu.cfg, "raylib-libretro", "disableHotKeys", menu.disableHotKeysActive ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "analogToDpad", LIBRETRO.analogToDpadIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "menuCombo", menu.menuComboIndex);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "hideCursor", menu.hideCursor ? 1 : 0);
@@ -2417,6 +2430,9 @@ static bool LoadLibretroMenuSettings(void) {
     // Rewind
     menu.rewindEnabled = rlconfig_get_int(menu.cfg, "raylib-libretro", "rewind", 0) > 0;
 
+    // Disable Hot Keys
+    menu.disableHotKeysActive = (nk_bool)(rlconfig_get_int(menu.cfg, "raylib-libretro", "disableHotKeys", 0) > 0);
+
     // Analog to D-Pad
     LIBRETRO.analogToDpadIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "analogToDpad", 0);
     if (LIBRETRO.analogToDpadIndex < 0 || LIBRETRO.analogToDpadIndex > 2) LIBRETRO.analogToDpadIndex = 0;
@@ -2588,7 +2604,7 @@ void UpdateLibretroMenu(void) { // If there is no menu, skip.
     }
 
     // Menu Key
-    if ((IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_MENU].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_MENU].gamepad)) && !menu.active) {
+    if ((!menu.disableHotKeysActive && IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_MENU].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_MENU].gamepad)) && !menu.active) {
         ShowLibretroMenu();
     }
 
