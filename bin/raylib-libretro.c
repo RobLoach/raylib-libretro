@@ -181,6 +181,11 @@ bool Init(void** userData, int argc, char** argv) {
         return false;
     }
 
+    // Games database: open the persistent index and prepare the in-app browser.
+    TraceLog(LOG_INFO, "LIBRETRO: Initializing Games database");
+    InitLibretroGames();
+    LibretroGamesSetFont(GetLibretroMenuFont());
+
 #if defined(__ANDROID__)
     INIT_TRACE("ANDROID/INIT: android environment");
     SetupAndroidEnvironment(data->menu);
@@ -192,6 +197,9 @@ bool Init(void** userData, int argc, char** argv) {
         if (MenuLoadGame(intentPath)) HideLibretroMenu(); else ShowLibretroMenu();
     }
 #endif
+
+    // Begin indexing the content directory (runs incrementally across frames in Update()).
+    LibretroGamesStartScan(LIBRETRO.fileBrowserStartDirectory);
 
     // Parse the command line arguments.
     // -L/--libretro <core> sets the core; the first non-flag argument is the game file.
@@ -239,6 +247,9 @@ bool Update(void* userData) {
         AndroidSetOrientation(GetAndroidApp(), data->appliedOrientation);
     }
 #endif
+
+    // Advance the games-database scan a batch at a time so the UI stays responsive.
+    UpdateLibretroGamesScan();
 
     // Deferred menu open: apply after input has refreshed so the release event
     // that triggered the MENU touch button is gone before Nuklear processes input.
@@ -559,6 +570,11 @@ void Draw(void* userData) {
     }
 
     DrawLibretroMessage();
+
+    // Indexing overlay, shown over the menu while the games database is being built.
+    if (IsLibretroGamesScanning() && data->menu->active) {
+        DrawLibretroGamesScanProgress();
+    }
 }
 
 void Close(void* userData) {
@@ -574,6 +590,7 @@ void Close(void* userData) {
     UnloadLibretroGame();
     CloseLibretro();
 
+    CloseLibretroGames();
     CloseLibretroMenu();
 
     UnloadLibretroShaders();
