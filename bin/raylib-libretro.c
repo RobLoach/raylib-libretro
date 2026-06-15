@@ -250,6 +250,7 @@ bool Update(void* userData) {
     // Update virtual joypad from touch controls.
     if (data->menu->touchControls) {
         SetTouchHapticsEnabled(data->menu->touchHapticsEnabled);
+        SetTouchControlsScale(data->menu->touchScale);
         if (!data->menu->active) {
             UpdateLibretroTouchControls();
             if (IsTouchControlsMenuPressed()) {
