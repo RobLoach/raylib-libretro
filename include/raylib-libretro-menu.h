@@ -240,10 +240,48 @@ static void LibretroMenuEmscriptenLoadGameClicked(nk_console* widget, void* user
 #define cvector_clib_calloc(n,sz)  memset(MemAlloc((unsigned int)((n)*(sz))), 0, (size_t)((n)*(sz)))
 #define CVECTOR_H "../vendor/c-vector/cvector.h"
 
+#ifdef __ANDROID__
+static nk_bool nk_console_file_add_files_android(nk_console* console, const char* path);
+#define NK_CONSOLE_FILE_ADD_FILES nk_console_file_add_files_android
+#endif
+
 #define NK_CONSOLE_IMPLEMENTATION
 #define NK_CONSOLE_MALLOC nk_raylib_malloc
 #define NK_CONSOLE_FREE nk_raylib_mfree
 #include "../vendor/nuklear_console/nuklear_console.h"
+
+#ifdef __ANDROID__
+static nk_bool nk_console_file_add_files_android(nk_console* console, const char* path) {
+    FilePathList filePathList = LoadDirectoryFiles(path);
+    nk_bool result = nk_false;
+
+    for (int pass = 0; pass < 2; pass++) {
+        nk_bool want_dir = (pass == 0) ? nk_true : nk_false;
+        for (int i = 0; i < (int)filePathList.count; i++) {
+            nk_bool is_dir = DirectoryExists(filePathList.paths[i]) ? nk_true : nk_false;
+            if (is_dir != want_dir) continue;
+            if (nk_console_file_add_entry(console, filePathList.paths[i], is_dir) != NULL) {
+                result = nk_true;
+            }
+        }
+    }
+    UnloadDirectoryFiles(filePathList);
+
+    if (!result) {
+        char extStorage[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+        if (AndroidGetExternalStorageDir(GetAndroidApp(), extStorage) && extStorage[0] != '\0') {
+            int pathLen = TextLength(path);
+            int extLen = TextLength(extStorage);
+            if (extLen > pathLen && TextFindIndex(extStorage, path) == 0) {
+                nk_console_file_add_entry(console, extStorage, nk_true);
+                result = nk_true;
+            }
+        }
+    }
+
+    return result;
+}
+#endif
 
 #ifndef RAYLIB_LIBRETRO_CFG_FILE
 #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
