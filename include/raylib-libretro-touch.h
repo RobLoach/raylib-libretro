@@ -40,6 +40,8 @@ void DrawLibretroTouchControls(void);
 bool IsTouchControlsMenuPressed(void);
 void SetTouchHapticsEnabled(bool enabled);
 bool GetTouchHapticsEnabled(void);
+void SetTouchControlsScale(float scale);
+float GetTouchControlsScale(void);
 
 #if defined(__cplusplus)
 }
@@ -57,6 +59,8 @@ bool GetTouchHapticsEnabled(void);
 
 #include "raymath.h"
 
+static float LibretroTouchScale = 1.0f;
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -68,16 +72,19 @@ extern "C" {
  */
 static int GetLibretroTouchButtons(TouchControlsButton* btns, int w, int h) {
     float ref  = (float)((w < h) ? w : h);
-    float bs   = ref * 0.12f;   // D-pad / select / start button size
-    float fbs  = ref * 0.15f;   // face button size
-    float edge = ref * 0.02f;   // margin from screen edges
+    float sc   = LibretroTouchScale;
+    float bs   = ref * 0.12f * sc;   // D-pad / select / start button size
+    float fbs  = ref * 0.15f * sc;   // face button size
+    float edge = ref * 0.02f;        // margin from screen edges
 
     // D-pad: bottom-left, cross layout, buttons touching (no gap)
     //   . U .
     //   L . R
     //   . D .
+    float halfW = (float)w * 0.5f;
     float dy = h - 3*bs - edge;
     float dx = w * 0.04f;
+    if (dx + 3*bs > halfW) dx = halfW - 3*bs;
     int n = 0;
     btns[n++] = (TouchControlsButton){{ dx + bs,     dy,        bs, bs }, RETRO_DEVICE_ID_JOYPAD_UP,    "^", DARKGRAY };
     btns[n++] = (TouchControlsButton){{ dx,           dy + bs,   bs, bs }, RETRO_DEVICE_ID_JOYPAD_LEFT,  "<", DARKGRAY };
@@ -91,6 +98,7 @@ static int GetLibretroTouchButtons(TouchControlsButton* btns, int w, int h) {
     float fsp = fbs * 0.82f;  // center-to-center spacing (< fbs = slight overlap)
     float fy = h - (2*fsp + fbs) - edge;
     float fx = w - (2*fsp + fbs) - w * 0.04f;
+    if (fx < halfW) fx = halfW;
     btns[n++] = (TouchControlsButton){{ fx + fsp,     fy,         fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_X, "", DARKBLUE  };
     btns[n++] = (TouchControlsButton){{ fx,            fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_Y, "", DARKGREEN };
     btns[n++] = (TouchControlsButton){{ fx + 2*fsp,    fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_A, "", MAROON    };
@@ -404,6 +412,16 @@ bool IsTouchControlsMenuPressed(void) {
 
 void SetTouchHapticsEnabled(bool enabled) { LibretroTouchHapticsEnabled = enabled; }
 bool GetTouchHapticsEnabled(void) { return LibretroTouchHapticsEnabled; }
+
+void SetTouchControlsScale(float scale) {
+    if (scale < 0.4f) scale = 0.4f;
+    if (scale > 2.0f) scale = 2.0f;
+    if (LibretroTouchScale != scale) {
+        LibretroTouchScale = scale;
+        LibretroTouchCachedW = -1;
+    }
+}
+float GetTouchControlsScale(void) { return LibretroTouchScale; }
 
 void DrawLibretroTouchControls(void) {
     LibretroTouchEnsureLayout();
