@@ -1599,7 +1599,7 @@ LibretroMenu* InitLibretroMenu(void) {
             nk_console_checkbox(gameplayMenu, "Touch Controls", &menu.touchControls);
 
             // Touch Control Scale
-            nk_console_slider_float(gameplayMenu, "Touch Scale", 0.2f, &menu.touchScale, 3.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.2f, 3.0f));
+            nk_console_slider_float(gameplayMenu, "Touch Scale", 0.4f, &menu.touchScale, 2.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.2f, 2.0f));
 
             // Touch Haptics
             #if defined(PLATFORM_WEB)
@@ -2460,8 +2460,8 @@ static bool LoadLibretroMenuSettings(void) {
 
     // Touch Scale
     menu.touchScale = rlconfig_get_float(menu.cfg, "raylib-libretro", "touchScale", 1.0f);
-    if (menu.touchScale < 0.2f) menu.touchScale = 0.2f;
-    if (menu.touchScale > 3.0f) menu.touchScale = 3.0f;
+    if (menu.touchScale < 0.4f) menu.touchScale = 0.4f;
+    if (menu.touchScale > 2.0f) menu.touchScale = 2.0f;
 
     // Screen Orientation (0 = Landscape, 1 = Portrait, 2 = Auto; applied on Android)
     menu.orientationIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "orientation", 0);

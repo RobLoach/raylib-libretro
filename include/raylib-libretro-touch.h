@@ -414,8 +414,8 @@ void SetTouchHapticsEnabled(bool enabled) { LibretroTouchHapticsEnabled = enable
 bool GetTouchHapticsEnabled(void) { return LibretroTouchHapticsEnabled; }
 
 void SetTouchControlsScale(float scale) {
-    if (scale < 0.2f) scale = 0.2f;
-    if (scale > 3.0f) scale = 3.0f;
+    if (scale < 0.4f) scale = 0.4f;
+    if (scale > 2.0f) scale = 2.0f;
     if (LibretroTouchScale != scale) {
         LibretroTouchScale = scale;
         LibretroTouchCachedW = -1;
