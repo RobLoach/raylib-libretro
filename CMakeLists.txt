@@ -60,6 +60,9 @@ endif()
 add_subdirectory(include)
 add_subdirectory(lib)
 
+# sqlite3 — backs the games database (include/raylib-libretro-games.h); shared by the app and tests.
+add_subdirectory(vendor/sqlite3)
+
 # Example
 option(BUILD_RAYLIB_LIBRETRO_EXAMPLE "Build Examples" ON)
 if (BUILD_RAYLIB_LIBRETRO_EXAMPLE)
@@ -70,6 +73,13 @@ endif()
 option(BUILD_RAYLIB_LIBRETRO "raylib-libretro" ON)
 if(BUILD_RAYLIB_LIBRETRO)
     add_subdirectory(bin)
+endif()
+
+# Tests (headless games-database unit tests; no window or cores required)
+option(BUILD_RAYLIB_LIBRETRO_TESTS "Build tests" ON)
+if (BUILD_RAYLIB_LIBRETRO_TESTS)
+    enable_testing()
+    add_subdirectory(test)
 endif()
 
 # Documentation

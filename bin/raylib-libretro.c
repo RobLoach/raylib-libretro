@@ -181,9 +181,13 @@ bool Init(void** userData, int argc, char** argv) {
         return false;
     }
 
-    // Games database: open the persistent index and prepare the in-app browser.
+    // Games database: open the persistent index and prepare the in-app browser. A failure here
+    // is non-fatal (games still scan into memory for this session) but won't persist, so surface
+    // it rather than silently swallowing the bool return.
     TraceLog(LOG_INFO, "LIBRETRO: Initializing Games database");
-    InitLibretroGames();
+    if (!InitLibretroGames()) {
+        SetLibretroMessage("Games index won't be saved (database unavailable)", 3.0);
+    }
     LibretroGamesSetFont(GetLibretroMenuFont());
 
 #if defined(__ANDROID__)
