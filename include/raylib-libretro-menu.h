@@ -1496,7 +1496,7 @@ static void MenuRebuildGamesPage(void) {
 
     // The game list.
     LibretroGamesRebuildFiltered();
-    menu.gamesListView = nk_console_list_view(menu.gamesMenu, "GamesList", 12,
+    menu.gamesListView = nk_console_list_view(menu.gamesMenu, "GamesList", 0,
         (nk_uint)LibretroGamesFilteredCount(), &MenuGamesGetLabel);
     nk_console_add_event(menu.gamesListView, NK_CONSOLE_EVENT_CLICKED, &MenuGamesListClicked);
 }

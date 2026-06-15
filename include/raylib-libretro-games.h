@@ -73,7 +73,7 @@ typedef enum LibretroGamesScanState {
 } LibretroGamesScanState;
 
 // Lifecycle
-bool InitLibretroGames(void);                              // open the database, load the index
+bool InitLibretroGames(const char* dbDir);                  // open the database in dbDir, load the index
 void CloseLibretroGames(void);                             // free memory, close the database
 
 // Scanning (incremental, driven from the app's Update())
@@ -134,7 +134,6 @@ LibretroGameSystem* LibretroGamesSystem(int index);
 #define RAYLIB_LIBRETRO_GAMES_IMPLEMENTATION_ONCE
 
 #include <stdlib.h>   // qsort
-#include <stdio.h>    // remove (delete a corrupt database file; raylib has no delete-file API)
 #include "sqlite3.h"
 #if defined(PLATFORM_WEB) || defined(__EMSCRIPTEN__)
 #include <emscripten.h>   // EM_ASM: flush SQLite writes from MEMFS to IDBFS
@@ -636,7 +635,7 @@ static void LibretroGamesDeleteDatabaseFiles(const char* dbPath) {
     static const char* suffix[] = { "", "-wal", "-shm", "-journal" };
     for (int i = 0; i < 4; i++) {
         const char* p = (i == 0) ? dbPath : TextFormat("%s%s", dbPath, suffix[i]);
-        if (FileExists(p)) remove(p);
+        if (FileExists(p)) FileRemove(p);
     }
 }
 
@@ -644,11 +643,11 @@ static void LibretroGamesDeleteDatabaseFiles(const char* dbPath) {
 // Lifecycle
 // ---------------------------------------------------------------------------------------------
 
-bool InitLibretroGames(void) {
-    const char* saveDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
-    if (saveDir && saveDir[0] && !DirectoryExists(saveDir)) MakeDirectory(saveDir);
+bool InitLibretroGames(const char* dbDir) {
+    const char* dir = (dbDir && dbDir[0]) ? dbDir : ".";
+    if (!DirectoryExists(dir)) MakeDirectory(dir);
     char dbPath[RAYLIB_LIBRETRO_GAMES_MAX_PATH];
-    TextCopy(dbPath, TextFormat("%s/raylib-libretro.db", (saveDir && saveDir[0]) ? saveDir : "."));
+    TextCopy(dbPath, TextFormat("%s/raylib-libretro.db", dir));
 
     if (sqlite3_open(dbPath, &GAMES.db) != SQLITE_OK || !GAMES.db) {
         TraceLog(LOG_ERROR, "GAMES: Failed to open database %s (%s)", dbPath, GAMES.db ? sqlite3_errmsg(GAMES.db) : "?");

@@ -21,16 +21,13 @@
 #include "raylib-libretro-games.h"
 // raylib-libretro-games.h pulls in sqlite3.h, used below to manipulate the DB out-of-band.
 
+#define RAYLIB_ASSERT_LOG LOG_FATAL
+#include "raylib-assert.h"
+
 #define TMP      "rl_games_test_tmp"
 #define CONTENT  TMP "/content"
-#define SAVE     TMP "/save"
-#define DBPATH   SAVE "/raylib-libretro.db"
-
-static int g_failures = 0;
-static void check(bool cond, const char* msg) {
-    printf("  [%s] %s\n", cond ? "ok" : "FAIL", msg);
-    if (!cond) g_failures++;
-}
+#define DBDIR    TMP
+#define DBPATH   DBDIR "/raylib-libretro.db"
 
 // --- frontend hooks under test: everything is playable except "gamecube" (no GC core) -----------
 static bool TestCoreAvailable(const char* ext, const char* systemId) {
@@ -48,7 +45,7 @@ static void writeGame(const char* rel, const char* text) {
     if (!DirectoryExists(dir)) MakeDirectory(dir);
     SaveFileText(path, (char*)text);
 }
-static void deleteGame(const char* rel) { remove(TextFormat("%s/%s", CONTENT, rel)); }
+static void deleteGame(const char* rel) { FileRemove(TextFormat("%s/%s", CONTENT, rel)); }
 
 static void rescan(void) {
     LibretroGamesStartScan(CONTENT);
@@ -101,20 +98,19 @@ static void setUserVersion(int v) {
 int main(void) {
     SetTraceLogLevel(LOG_WARNING);
     system("rm -rf " TMP);
-    TextCopy(LIBRETRO.saveDirectory, SAVE);
     LibretroGamesSetCallbacks(&TestCoreAvailable, &TestZipInnerExt);
 
     // ---- system detection (pure functions, no scan) ----
     printf("system detection\n");
-    check(TextIsEqual(LibretroGamesDetectSystem("snes"), "super_nes"), "folder 'snes' -> super_nes");
-    check(TextIsEqual(LibretroGamesDetectSystem("Nintendo - Super Nintendo Entertainment System"), "super_nes"), "full SNES name -> super_nes");
-    check(TextIsEqual(LibretroGamesDetectSystem("Sega - Mega Drive - Genesis"), "mega_drive"), "partial 'Mega Drive - Genesis' -> mega_drive");
-    check(TextIsEqual(LibretroGamesDetectSystem("nes"), "nes"), "folder 'nes' -> nes (not super_nes)");
-    check(TextIsEqual(LibretroGamesDetectSystem("a totally unknown box"), ""), "unknown folder -> \"\"");
-    check(TextIsEqual(LibretroGamesSystemForExtension("sfc"), "super_nes"), "ext 'sfc' -> super_nes");
-    check(TextIsEqual(LibretroGamesSystemForExtension("iso"), ""), "ambiguous ext 'iso' -> \"\"");
-    check(TextIsEqual(LibretroGamesSystemFamily("game_boy"), "nintendo_handheld"), "game_boy family");
-    check(TextIsEqual(LibretroGamesSystemFamily("master_system"), "sega_8_16"), "master_system family");
+    AssertStringEqual(LibretroGamesDetectSystem("snes"), "super_nes", "folder 'snes' -> super_nes");
+    AssertStringEqual(LibretroGamesDetectSystem("Nintendo - Super Nintendo Entertainment System"), "super_nes", "full SNES name -> super_nes");
+    AssertStringEqual(LibretroGamesDetectSystem("Sega - Mega Drive - Genesis"), "mega_drive", "partial 'Mega Drive - Genesis' -> mega_drive");
+    AssertStringEqual(LibretroGamesDetectSystem("nes"), "nes", "folder 'nes' -> nes (not super_nes)");
+    AssertStringEqual(LibretroGamesDetectSystem("a totally unknown box"), "", "unknown folder -> \"\"");
+    AssertStringEqual(LibretroGamesSystemForExtension("sfc"), "super_nes", "ext 'sfc' -> super_nes");
+    AssertStringEqual(LibretroGamesSystemForExtension("iso"), "", "ambiguous ext 'iso' -> \"\"");
+    AssertStringEqual(LibretroGamesSystemFamily("game_boy"), "nintendo_handheld", "game_boy family");
+    AssertStringEqual(LibretroGamesSystemFamily("master_system"), "sega_8_16", "master_system family");
 
     // ---- first scan ----
     printf("first scan\n");
@@ -127,58 +123,59 @@ int main(void) {
     writeGame("psx/FF7 (Disc 2).cue", "d2");                         // hidden by the .m3u
     writeGame("psx/FF7.m3u", "FF7 (Disc 1).cue\nFF7 (Disc 2).cue\n");
 
-    check(InitLibretroGames(), "InitLibretroGames");
+    Assert(InitLibretroGames(DBDIR), "InitLibretroGames");
     rescan();
-    check(LibretroGamesTotalCount() == 4, TextFormat("total == 4 (got %d)", LibretroGamesTotalCount()));
-    check(indexed("Contra.nes"), "root Contra.nes indexed");
-    check(indexed("snes/Super Mario World.sfc"), "snes game indexed");
-    check(indexed("psx/FF7.m3u"), "m3u playlist indexed");
-    check(!indexed("psx/FF7 (Disc 1).cue"), "disc 1 hidden (m3u-referenced)");
-    check(!indexed("psx/FF7 (Disc 2).cue"), "disc 2 hidden (m3u-referenced)");
-    check(!indexed("GameCube/Metroid Prime.iso"), "gamecube game gated out (no core)");
-    check(systemGameCount("super_nes") == 2, TextFormat("super_nes count == 2 (got %d)", systemGameCount("super_nes")));
-    check(TextIsEqual(titleOf("Contra.nes"), "Contra"), "title has no extension");
+    AssertEqual(LibretroGamesTotalCount(), 4, TextFormat("total == 4 (got %d)", LibretroGamesTotalCount()));
+    Assert(indexed("Contra.nes"), "root Contra.nes indexed");
+    Assert(indexed("snes/Super Mario World.sfc"), "snes game indexed");
+    Assert(indexed("psx/FF7.m3u"), "m3u playlist indexed");
+    AssertNot(indexed("psx/FF7 (Disc 1).cue"), "disc 1 hidden (m3u-referenced)");
+    AssertNot(indexed("psx/FF7 (Disc 2).cue"), "disc 2 hidden (m3u-referenced)");
+    AssertNot(indexed("GameCube/Metroid Prime.iso"), "gamecube game gated out (no core)");
+    AssertEqual(systemGameCount("super_nes"), 2, TextFormat("super_nes count == 2 (got %d)", systemGameCount("super_nes")));
+    AssertStringEqual(titleOf("Contra.nes"), "Contra", "title has no extension");
 
     // ---- unchanged rescan writes nothing ----
     printf("incremental rescan\n");
     CloseLibretroGames();
-    check(InitLibretroGames(), "reopen");
+    Assert(InitLibretroGames(DBDIR), "reopen");
     long mtimeBefore = GetFileModTime(DBPATH);
     rescan();
     long mtimeAfter = GetFileModTime(DBPATH);
-    check(mtimeBefore == mtimeAfter, "unchanged rescan does not rewrite the DB");
-    check(LibretroGamesTotalCount() == 4, "still 4 after no-op rescan");
+    AssertEqual(mtimeBefore, mtimeAfter, "unchanged rescan does not rewrite the DB");
+    AssertEqual(LibretroGamesTotalCount(), 4, "still 4 after no-op rescan");
 
     // ---- prune a deleted file ----
     printf("prune\n");
     deleteGame("Contra.nes");
     rescan();
-    check(LibretroGamesTotalCount() == 3, TextFormat("total == 3 after delete (got %d)", LibretroGamesTotalCount()));
-    check(!indexed("Contra.nes"), "deleted file pruned");
+    AssertEqual(LibretroGamesTotalCount(), 3, TextFormat("total == 3 after delete (got %d)", LibretroGamesTotalCount()));
+    AssertNot(indexed("Contra.nes"), "deleted file pruned");
 
     // ---- corruption recovery ----
     printf("corruption recovery\n");
     CloseLibretroGames();
     SaveFileText(DBPATH, (char*)"this is not a sqlite database, just garbage");
-    remove(DBPATH "-wal"); remove(DBPATH "-shm");
-    check(InitLibretroGames(), "reopen after corruption (rebuilds)");
-    check(LibretroGamesTotalCount() == 0, "corrupt DB loads empty");
+    FileRemove(TextFormat("%s-wal", DBPATH));
+    FileRemove(TextFormat("%s-shm", DBPATH));
+    Assert(InitLibretroGames(DBDIR), "reopen after corruption (rebuilds)");
+    AssertEqual(LibretroGamesTotalCount(), 0, "corrupt DB loads empty");
     rescan();
-    check(LibretroGamesTotalCount() == 3, "re-indexed from disk after rebuild");
+    AssertEqual(LibretroGamesTotalCount(), 3, "re-indexed from disk after rebuild");
 
     // ---- schema version gate ----
     printf("schema version gate\n");
     CloseLibretroGames();
     setUserVersion(99);
-    check(InitLibretroGames(), "reopen with stale schema version");
-    check(LibretroGamesTotalCount() == 0, "stale-version games table dropped (loads empty)");
-    check(readUserVersion() == LIBRETRO_GAMES_SCHEMA_VERSION, TextFormat("user_version reset to %d", LIBRETRO_GAMES_SCHEMA_VERSION));
+    Assert(InitLibretroGames(DBDIR), "reopen with stale schema version");
+    AssertEqual(LibretroGamesTotalCount(), 0, "stale-version games table dropped (loads empty)");
+    AssertEqual(readUserVersion(), LIBRETRO_GAMES_SCHEMA_VERSION, TextFormat("user_version reset to %d", LIBRETRO_GAMES_SCHEMA_VERSION));
     rescan();
-    check(LibretroGamesTotalCount() == 3, "re-indexed after version-bump rebuild");
+    AssertEqual(LibretroGamesTotalCount(), 3, "re-indexed after version-bump rebuild");
 
     CloseLibretroGames();
     system("rm -rf " TMP);
 
-    printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "PASSED", g_failures, g_failures == 1 ? "" : "s");
-    return g_failures ? 1 : 0;
+    printf("\nPASSED\n");
+    return 0;
 }

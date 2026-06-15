@@ -185,7 +185,7 @@ bool Init(void** userData, int argc, char** argv) {
     // is non-fatal (games still scan into memory for this session) but won't persist, so surface
     // it rather than silently swallowing the bool return.
     TraceLog(LOG_INFO, "LIBRETRO: Initializing Games database");
-    if (!InitLibretroGames()) {
+    if (!InitLibretroGames(NULL)) {
         SetLibretroMessage("Games index won't be saved (database unavailable)", 3.0);
     }
     LibretroGamesSetFont(GetLibretroMenuFont());
