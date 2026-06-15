@@ -111,6 +111,7 @@ typedef struct LibretroMenu {
     char loadGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     bool touchControls;
     bool touchHapticsEnabled;
+    float touchScale;
     nk_bool disableHotKeysActive; // Disable HotKeys: pass all keys to the core, suspend frontend hotkeys.
     int sramAutoSaveIndex; // combobox index for the SRAM auto-save interval (Off / 15s / 30s / 60s / 2min / 5min / 10min)
     float sramAutoSaveAccumulator; // seconds since the last successful auto-save
@@ -246,13 +247,16 @@ static void LibretroMenuEmscriptenLoadGameClicked(nk_console* widget, void* user
 #define cvector_clib_calloc(n,sz)  memset(MemAlloc((unsigned int)((n)*(sz))), 0, (size_t)((n)*(sz)))
 #define CVECTOR_H "../vendor/c-vector/cvector.h"
 
+#ifdef __ANDROID__
+static nk_bool nk_console_file_add_files_android(nk_console* console, const char* path);
+#define NK_CONSOLE_FILE_ADD_FILES nk_console_file_add_files_android
+#endif
+
 #define NK_CONSOLE_IMPLEMENTATION
 #define NK_CONSOLE_MALLOC nk_raylib_malloc
 #define NK_CONSOLE_FREE nk_raylib_mfree
 #include "../vendor/nuklear_console/nuklear_console.h"
 
-// Games database (browse / search / index). The menu owns its UI and the
-// system->core launch decision; its implementation compiles in this TU.
 #define RAYLIB_LIBRETRO_GAMES_IMPLEMENTATION
 #include "raylib-libretro-games.h"
 
@@ -303,6 +307,7 @@ static LibretroMenu menu = {
     .vsync              = nk_true,
     .fastForwardSpeed   = 3.0f,
     .slowMotionSpeed    = 0.5f,
+    .touchScale         = 1.0f,
     .menuComboIndex     = LIBRETRO_MENU_COMBO_SELECT_START,
     .hotkeys = {
         [LIBRETRO_HOTKEY_SCREENSHOT] = {
@@ -1775,6 +1780,9 @@ LibretroMenu* InitLibretroMenu(void) {
             // Touch Control
             nk_console_checkbox(gameplayMenu, "Touch Controls", &menu.touchControls);
 
+            // Touch Control Scale
+            nk_console_slider_float(gameplayMenu, "Touch Scale", 0.4f, &menu.touchScale, 2.0f, RAYLIB_LIBRETRO_MENU_SLIDER_STEP(0.2f, 2.0f));
+
             // Touch Haptics
             #if defined(PLATFORM_WEB)
             nk_console_checkbox(gameplayMenu, "Touch Haptics", &menu.touchHapticsEnabled);
@@ -2427,6 +2435,7 @@ static void LibretroMenuUpdateConfig(void) {
     rlconfig_set_int(menu.cfg, "raylib-libretro", "lockCursor", menu.lockCursor ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchControls", menu.touchControls ? 1 : 0);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "touchHaptics", menu.touchHapticsEnabled ? 1 : 0);
+    rlconfig_set_float(menu.cfg, "raylib-libretro", "touchScale", menu.touchScale);
     rlconfig_set_int(menu.cfg, "raylib-libretro", "orientation", menu.orientationIndex);
 
     rlconfig_set_int(menu.cfg, "raylib-libretro", "saveSlot", menu.saveSlotIndex);
@@ -2640,6 +2649,11 @@ static bool LoadLibretroMenuSettings(void) {
 #else
     menu.touchControls = rlconfig_get_int(menu.cfg, "raylib-libretro", "touchControls", 0) > 0;
 #endif
+
+    // Touch Scale
+    menu.touchScale = rlconfig_get_float(menu.cfg, "raylib-libretro", "touchScale", 1.0f);
+    if (menu.touchScale < 0.4f) menu.touchScale = 0.4f;
+    if (menu.touchScale > 2.0f) menu.touchScale = 2.0f;
 
     // Screen Orientation (0 = Landscape, 1 = Portrait, 2 = Auto; applied on Android)
     menu.orientationIndex = rlconfig_get_int(menu.cfg, "raylib-libretro", "orientation", 0);

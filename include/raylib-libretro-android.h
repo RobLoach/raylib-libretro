@@ -462,5 +462,36 @@ done:
     return result;
 }
 
+static nk_bool nk_console_file_add_files_android(nk_console* console, const char* path) {
+    FilePathList filePathList = LoadDirectoryFiles(path);
+    nk_bool result = nk_false;
+
+    for (int pass = 0; pass < 2; pass++) {
+        nk_bool want_dir = (pass == 0) ? nk_true : nk_false;
+        for (int i = 0; i < (int)filePathList.count; i++) {
+            nk_bool is_dir = DirectoryExists(filePathList.paths[i]) ? nk_true : nk_false;
+            if (is_dir != want_dir) continue;
+            if (nk_console_file_add_entry(console, filePathList.paths[i], is_dir) != NULL) {
+                result = nk_true;
+            }
+        }
+    }
+    UnloadDirectoryFiles(filePathList);
+
+    if (!result) {
+        char extStorage[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+        if (AndroidGetExternalStorageDir(GetAndroidApp(), extStorage) && extStorage[0] != '\0') {
+            int pathLen = TextLength(path);
+            int extLen = TextLength(extStorage);
+            if (extLen > pathLen && TextFindIndex(extStorage, path) == 0) {
+                nk_console_file_add_entry(console, extStorage, nk_true);
+                result = nk_true;
+            }
+        }
+    }
+
+    return result;
+}
+
 #endif /* __ANDROID__ */
 #endif /* RAYLIB_LIBRETRO_ANDROID_IMPLEMENTATION */
