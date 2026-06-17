@@ -802,9 +802,7 @@ static bool InitLibretroVideo(void) {
     }
 
     if (LIBRETRO.core.hwRender.enabled) {
-        if (!hw_InitLibretroVideo()) {
-            return false;
-        }
+        return hw_InitLibretroVideo();
     }
 
     // Software path: build an upload texture + conversion buffer.
@@ -3484,7 +3482,7 @@ static void DrawLibretroTint(Color tint) {
     // Draw centered with rotation around the dest rect's center.
     float cx = GetScreenWidth() / 2.0f;
     float cy = GetScreenHeight() / 2.0f;
-    Rectangle source = {0, 0, LIBRETRO.core.width, LIBRETRO.core.height};
+    Rectangle source = LibretroSourceRect();
     Rectangle dest = {cx, cy, (float)destW, (float)destH};
     Vector2 origin = {destW / 2.0f, destH / 2.0f};
     DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, (float)(LIBRETRO.core.rotation * 90), tint);

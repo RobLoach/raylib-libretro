@@ -216,9 +216,14 @@ bool Init(void** userData, int argc, char** argv) {
     }
 
     if (corePath) {
-        if (MenuInitCore(corePath) && LoadLibretroGameFromPhysFS(gameFile)) {
-            BuildLibretroMenuOptions(data->menu);
-            HideLibretroMenu();
+        if (MenuInitCore(corePath)) {
+            bool gameLoaded = gameFile
+                ? LoadLibretroGameFromPhysFS(gameFile)
+                : (!IsLibretroGameRequired() && LoadLibretroGame(NULL));
+            if (gameLoaded) {
+                BuildLibretroMenuOptions(data->menu);
+                HideLibretroMenu();
+            }
         }
     } else if (gameFile) {
         if (MenuLoadGame(gameFile)) HideLibretroMenu(); else ShowLibretroMenu();
