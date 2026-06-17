@@ -152,6 +152,8 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #include <stdarg.h>
 #include <stdlib.h>
 
+#include "rlgl.h"
+
 // libretro-common
 #include <dynamic/dylib.h>
 #include <features/features_cpu.h>
@@ -383,6 +385,16 @@ typedef struct LibretroCoreData {
     struct retro_disk_control_ext_callback disk_control;
     bool diskControlActive;      // A core has registered a disk control interface.
     unsigned diskControlVersion; // 0 = basic interface, 1 = extended interface.
+
+    struct {
+        bool enabled;                          // SET_HW_RENDER accepted
+        bool active;                           // context_reset fired; FBO + core GL resources live
+        struct retro_hw_render_callback cb;    // verbatim copy from the core
+        RenderTexture2D target;                // FBO + color attachment
+        unsigned fboWidth, fboHeight;          // allocated FBO size (max geometry)
+        unsigned frameWidth, frameHeight;      // last valid sub-region from RETRO_HW_FRAME_BUFFER_VALID
+        unsigned savedFboId;                   // FBO to restore after retro_run
+    } hwRender;
 } LibretroCoreData;
 
 typedef struct LibretroData {
@@ -705,36 +717,96 @@ static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
 static void InitLibretroAudio(void);  // Forward declaration.
 static size_t UpdateLibretroAudioSampleBatch(const int16_t *data, size_t frames);  // Forward declaration.
 
-static void CloseLibretroVideo(void) {
-    // Unload the existing texture if it exists already.
-    if (IsTextureValid(LIBRETRO.core.texture)) {
-        UnloadTexture(LIBRETRO.core.texture);
-        memset(&LIBRETRO.core.texture, 0, sizeof(LIBRETRO.core.texture));
-    }
+static uintptr_t LibretroHwGetCurrentFramebuffer(void) {
+    return (uintptr_t)LIBRETRO.core.hwRender.target.id;
+}
 
-    if (LIBRETRO.core.frameBuffer != NULL) {
-        MemFree(LIBRETRO.core.frameBuffer);
+static retro_proc_address_t LibretroHwGetProcAddress(const char *sym) {
+    return (retro_proc_address_t)rlGetProcAddress(sym);
+}
+
+static void CloseLibretroVideo(void) {
+    if (LIBRETRO.core.hwRender.enabled) {
+        if (IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
+            UnloadRenderTexture(LIBRETRO.core.hwRender.target);
+            memset(&LIBRETRO.core.hwRender.target, 0, sizeof(LIBRETRO.core.hwRender.target));
+        }
+        memset(&LIBRETRO.core.texture, 0, sizeof(LIBRETRO.core.texture));
+    } else {
+        if (IsTextureValid(LIBRETRO.core.texture)) {
+            UnloadTexture(LIBRETRO.core.texture);
+            memset(&LIBRETRO.core.texture, 0, sizeof(LIBRETRO.core.texture));
+        }
+        if (LIBRETRO.core.frameBuffer != NULL) {
+            MemFree(LIBRETRO.core.frameBuffer);
+        }
+        LIBRETRO.core.frameBuffer = NULL;
+        LIBRETRO.core.frameBufferSize = 0;
     }
-    LIBRETRO.core.frameBuffer = NULL;
-    LIBRETRO.core.frameBufferSize = 0;
     LIBRETRO.core.textureRebuild = false;
 }
 
 static bool InitLibretroVideo(void) {
     CloseLibretroVideo();
 
-    // Build the rendering image.
     if (LIBRETRO.core.width == 0 || LIBRETRO.core.height == 0) {
         return false;
     }
 
+    if (LIBRETRO.core.hwRender.enabled) {
+        struct retro_system_av_info av;
+        LIBRETRO.core.symbols.retro_get_system_av_info(&av);
+        unsigned fboW = av.geometry.max_width  > 0 ? av.geometry.max_width  : LIBRETRO.core.width;
+        unsigned fboH = av.geometry.max_height > 0 ? av.geometry.max_height : LIBRETRO.core.height;
+        LIBRETRO.core.hwRender.fboWidth  = fboW;
+        LIBRETRO.core.hwRender.fboHeight = fboH;
+        LIBRETRO.core.hwRender.frameWidth  = LIBRETRO.core.width;
+        LIBRETRO.core.hwRender.frameHeight = LIBRETRO.core.height;
+
+        if (LIBRETRO.core.hwRender.cb.stencil) {
+            // depth+stencil: build packed DEPTH24_STENCIL8 FBO manually
+            unsigned int fboId = rlLoadFramebuffer();
+            if (fboId == 0) {
+                TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to create framebuffer");
+                return false;
+            }
+            unsigned int texId = rlLoadTexture(NULL, (int)fboW, (int)fboH,
+                RL_PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, 1);
+            rlFramebufferAttach(fboId, texId, RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_TEXTURE2D, 0);
+            unsigned int rbId = rlLoadTextureDepth((int)fboW, (int)fboH, true);
+            rlFramebufferAttach(fboId, rbId, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_RENDERBUFFER, 0);
+            if (!rlFramebufferComplete(fboId)) {
+                TraceLog(LOG_ERROR, "LIBRETRO HW: Framebuffer incomplete (depth+stencil)");
+                return false;
+            }
+            LIBRETRO.core.hwRender.target.id = fboId;
+            LIBRETRO.core.hwRender.target.texture.id = texId;
+            LIBRETRO.core.hwRender.target.texture.width = (int)fboW;
+            LIBRETRO.core.hwRender.target.texture.height = (int)fboH;
+            LIBRETRO.core.hwRender.target.texture.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+            LIBRETRO.core.hwRender.target.texture.mipmaps = 1;
+        } else {
+            LIBRETRO.core.hwRender.target = LoadRenderTexture((int)fboW, (int)fboH);
+            if (!IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
+                TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to load render texture");
+                return false;
+            }
+        }
+
+        LIBRETRO.core.texture = LIBRETRO.core.hwRender.target.texture;
+        SetTextureFilter(LIBRETRO.core.texture, LIBRETRO.textureFilter);
+        LIBRETRO.core.textureRebuild = false;
+        TraceLog(LOG_INFO, "LIBRETRO HW: FBO %ux%u created (id=%u)", fboW, fboH, LIBRETRO.core.hwRender.target.id);
+        return true;
+    }
+
+    // Software path: build an upload texture + conversion buffer.
     Image image = GenImageColor(LIBRETRO.core.width, LIBRETRO.core.height, BLACK);
     if (!IsImageValid(image)) {
         return false;
     }
     ImageFormat(&image, LibretroRetroPixelFormatToPixelFormat(LIBRETRO.core.pixelFormat));
 
-    // Create the texture.
     LIBRETRO.core.texture = LoadTextureFromImage(image);
     UnloadImage(image);
     if (!IsTextureValid(LIBRETRO.core.texture)) {
@@ -1029,8 +1101,39 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_HW_RENDER: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER not implemented");
-            return false;
+            if (data == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER no data");
+                return false;
+            }
+            struct retro_hw_render_callback *cb = (struct retro_hw_render_callback *)data;
+            bool accept = false;
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43)
+            if (cb->context_type == RETRO_HW_CONTEXT_OPENGL) accept = true;
+            if (cb->context_type == RETRO_HW_CONTEXT_OPENGL_CORE) {
+                unsigned ceil_major = 3, ceil_minor = 3;
+#if defined(GRAPHICS_API_OPENGL_43)
+                ceil_major = 4; ceil_minor = 3;
+#endif
+                if (cb->version_major < ceil_major ||
+                    (cb->version_major == ceil_major && cb->version_minor <= ceil_minor))
+                    accept = true;
+            }
+#elif defined(GRAPHICS_API_OPENGL_ES2)
+            if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES2) accept = true;
+            if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES3) accept = true;
+#endif
+            if (!accept) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER unsupported context_type %d", cb->context_type);
+                return false;
+            }
+            LIBRETRO.core.hwRender.cb = *cb;
+            cb->get_current_framebuffer = LibretroHwGetCurrentFramebuffer;
+            cb->get_proc_address        = LibretroHwGetProcAddress;
+            LIBRETRO.core.hwRender.cb.get_current_framebuffer = LibretroHwGetCurrentFramebuffer;
+            LIBRETRO.core.hwRender.cb.get_proc_address        = LibretroHwGetProcAddress;
+            LIBRETRO.core.hwRender.enabled = true;
+            TraceLog(LOG_INFO, "LIBRETRO: HW render accepted (context_type=%d depth=%d stencil=%d)", cb->context_type, cb->depth, cb->stencil);
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
@@ -1372,8 +1475,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE not implemented");
-            return false;
+            return false; // Vulkan/D3D only
         }
 
         case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS: {
@@ -1382,8 +1484,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE not implemented");
-            return false;
+            return false; // Vulkan only
         }
 
         case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: {
@@ -1397,8 +1498,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT not implemented");
-            return false;
+            // We share raylib's single main-thread context — the only mode we offer.
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
@@ -1576,8 +1677,18 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER not implemented");
-            return false;
+            if (data == NULL) return false;
+            unsigned *contextType = (unsigned *)data;
+#if defined(GRAPHICS_API_OPENGL_43)
+            *contextType = RETRO_HW_CONTEXT_OPENGL_CORE;
+#elif defined(GRAPHICS_API_OPENGL_33)
+            *contextType = RETRO_HW_CONTEXT_OPENGL_CORE;
+#elif defined(GRAPHICS_API_OPENGL_ES2)
+            *contextType = RETRO_HW_CONTEXT_OPENGLES2;
+#else
+            *contextType = RETRO_HW_CONTEXT_NONE;
+#endif
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: {
@@ -1838,8 +1949,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT not implemented");
-            return false;
+            return false; // Vulkan only
         }
 
         case RETRO_ENVIRONMENT_GET_JIT_CAPABLE: {
@@ -1953,7 +2063,24 @@ static void LibretroTick(void) {
         LIBRETRO.core.audio_buffer_status_callback.callback(true, occupancy, underrun_likely);
     }
 
+    if (LIBRETRO.core.hwRender.active) {
+        rlDrawRenderBatchActive();
+        LIBRETRO.core.hwRender.savedFboId = rlGetActiveFramebuffer();
+        rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
+    }
+
     LIBRETRO.core.symbols.retro_run();
+
+    if (LIBRETRO.core.hwRender.active) {
+        if (LIBRETRO.core.hwRender.savedFboId != 0)
+            rlEnableFramebuffer(LIBRETRO.core.hwRender.savedFboId);
+        else
+            rlDisableFramebuffer();
+        rlActiveTextureSlot(0);
+        rlSetBlendMode(RL_BLEND_ALPHA);
+        rlDisableScissorTest();
+        rlDisableDepthTest();
+    }
 
     // Flush any single-sample accumulator left over from retro_run so
     // samples arrive in the ring buffer within the same frame.
@@ -2190,7 +2317,15 @@ static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *
  * Called when the core is updating the video.
  */
 static void LibretroVideoRefresh(const void *data, unsigned width, unsigned height, size_t pitch) {
-    // Only act when there is usable pixel data.
+    if (data == RETRO_HW_FRAME_BUFFER_VALID) {
+        LIBRETRO.core.hwRender.frameWidth  = width;
+        LIBRETRO.core.hwRender.frameHeight = height;
+        if (width != LIBRETRO.core.width || height != LIBRETRO.core.height) {
+            LIBRETRO.core.width  = width;
+            LIBRETRO.core.height = height;
+        }
+        return;
+    }
     if (!data) {
         return;
     }
@@ -2592,6 +2727,19 @@ static bool InitLibretroAudioVideo(void) {
     LibretroGetAudioVideo();
     InitLibretroVideo();
     InitLibretroAudio();
+
+    if (LIBRETRO.core.hwRender.enabled && LIBRETRO.core.hwRender.cb.context_reset != NULL) {
+        rlDrawRenderBatchActive();
+        unsigned savedFbo = rlGetActiveFramebuffer();
+        rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
+        LIBRETRO.core.hwRender.cb.context_reset();
+        if (savedFbo != 0)
+            rlEnableFramebuffer(savedFbo);
+        else
+            rlDisableFramebuffer();
+        LIBRETRO.core.hwRender.active = true;
+        TraceLog(LOG_INFO, "LIBRETRO HW: context_reset fired");
+    }
 
     // A fresh game load is a wall-clock discontinuity (disk I/O, core init);
     // start the time accumulator clean so the first frame doesn't burst.
@@ -3167,11 +3315,20 @@ static void DrawLibretroV(Vector2 position, Color tint) {
  * @param scale Uniform scale factor.
  * @param tint Color tint applied to the framebuffer texture.
  */
+// HW FBO color attachments are bottom-left origin; flip via negative source height when needed.
+static Rectangle LibretroSourceRect(void) {
+    float w = (float)LIBRETRO.core.width;
+    float h = (float)LIBRETRO.core.height;
+    if (LIBRETRO.core.hwRender.active && LIBRETRO.core.hwRender.cb.bottom_left_origin)
+        return (Rectangle){0, h, w, -h};
+    return (Rectangle){0, 0, w, h};
+}
+
 static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint) {
     if (LIBRETRO.core.loaded == false) {
         return;
     }
-    Rectangle source = {0, 0, (float)LIBRETRO.core.width, (float)LIBRETRO.core.height};
+    Rectangle source = LibretroSourceRect();
     Rectangle dest = {position.x, position.y, (float)LIBRETRO.core.width * scale, (float)LIBRETRO.core.height * scale};
     DrawTexturePro(LIBRETRO.core.texture, source, dest, (Vector2){0, 0}, rotation + (float)(LIBRETRO.core.rotation * 90), tint);
 }
@@ -3189,7 +3346,7 @@ static void DrawLibretroPro(Rectangle destRec, Color tint) {
     bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
     float destW = swap ? destRec.height : destRec.width;
     float destH = swap ? destRec.width : destRec.height;
-    Rectangle source = {0, 0, (float)LIBRETRO.core.width, (float)LIBRETRO.core.height};
+    Rectangle source = LibretroSourceRect();
     Rectangle dest = {destRec.x + destRec.width / 2.0f, destRec.y + destRec.height / 2.0f, destW, destH};
     Vector2 origin = {destW / 2.0f, destH / 2.0f};
     DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotDeg, tint);
@@ -3685,24 +3842,30 @@ static Texture2D GetLibretroTexture(void) {
  * @return Essentially a screenshot of the libretro game. Empty image otherwise.
  */
 static Image LoadImageFromLibretro() {
-    if (!IsLibretroGameReady() || LIBRETRO.core.frameBuffer == NULL || LIBRETRO.core.frameBufferSize == 0) {
+    if (!IsLibretroGameReady()) {
         Image empty = {0};
         return empty;
     }
 
-    Image image = {0};
-    image.width = (int)LIBRETRO.core.width;
-    image.height = (int)LIBRETRO.core.height;
-    image.mipmaps = 1;
-    image.format = LibretroRetroPixelFormatToPixelFormat(LIBRETRO.core.pixelFormat);
-
-    // Copy the pre-converted frame buffer into a newly allocated image data buffer.
-    image.data = MemAlloc((unsigned int)LIBRETRO.core.frameBufferSize);
-    if (image.data == NULL) {
-        Image empty = {0};
-        return empty;
+    Image image;
+    if (LIBRETRO.core.hwRender.active) {
+        image = LoadImageFromTexture(LIBRETRO.core.texture);
+    } else {
+        if (LIBRETRO.core.frameBuffer == NULL || LIBRETRO.core.frameBufferSize == 0) {
+            Image empty = {0};
+            return empty;
+        }
+        image.width = (int)LIBRETRO.core.width;
+        image.height = (int)LIBRETRO.core.height;
+        image.mipmaps = 1;
+        image.format = LibretroRetroPixelFormatToPixelFormat(LIBRETRO.core.pixelFormat);
+        image.data = MemAlloc((unsigned int)LIBRETRO.core.frameBufferSize);
+        if (image.data == NULL) {
+            Image empty = {0};
+            return empty;
+        }
+        memcpy(image.data, LIBRETRO.core.frameBuffer, LIBRETRO.core.frameBufferSize);
     }
-    memcpy(image.data, LIBRETRO.core.frameBuffer, LIBRETRO.core.frameBufferSize);
 
     switch (LIBRETRO.core.rotation) {
         case 1: ImageRotateCW(&image);        break;
@@ -3804,6 +3967,20 @@ static bool SetLibretroSRAMData(const void* data, size_t size) {
  * Unload the currently loaded content without closing the core.
  */
 static void UnloadLibretroGame(void) {
+    if (LIBRETRO.core.hwRender.active) {
+        if (LIBRETRO.core.hwRender.cb.context_destroy != NULL) {
+            rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
+            LIBRETRO.core.hwRender.cb.context_destroy();
+            rlDisableFramebuffer();
+        }
+        LIBRETRO.core.hwRender.active = false;
+    }
+    if (LIBRETRO.core.hwRender.enabled) {
+        CloseLibretroVideo();
+        LIBRETRO.core.hwRender.enabled = false;
+        memset(&LIBRETRO.core.hwRender.cb, 0, sizeof(LIBRETRO.core.hwRender.cb));
+    }
+
     if (LIBRETRO.core.symbols.retro_unload_game != NULL) {
         LIBRETRO.core.symbols.retro_unload_game();
         LIBRETRO.core.symbols.retro_unload_game = NULL;
