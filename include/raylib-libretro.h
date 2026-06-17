@@ -746,6 +746,54 @@ static void CloseLibretroVideo(void) {
     LIBRETRO.core.textureRebuild = false;
 }
 
+
+static bool hw_InitLibretroVideo(void) {
+    struct retro_system_av_info av;
+    LIBRETRO.core.symbols.retro_get_system_av_info(&av);
+    unsigned fboW = av.geometry.max_width  > 0 ? av.geometry.max_width  : LIBRETRO.core.width;
+    unsigned fboH = av.geometry.max_height > 0 ? av.geometry.max_height : LIBRETRO.core.height;
+    LIBRETRO.core.hwRender.fboWidth  = fboW;
+    LIBRETRO.core.hwRender.fboHeight = fboH;
+    LIBRETRO.core.hwRender.frameWidth  = LIBRETRO.core.width;
+    LIBRETRO.core.hwRender.frameHeight = LIBRETRO.core.height;
+
+    if (LIBRETRO.core.hwRender.cb.stencil) {
+        // depth+stencil: build packed DEPTH24_STENCIL8 FBO manually
+        unsigned int fboId = rlLoadFramebuffer();
+        if (fboId == 0) {
+            TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to create framebuffer");
+            return false;
+        }
+        unsigned int texId = rlLoadTexture(NULL, (int)fboW, (int)fboH,
+            RL_PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, 1);
+        rlFramebufferAttach(fboId, texId, RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_TEXTURE2D, 0);
+        unsigned int rbId = rlLoadTextureDepth((int)fboW, (int)fboH, true);
+        rlFramebufferAttach(fboId, rbId, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_RENDERBUFFER, 0);
+        if (!rlFramebufferComplete(fboId)) {
+            TraceLog(LOG_ERROR, "LIBRETRO HW: Framebuffer incomplete (depth+stencil)");
+            return false;
+        }
+        LIBRETRO.core.hwRender.target.id = fboId;
+        LIBRETRO.core.hwRender.target.texture.id = texId;
+        LIBRETRO.core.hwRender.target.texture.width = (int)fboW;
+        LIBRETRO.core.hwRender.target.texture.height = (int)fboH;
+        LIBRETRO.core.hwRender.target.texture.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+        LIBRETRO.core.hwRender.target.texture.mipmaps = 1;
+    } else {
+        LIBRETRO.core.hwRender.target = LoadRenderTexture((int)fboW, (int)fboH);
+        if (!IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
+            TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to load render texture");
+            return false;
+        }
+    }
+
+    LIBRETRO.core.texture = LIBRETRO.core.hwRender.target.texture;
+    SetTextureFilter(LIBRETRO.core.texture, LIBRETRO.textureFilter);
+    LIBRETRO.core.textureRebuild = false;
+    TraceLog(LOG_INFO, "LIBRETRO HW: FBO %ux%u created (id=%u)", fboW, fboH, LIBRETRO.core.hwRender.target.id);
+    return true;
+}
+
 static bool InitLibretroVideo(void) {
     CloseLibretroVideo();
 
@@ -754,50 +802,9 @@ static bool InitLibretroVideo(void) {
     }
 
     if (LIBRETRO.core.hwRender.enabled) {
-        struct retro_system_av_info av;
-        LIBRETRO.core.symbols.retro_get_system_av_info(&av);
-        unsigned fboW = av.geometry.max_width  > 0 ? av.geometry.max_width  : LIBRETRO.core.width;
-        unsigned fboH = av.geometry.max_height > 0 ? av.geometry.max_height : LIBRETRO.core.height;
-        LIBRETRO.core.hwRender.fboWidth  = fboW;
-        LIBRETRO.core.hwRender.fboHeight = fboH;
-        LIBRETRO.core.hwRender.frameWidth  = LIBRETRO.core.width;
-        LIBRETRO.core.hwRender.frameHeight = LIBRETRO.core.height;
-
-        if (LIBRETRO.core.hwRender.cb.stencil) {
-            // depth+stencil: build packed DEPTH24_STENCIL8 FBO manually
-            unsigned int fboId = rlLoadFramebuffer();
-            if (fboId == 0) {
-                TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to create framebuffer");
-                return false;
-            }
-            unsigned int texId = rlLoadTexture(NULL, (int)fboW, (int)fboH,
-                RL_PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, 1);
-            rlFramebufferAttach(fboId, texId, RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_TEXTURE2D, 0);
-            unsigned int rbId = rlLoadTextureDepth((int)fboW, (int)fboH, true);
-            rlFramebufferAttach(fboId, rbId, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_RENDERBUFFER, 0);
-            if (!rlFramebufferComplete(fboId)) {
-                TraceLog(LOG_ERROR, "LIBRETRO HW: Framebuffer incomplete (depth+stencil)");
-                return false;
-            }
-            LIBRETRO.core.hwRender.target.id = fboId;
-            LIBRETRO.core.hwRender.target.texture.id = texId;
-            LIBRETRO.core.hwRender.target.texture.width = (int)fboW;
-            LIBRETRO.core.hwRender.target.texture.height = (int)fboH;
-            LIBRETRO.core.hwRender.target.texture.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-            LIBRETRO.core.hwRender.target.texture.mipmaps = 1;
-        } else {
-            LIBRETRO.core.hwRender.target = LoadRenderTexture((int)fboW, (int)fboH);
-            if (!IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
-                TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to load render texture");
-                return false;
-            }
+        if (!hw_InitLibretroVideo()) {
+            return false;
         }
-
-        LIBRETRO.core.texture = LIBRETRO.core.hwRender.target.texture;
-        SetTextureFilter(LIBRETRO.core.texture, LIBRETRO.textureFilter);
-        LIBRETRO.core.textureRebuild = false;
-        TraceLog(LOG_INFO, "LIBRETRO HW: FBO %ux%u created (id=%u)", fboW, fboH, LIBRETRO.core.hwRender.target.id);
-        return true;
     }
 
     // Software path: build an upload texture + conversion buffer.
