@@ -66,6 +66,12 @@ if (BUILD_RAYLIB_LIBRETRO_EXAMPLE)
     add_subdirectory(example)
 endif()
 
+# Test cores
+option(BUILD_RAYLIB_LIBRETRO_TEST_CORES "Build test cores" ON)
+if (BUILD_RAYLIB_LIBRETRO_TEST_CORES AND NOT "${PLATFORM}" STREQUAL "Web")
+    add_subdirectory(tests/test_opengl)
+endif()
+
 # raylib-libretro
 option(BUILD_RAYLIB_LIBRETRO "raylib-libretro" ON)
 if(BUILD_RAYLIB_LIBRETRO)
