@@ -2,8 +2,9 @@
  * test_opengl_libretro.c — minimal OpenGL 3.3 Core test core for raylib-libretro.
  *
  * Draws a spinning RGB triangle into the hardware-rendered FBO each frame.
- * Validates RETRO_ENVIRONMENT_SET_HW_RENDER negotiation, context_reset/destroy
- * lifecycle, and RETRO_HW_FRAME_BUFFER_VALID signalling.
+ * Uses a procedural vertex shader (gl_VertexID) so no VBO/vertex-attrib
+ * setup is needed — avoids macOS Core Profile glVertexAttribPointer issues
+ * when loading GL procs via glfwGetProcAddress.
  *
  * Requires no content (supports_no_game = true). Load it with no ROM.
  */
@@ -22,18 +23,13 @@ typedef unsigned int  GLenum;
 typedef unsigned int  GLuint;
 typedef int           GLint;
 typedef float         GLfloat;
-typedef long          GLsizeiptr;
 typedef unsigned char GLboolean;
 typedef char          GLchar;
-typedef void          GLvoid;
 
 #define GL_FALSE              0
 #define GL_TRUE               1
 #define GL_COLOR_BUFFER_BIT   0x00004000
 #define GL_TRIANGLES          0x0004
-#define GL_FLOAT              0x1406
-#define GL_ARRAY_BUFFER       0x8892
-#define GL_STATIC_DRAW        0x88B4
 #define GL_VERTEX_SHADER      0x8B31
 #define GL_FRAGMENT_SHADER    0x8B30
 #define GL_COMPILE_STATUS     0x8B81
@@ -41,34 +37,30 @@ typedef void          GLvoid;
 #define GL_INFO_LOG_LENGTH    0x8B84
 
 /* --------------------------------------------------------------------------
- * GL function pointer table via X-macro.
+ * GL function pointer table — only what we actually use.
+ * No VBO/VAO/vertex-attrib functions needed for procedural draw.
  * -------------------------------------------------------------------------- */
 #define GL_FUNC_LIST \
-    X(void,    Viewport,               (GLint x, GLint y, GLint w, GLint h)) \
-    X(void,    ClearColor,             (GLfloat r, GLfloat g, GLfloat b, GLfloat a)) \
-    X(void,    Clear,                  (GLuint mask)) \
-    X(GLuint,  CreateShader,           (GLenum type)) \
-    X(void,    ShaderSource,           (GLuint s, GLint n, const GLchar **src, const GLint *len)) \
-    X(void,    CompileShader,          (GLuint s)) \
-    X(void,    GetShaderiv,            (GLuint s, GLenum p, GLint *v)) \
-    X(void,    GetShaderInfoLog,       (GLuint s, GLint max, GLint *len, GLchar *buf)) \
-    X(GLuint,  CreateProgram,          (void)) \
-    X(void,    AttachShader,           (GLuint prog, GLuint s)) \
-    X(void,    LinkProgram,            (GLuint prog)) \
-    X(void,    GetProgramiv,           (GLuint prog, GLenum p, GLint *v)) \
-    X(void,    GetProgramInfoLog,      (GLuint prog, GLint max, GLint *len, GLchar *buf)) \
-    X(void,    UseProgram,             (GLuint prog)) \
-    X(void,    DeleteShader,           (GLuint s)) \
-    X(void,    GenVertexArrays,        (GLint n, GLuint *a)) \
-    X(void,    BindVertexArray,        (GLuint a)) \
-    X(void,    GenBuffers,             (GLint n, GLuint *b)) \
-    X(void,    BindBuffer,             (GLenum t, GLuint b)) \
-    X(void,    BufferData,             (GLenum t, GLsizeiptr sz, const GLvoid *d, GLenum u)) \
-    X(void,    VertexAttribPointer,    (GLuint i, GLint n, GLenum t, GLboolean norm, GLint stride, const GLvoid *p)) \
-    X(void,    EnableVertexAttribArray,(GLuint i)) \
-    X(void,    DrawArrays,             (GLenum mode, GLint first, GLint count)) \
-    X(GLint,   GetUniformLocation,     (GLuint prog, const GLchar *name)) \
-    X(void,    Uniform1f,              (GLint loc, GLfloat v))
+    X(void,    Viewport,          (GLint x, GLint y, GLint w, GLint h)) \
+    X(void,    ClearColor,        (GLfloat r, GLfloat g, GLfloat b, GLfloat a)) \
+    X(void,    Clear,             (GLuint mask)) \
+    X(GLuint,  CreateShader,      (GLenum type)) \
+    X(void,    ShaderSource,      (GLuint s, GLint n, const GLchar **src, const GLint *len)) \
+    X(void,    CompileShader,     (GLuint s)) \
+    X(void,    GetShaderiv,       (GLuint s, GLenum p, GLint *v)) \
+    X(void,    GetShaderInfoLog,  (GLuint s, GLint max, GLint *len, GLchar *buf)) \
+    X(GLuint,  CreateProgram,     (void)) \
+    X(void,    AttachShader,      (GLuint prog, GLuint s)) \
+    X(void,    LinkProgram,       (GLuint prog)) \
+    X(void,    GetProgramiv,      (GLuint prog, GLenum p, GLint *v)) \
+    X(void,    GetProgramInfoLog, (GLuint prog, GLint max, GLint *len, GLchar *buf)) \
+    X(void,    UseProgram,        (GLuint prog)) \
+    X(void,    DeleteShader,      (GLuint s)) \
+    X(void,    GenVertexArrays,   (GLint n, GLuint *a)) \
+    X(void,    BindVertexArray,   (GLuint a)) \
+    X(void,    DrawArrays,        (GLenum mode, GLint first, GLint count)) \
+    X(GLint,   GetUniformLocation,(GLuint prog, const GLchar *name)) \
+    X(void,    Uniform1f,         (GLint loc, GLfloat v))
 
 #define X(ret, name, args) typedef ret (*PFNgl##name##PROC) args;
 GL_FUNC_LIST
@@ -107,27 +99,36 @@ static retro_environment_t         s_environ         = NULL;
  * HW render state
  * -------------------------------------------------------------------------- */
 static struct retro_hw_render_callback s_hw = {0};
-static GLuint s_prog = 0;
-static GLuint s_vao  = 0;
-static GLuint s_vbo  = 0;
+static GLuint s_prog    = 0;
+static GLuint s_vao     = 0; /* dummy empty VAO — required by Core Profile */
 static GLint  s_loc_time = -1;
-static float  s_time = 0.0f;
+static float  s_time    = 0.0f;
 static bool   s_gl_ready = false;
 
 /* --------------------------------------------------------------------------
- * Shaders
+ * Procedural spinning triangle — no vertex attributes.
+ * Positions and colours are computed from gl_VertexID and u_time.
  * -------------------------------------------------------------------------- */
 static const char *s_vert_src =
     "#version 330 core\n"
-    "layout(location = 0) in vec2 a_pos;\n"
-    "layout(location = 1) in vec3 a_color;\n"
-    "out vec3 v_color;\n"
     "uniform float u_time;\n"
+    "out vec3 v_color;\n"
     "void main() {\n"
+    "    const vec2 pos[3] = vec2[3](\n"
+    "        vec2( 0.00,  0.75),\n"
+    "        vec2(-0.65, -0.50),\n"
+    "        vec2( 0.65, -0.50)\n"
+    "    );\n"
+    "    const vec3 col[3] = vec3[3](\n"
+    "        vec3(1.0, 0.0, 0.0),\n"
+    "        vec3(0.0, 1.0, 0.0),\n"
+    "        vec3(0.0, 0.0, 1.0)\n"
+    "    );\n"
     "    float c = cos(u_time), s = sin(u_time);\n"
-    "    vec2 p = vec2(c*a_pos.x - s*a_pos.y, s*a_pos.x + c*a_pos.y);\n"
+    "    vec2 p = vec2(c*pos[gl_VertexID].x - s*pos[gl_VertexID].y,\n"
+    "                  s*pos[gl_VertexID].x + c*pos[gl_VertexID].y);\n"
     "    gl_Position = vec4(p * 0.8, 0.0, 1.0);\n"
-    "    v_color = a_color;\n"
+    "    v_color = col[gl_VertexID];\n"
     "}\n";
 
 static const char *s_frag_src =
@@ -136,18 +137,18 @@ static const char *s_frag_src =
     "out vec4 frag_color;\n"
     "void main() { frag_color = vec4(v_color, 1.0); }\n";
 
-/* x, y, r, g, b */
-static const float s_verts[] = {
-     0.00f,  0.75f,  1.0f, 0.0f, 0.0f,
-    -0.65f, -0.50f,  0.0f, 1.0f, 0.0f,
-     0.65f, -0.50f,  0.0f, 0.0f, 1.0f,
-};
-
 /* --------------------------------------------------------------------------
  * HW render callbacks
  * -------------------------------------------------------------------------- */
 static void context_reset(void) {
     gl_load_procs();
+
+    /* Verify critical pointers loaded. */
+    if (!pglCreateShader || !pglDrawArrays || !pglGenVertexArrays || !pglBindVertexArray) {
+        s_environ(RETRO_ENVIRONMENT_SET_MESSAGE,
+            &(struct retro_message){"test_opengl: GL proc load failed", 300});
+        return;
+    }
 
     char log[512];
     GLint ok;
@@ -168,10 +169,9 @@ static void context_reset(void) {
     pglCompileShader(fs);
     pglGetShaderiv(fs, GL_COMPILE_STATUS, &ok);
     if (!ok) {
-        pglGetShaderInfoLog(fs, sizeof(log), NULL, log);
+        pglDeleteShader(vs);
         s_environ(RETRO_ENVIRONMENT_SET_MESSAGE,
             &(struct retro_message){"test_opengl: frag shader error", 300});
-        pglDeleteShader(vs);
         return;
     }
 
@@ -179,38 +179,27 @@ static void context_reset(void) {
     pglAttachShader(s_prog, vs);
     pglAttachShader(s_prog, fs);
     pglLinkProgram(s_prog);
+    pglDeleteShader(vs);
+    pglDeleteShader(fs);
     pglGetProgramiv(s_prog, GL_LINK_STATUS, &ok);
     if (!ok) {
         pglGetProgramInfoLog(s_prog, sizeof(log), NULL, log);
         s_environ(RETRO_ENVIRONMENT_SET_MESSAGE,
             &(struct retro_message){"test_opengl: link error", 300});
-        pglDeleteShader(vs);
-        pglDeleteShader(fs);
         s_prog = 0;
         return;
     }
-    pglDeleteShader(vs);
-    pglDeleteShader(fs);
 
     s_loc_time = pglGetUniformLocation(s_prog, "u_time");
 
+    /* Core Profile requires a non-zero VAO bound for glDrawArrays,
+     * even when drawing without vertex attributes. */
     pglGenVertexArrays(1, &s_vao);
-    pglBindVertexArray(s_vao);
-
-    pglGenBuffers(1, &s_vbo);
-    pglBindBuffer(GL_ARRAY_BUFFER, s_vbo);
-    pglBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(s_verts), s_verts, GL_STATIC_DRAW);
-
-    /* a_pos  (location 0): vec2, stride 5*float, offset 0 */
-    pglVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (const GLvoid *)0);
-    pglEnableVertexAttribArray(0);
-    /* a_color (location 1): vec3, stride 5*float, offset 2*float */
-    pglVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
-        (const GLvoid *)(2 * sizeof(float)));
-    pglEnableVertexAttribArray(1);
-
-    pglBindVertexArray(0);
-    pglBindBuffer(GL_ARRAY_BUFFER, 0);
+    if (s_vao == 0) {
+        s_environ(RETRO_ENVIRONMENT_SET_MESSAGE,
+            &(struct retro_message){"test_opengl: GenVertexArrays returned 0", 300});
+        return;
+    }
 
     s_gl_ready = true;
 }
@@ -219,17 +208,16 @@ static void context_destroy(void) {
     s_gl_ready = false;
     s_prog = 0;
     s_vao  = 0;
-    s_vbo  = 0;
 }
 
 /* --------------------------------------------------------------------------
  * libretro API
  * -------------------------------------------------------------------------- */
-void retro_set_video_refresh(retro_video_refresh_t cb)      { s_video_refresh = cb; }
-void retro_set_audio_sample(retro_audio_sample_t cb)        { s_audio_sample  = cb; }
-void retro_set_audio_sample_batch(retro_audio_sample_batch_t cb) { s_audio_batch = cb; }
-void retro_set_input_poll(retro_input_poll_t cb)            { s_input_poll    = cb; }
-void retro_set_input_state(retro_input_state_t cb)          { s_input_state   = cb; }
+void retro_set_video_refresh(retro_video_refresh_t cb)           { s_video_refresh = cb; }
+void retro_set_audio_sample(retro_audio_sample_t cb)             { s_audio_sample  = cb; }
+void retro_set_audio_sample_batch(retro_audio_sample_batch_t cb) { s_audio_batch   = cb; }
+void retro_set_input_poll(retro_input_poll_t cb)                 { s_input_poll    = cb; }
+void retro_set_input_state(retro_input_state_t cb)               { s_input_state   = cb; }
 
 void retro_set_environment(retro_environment_t cb) {
     s_environ = cb;
@@ -247,7 +235,6 @@ void retro_set_environment(retro_environment_t cb) {
     s_hw.bottom_left_origin = true;
 
     if (!cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &s_hw)) {
-        /* Frontend rejected GL core — try compat profile */
         s_hw.context_type  = RETRO_HW_CONTEXT_OPENGL;
         s_hw.version_major = 0;
         s_hw.version_minor = 0;
@@ -293,7 +280,6 @@ void retro_run(void) {
 
     s_time += (float)(1.0 / CORE_FPS);
 
-    uintptr_t fbo = s_hw.get_current_framebuffer();
     pglViewport(0, 0, CORE_WIDTH, CORE_HEIGHT);
     pglClearColor(0.1f, 0.1f, 0.15f, 1.0f);
     pglClear(GL_COLOR_BUFFER_BIT);
@@ -308,7 +294,6 @@ void retro_run(void) {
     pglUseProgram(0);
 
     s_video_refresh(RETRO_HW_FRAME_BUFFER_VALID, CORE_WIDTH, CORE_HEIGHT, 0);
-    (void)fbo;
 }
 
 bool retro_load_game(const struct retro_game_info *game) {
