@@ -389,11 +389,11 @@ typedef struct LibretroCoreData {
     struct {
         bool enabled;                          // SET_HW_RENDER accepted
         bool active;                           // context_reset fired; FBO + core GL resources live
+        bool fboUsedThisFrame;                 // get_current_framebuffer was called; core rendered to our FBO
         struct retro_hw_render_callback cb;    // verbatim copy from the core
         RenderTexture2D target;                // FBO + color attachment
         unsigned fboWidth, fboHeight;          // allocated FBO size (max geometry)
         unsigned frameWidth, frameHeight;      // last valid sub-region from RETRO_HW_FRAME_BUFFER_VALID
-        unsigned savedFboId;                   // FBO to restore after retro_run
     } hwRender;
 } LibretroCoreData;
 
@@ -718,6 +718,7 @@ static void InitLibretroAudio(void);  // Forward declaration.
 static size_t UpdateLibretroAudioSampleBatch(const int16_t *data, size_t frames);  // Forward declaration.
 
 static uintptr_t LibretroHwGetCurrentFramebuffer(void) {
+    LIBRETRO.core.hwRender.fboUsedThisFrame = true;
     return (uintptr_t)LIBRETRO.core.hwRender.target.id;
 }
 
@@ -767,8 +768,38 @@ static bool hw_InitLibretroVideo(void) {
         unsigned int texId = rlLoadTexture(NULL, (int)fboW, (int)fboH,
             RL_PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, 1);
         rlFramebufferAttach(fboId, texId, RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_TEXTURE2D, 0);
+        // rlLoadTextureDepth creates a depth-only buffer; build DEPTH24_STENCIL8 via runtime GL.
+        // glad.h is only included inside RLGL_IMPLEMENTATION so we use rlGetProcAddress + manual
+        // constants rather than referencing the glad symbols directly.
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43)
+        #ifndef LIBRETRO_GL_RENDERBUFFER
+        #define LIBRETRO_GL_RENDERBUFFER             0x8D41U
+        #define LIBRETRO_GL_DEPTH24_STENCIL8         0x88F0U
+        #define LIBRETRO_GL_DEPTH_STENCIL_ATTACHMENT 0x821AU
+        #define LIBRETRO_GL_FRAMEBUFFER              0x8D40U
+        #endif
+        typedef void (*lrgl_GenRb)(int, unsigned int *);
+        typedef void (*lrgl_BindRb)(unsigned int, unsigned int);
+        typedef void (*lrgl_RbStorage)(unsigned int, unsigned int, int, int);
+        typedef void (*lrgl_BindFb)(unsigned int, unsigned int);
+        typedef void (*lrgl_FbRb)(unsigned int, unsigned int, unsigned int, unsigned int);
+        lrgl_GenRb    _genRb     = (lrgl_GenRb)rlGetProcAddress("glGenRenderbuffers");
+        lrgl_BindRb   _bindRb    = (lrgl_BindRb)rlGetProcAddress("glBindRenderbuffer");
+        lrgl_RbStorage _rbStorage = (lrgl_RbStorage)rlGetProcAddress("glRenderbufferStorage");
+        lrgl_BindFb   _bindFb    = (lrgl_BindFb)rlGetProcAddress("glBindFramebuffer");
+        lrgl_FbRb     _fbRb      = (lrgl_FbRb)rlGetProcAddress("glFramebufferRenderbuffer");
+        unsigned int rbId = 0;
+        _genRb(1, &rbId);
+        _bindRb(LIBRETRO_GL_RENDERBUFFER, rbId);
+        _rbStorage(LIBRETRO_GL_RENDERBUFFER, LIBRETRO_GL_DEPTH24_STENCIL8, (int)fboW, (int)fboH);
+        _bindRb(LIBRETRO_GL_RENDERBUFFER, 0);
+        _bindFb(LIBRETRO_GL_FRAMEBUFFER, fboId);
+        _fbRb(LIBRETRO_GL_FRAMEBUFFER, LIBRETRO_GL_DEPTH_STENCIL_ATTACHMENT, LIBRETRO_GL_RENDERBUFFER, rbId);
+        _bindFb(LIBRETRO_GL_FRAMEBUFFER, 0);
+#else
         unsigned int rbId = rlLoadTextureDepth((int)fboW, (int)fboH, true);
         rlFramebufferAttach(fboId, rbId, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_RENDERBUFFER, 0);
+#endif
         if (!rlFramebufferComplete(fboId)) {
             TraceLog(LOG_ERROR, "LIBRETRO HW: Framebuffer incomplete (depth+stencil)");
             return false;
@@ -2070,21 +2101,147 @@ static void LibretroTick(void) {
 
     if (LIBRETRO.core.hwRender.active) {
         rlDrawRenderBatchActive();
-        LIBRETRO.core.hwRender.savedFboId = rlGetActiveFramebuffer();
+        // Reset per-frame flag; LibretroHwGetCurrentFramebuffer sets it when called.
+        LIBRETRO.core.hwRender.fboUsedThisFrame = false;
+        // Clear FBO 0 before retro_run. Cores that ignore get_current_framebuffer
+        // and render directly to the screen back buffer (FBO 0) get a clean canvas;
+        // this also prevents stale overlay content from leaking via the post-run blit.
+        rlClearColor(0, 0, 0, 255);
+        rlClearScreenBuffers();
         rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
     }
 
     LIBRETRO.core.symbols.retro_run();
 
     if (LIBRETRO.core.hwRender.active) {
-        if (LIBRETRO.core.hwRender.savedFboId != 0)
-            rlEnableFramebuffer(LIBRETRO.core.hwRender.savedFboId);
-        else
-            rlDisableFramebuffer();
-        rlActiveTextureSlot(0);
+        // Load all GL procs needed for post-run fixup (loaded once, reused every frame)
+        #ifndef LIBRETRO_GL_HWRUN_DEFS
+        #define LIBRETRO_GL_HWRUN_DEFS
+        #define LIBRETRO_GL_FRAMEBUFFER          0x8D40U
+        #define LIBRETRO_GL_READ_FRAMEBUFFER     0x8CA8U
+        #define LIBRETRO_GL_DRAW_FRAMEBUFFER     0x8CA9U
+        #define LIBRETRO_GL_FRAMEBUFFER_BINDING  0x8CA6U
+        #define LIBRETRO_GL_COLOR_BUFFER_BIT     0x00004000U
+        #define LIBRETRO_GL_NEAREST_FILTER       0x2600U
+        #define LIBRETRO_GL_BLEND_CAP            0x0BE2U
+        #define LIBRETRO_GL_STENCIL_TEST         0x0B90U
+        #define LIBRETRO_GL_ARRAY_BUFFER         0x8892U
+        #define LIBRETRO_GL_ELEMENT_ARRAY_BUFFER 0x8893U
+        #define LIBRETRO_GL_UNPACK_SWAP_BYTES    0x0CF0U
+        #define LIBRETRO_GL_UNPACK_ROW_LENGTH    0x0CF2U
+        #define LIBRETRO_GL_UNPACK_SKIP_ROWS     0x0CF3U
+        #define LIBRETRO_GL_UNPACK_SKIP_PIXELS   0x0CF4U
+        #define LIBRETRO_GL_UNPACK_ALIGNMENT     0x0CF5U
+        #define LIBRETRO_GL_PACK_ALIGNMENT       0x0D05U
+        typedef unsigned int (*lrgl_GetErr)    (void);
+        typedef void         (*lrgl_GIV)       (unsigned int, int *);
+        typedef void         (*lrgl_BindFb)    (unsigned int, unsigned int);
+        typedef void         (*lrgl_Blit)      (int,int,int,int,int,int,int,int,unsigned int,unsigned int);
+        typedef void         (*lrgl_Enable)    (unsigned int);
+        typedef void         (*lrgl_Disable)   (unsigned int);
+        typedef void         (*lrgl_UseProgram)(unsigned int);
+        typedef void         (*lrgl_BindVao)   (unsigned int);
+        typedef void         (*lrgl_BindBuf)   (unsigned int, unsigned int);
+        typedef void         (*lrgl_BindSampler)(unsigned int, unsigned int);
+        typedef void         (*lrgl_PixelStore)(unsigned int, int);
+        typedef void         (*lrgl_FrontFace) (unsigned int);
+        #endif
+        static lrgl_GetErr    _gerr = NULL;
+        static lrgl_GIV       _giv  = NULL;
+        static lrgl_BindFb    _bfb  = NULL;
+        static lrgl_Blit      _blt  = NULL;
+        static lrgl_Enable    _gen  = NULL;
+        static lrgl_Disable   _gdis = NULL;
+        static lrgl_UseProgram _gup = NULL;
+        static lrgl_BindVao   _gvao = NULL;
+        static lrgl_BindBuf   _gbuf = NULL;
+        static lrgl_BindSampler _gsmp = NULL;
+        static lrgl_PixelStore _gpx = NULL;
+        static lrgl_FrontFace _gff  = NULL;
+        if (!_gerr) _gerr = (lrgl_GetErr)     rlGetProcAddress("glGetError");
+        if (!_giv)  _giv  = (lrgl_GIV)        rlGetProcAddress("glGetIntegerv");
+        if (!_bfb)  _bfb  = (lrgl_BindFb)     rlGetProcAddress("glBindFramebuffer");
+        if (!_blt)  _blt  = (lrgl_Blit)       rlGetProcAddress("glBlitFramebuffer");
+        if (!_gen)  _gen  = (lrgl_Enable)      rlGetProcAddress("glEnable");
+        if (!_gdis) _gdis = (lrgl_Disable)     rlGetProcAddress("glDisable");
+        if (!_gup)  _gup  = (lrgl_UseProgram)  rlGetProcAddress("glUseProgram");
+        if (!_gvao) _gvao = (lrgl_BindVao)     rlGetProcAddress("glBindVertexArray");
+        if (!_gbuf) _gbuf = (lrgl_BindBuf)     rlGetProcAddress("glBindBuffer");
+        if (!_gsmp) _gsmp = (lrgl_BindSampler) rlGetProcAddress("glBindSampler");
+        if (!_gpx)  _gpx  = (lrgl_PixelStore)  rlGetProcAddress("glPixelStorei");
+        if (!_gff)  _gff  = (lrgl_FrontFace)   rlGetProcAddress("glFrontFace");
+
+        // Drain any GL errors the core left (Beetle consumes its own errors,
+        // so these are usually 0, but drain anyway to keep the queue clean).
+        if (_gerr) { unsigned int e; int ec=0; while ((e=_gerr())!=0 && ec++<8)
+            TraceLog(LOG_WARNING, "LIBRETRO HW: GL error after retro_run: 0x%04X", e); }
+
+        // Capture game output: Beetle renders its final frame to FBO 0 (the screen back
+        // buffer) because its internal blit to our FBO fails silently (MSAA mismatch).
+        // Only blit FBO 0 → our FBO when the core did NOT call get_current_framebuffer.
+        // When the core did call it (fboUsedThisFrame), it rendered directly into our
+        // FBO and we must not overwrite that content. When it did not call it, the core
+        // rendered to the screen back buffer (FBO 0) and we need to capture it.
+        if (!LIBRETRO.core.hwRender.fboUsedThisFrame && _giv && _bfb && _blt) {
+            int drawFbo = -1;
+            _giv(LIBRETRO_GL_FRAMEBUFFER_BINDING, &drawFbo);
+            if (drawFbo == 0) {
+                unsigned int ourFbo = LIBRETRO.core.hwRender.target.id;
+                int srcW = GetRenderWidth();
+                int srcH = GetRenderHeight();
+                int dstW = (int)LIBRETRO.core.hwRender.target.texture.width;
+                int dstH = (int)LIBRETRO.core.hwRender.target.texture.height;
+                _bfb(LIBRETRO_GL_READ_FRAMEBUFFER, 0);
+                _bfb(LIBRETRO_GL_DRAW_FRAMEBUFFER, ourFbo);
+                _blt(0, 0, srcW, srcH, 0, 0, dstW, dstH,
+                     LIBRETRO_GL_COLOR_BUFFER_BIT, LIBRETRO_GL_NEAREST_FILTER);
+                _bfb(LIBRETRO_GL_FRAMEBUFFER, 0);
+            }
+        }
+
+        // Restore to the default screen FBO. rlGetActiveFramebuffer() tracks
+        // rlgl's internal state which rlDisableFramebuffer() does not update, so
+        // using it for save/restore produces a stale target.id — which then causes
+        // ClearBackground() in draw() to wipe the game texture. Always return to
+        // FBO 0; retro_run is always called from update() which runs on FBO 0.
+        rlEnableFramebuffer(0);
+        rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());
+
+        // Restore GL state the core may have left dirty.
+        // rlSetBlendMode restores blend func + equation; we must also re-enable
+        // blending itself since Beetle calls glDisable(GL_BLEND) in some passes,
+        // which causes raylib's font/UI to render as solid white blocks.
         rlSetBlendMode(RL_BLEND_ALPHA);
         rlDisableScissorTest();
         rlDisableDepthTest();
+        rlEnableDepthMask();
+        rlDisableBackfaceCulling();
+        rlColorMask(true, true, true, true);
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43)
+        if (_gen)  _gen(LIBRETRO_GL_BLEND_CAP);     // re-enable alpha blending
+        if (_gdis) _gdis(LIBRETRO_GL_STENCIL_TEST); // disable stencil
+        if (_gup)  _gup(0);                         // unbind shader program
+        if (_gvao) _gvao(0);                        // unbind VAO
+        if (_gbuf) {
+            _gbuf(LIBRETRO_GL_ARRAY_BUFFER, 0);
+            _gbuf(LIBRETRO_GL_ELEMENT_ARRAY_BUFFER, 0);
+        }
+        // Unbind sampler objects — a bound sampler overrides texture filter/wrap
+        // params and can corrupt raylib's font atlas sampling
+        if (_gsmp) { for (int i = 0; i < 8; i++) _gsmp(i, 0); }
+        rlActiveTextureSlot(0);
+        // Restore all pixel store parameters — some cores set ROW_LENGTH / SWAP_BYTES
+        // which garbles subsequent texture uploads (e.g. Nuklear font atlas)
+        if (_gpx) {
+            _gpx(LIBRETRO_GL_UNPACK_SWAP_BYTES, 0);
+            _gpx(LIBRETRO_GL_UNPACK_ROW_LENGTH,  0);
+            _gpx(LIBRETRO_GL_UNPACK_SKIP_ROWS,   0);
+            _gpx(LIBRETRO_GL_UNPACK_SKIP_PIXELS, 0);
+            _gpx(LIBRETRO_GL_UNPACK_ALIGNMENT,   4);
+            _gpx(LIBRETRO_GL_PACK_ALIGNMENT,     4);
+        }
+        if (_gff) _gff(0x0901U); // GL_CCW — restore default winding
+#endif
     }
 
     // Flush any single-sample accumulator left over from retro_run so
@@ -2114,7 +2271,10 @@ static void UpdateLibretroEx(bool onlyTick) {
 
     // Ensure the texture is updated.
     if (LIBRETRO.core.textureRebuild) {
-        InitLibretroVideo();
+        if (!LIBRETRO.core.hwRender.active)
+            InitLibretroVideo();
+        else
+            LIBRETRO.core.textureRebuild = false;
     }
 
     LibretroTick();
@@ -2125,7 +2285,14 @@ static void UpdateLibretroEx(bool onlyTick) {
  */
 static void UpdateLibretro(void) {
     if (LIBRETRO.core.textureRebuild) {
-        InitLibretroVideo();
+        // HW render cores use an FBO sized to max_width×max_height which doesn't
+        // change when RETRO_ENVIRONMENT_SET_GEOMETRY fires — only the visible crop
+        // within that FBO changes. Recreating the FBO destroys Beetle/etc.'s cached
+        // attachment state (color texture ID, completeness), so skip it.
+        if (!LIBRETRO.core.hwRender.active)
+            InitLibretroVideo();
+        else
+            LIBRETRO.core.textureRebuild = false;
     }
 
     if (IsLibretroGameReady()) {
@@ -2323,6 +2490,11 @@ static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *
  */
 static void LibretroVideoRefresh(const void *data, unsigned width, unsigned height, size_t pitch) {
     if (data == RETRO_HW_FRAME_BUFFER_VALID) {
+        static int hwVidFrames = 0;
+        if (hwVidFrames++ < 3)
+            TraceLog(LOG_INFO, "LIBRETRO HW: video_refresh HW frame %ux%u (was %ux%u) texSize=%dx%d",
+                width, height, LIBRETRO.core.width, LIBRETRO.core.height,
+                LIBRETRO.core.texture.width, LIBRETRO.core.texture.height);
         LIBRETRO.core.hwRender.frameWidth  = width;
         LIBRETRO.core.hwRender.frameHeight = height;
         if (width != LIBRETRO.core.width || height != LIBRETRO.core.height) {
@@ -3324,7 +3496,24 @@ static void DrawLibretroV(Vector2 position, Color tint) {
 static Rectangle LibretroSourceRect(void) {
     float w = (float)LIBRETRO.core.width;
     float h = (float)LIBRETRO.core.height;
-    if (LIBRETRO.core.hwRender.active && LIBRETRO.core.hwRender.cb.bottom_left_origin)
+    if (LIBRETRO.core.hwRender.active) {
+        // Beetle renders at native resolution (e.g. 256x240) via glViewport into
+        // the bottom-left corner of the full FBO (e.g. 700x576). frameWidth/Height
+        // from video_refresh tell us exactly which sub-region was drawn.
+        //
+        // The content lives at GL texture t in [0, frameH/fboH] (bottom of the FBO).
+        // DrawTexturePro samples GL t from y/H (screen bottom) to (y-height)/H
+        // (screen top) when height<0. With y=0, height=-frameH that is t in
+        // [0, frameH/H], oriented upright — exactly the rendered region. Using
+        // y=frameH instead would sample the empty middle band of the FBO (black
+        // with a 1px content sliver at the seam).
+        float fw = LIBRETRO.core.hwRender.frameWidth  > 0
+                   ? (float)LIBRETRO.core.hwRender.frameWidth  : w;
+        float fh = LIBRETRO.core.hwRender.frameHeight > 0
+                   ? (float)LIBRETRO.core.hwRender.frameHeight : h;
+        return (Rectangle){0, 0, fw, -fh};
+    }
+    if (LIBRETRO.core.hwRender.cb.bottom_left_origin)
         return (Rectangle){0, h, w, -h};
     return (Rectangle){0, 0, w, h};
 }
@@ -3485,7 +3674,24 @@ static void DrawLibretroTint(Color tint) {
     Rectangle source = LibretroSourceRect();
     Rectangle dest = {cx, cy, (float)destW, (float)destH};
     Vector2 origin = {destW / 2.0f, destH / 2.0f};
+    static int drawFrames = 0;
+    if (drawFrames++ < 3)
+        TraceLog(LOG_INFO, "LIBRETRO: DrawLibretroTint screen=%dx%d dest={%.0f,%.0f,%.0f,%.0f} src={%.0f,%.0f,%.0f,%.0f} tex=%dx%d",
+            GetScreenWidth(), GetScreenHeight(),
+            dest.x, dest.y, dest.width, dest.height,
+            source.x, source.y, source.width, source.height,
+            LIBRETRO.core.texture.width, LIBRETRO.core.texture.height);
+    // HW FBO: use GL_ONE/GL_ZERO so the display isn't masked by alpha=0 pixels
+    // in the FBO's color attachment (which can happen when the core leaves background
+    // pixels at alpha=0). Restore BLEND_ALPHA afterward for the rest of the frame.
+    if (LIBRETRO.core.hwRender.active) {
+        rlSetBlendFactors(1, 0, 0x8006);  // GL_ONE, GL_ZERO, GL_FUNC_ADD
+        rlSetBlendMode(RL_BLEND_CUSTOM);
+    }
     DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, (float)(LIBRETRO.core.rotation * 90), tint);
+    if (LIBRETRO.core.hwRender.active) {
+        rlSetBlendMode(RL_BLEND_ALPHA);
+    }
 }
 
 /**
