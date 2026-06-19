@@ -3498,10 +3498,10 @@ static void DrawLibretroV(Vector2 position, Color tint) {
  * @param scale Uniform scale factor.
  * @param tint Color tint applied to the framebuffer texture.
  */
-// HW FBO color attachments are bottom-left origin; flip via negative source height when needed.
 static Rectangle LibretroSourceRect(void) {
     float w = (float)LIBRETRO.core.width;
     float h = (float)LIBRETRO.core.height;
+    // HW FBO color attachments are bottom-left origin; flip via negative source height when needed.
     if (LIBRETRO.core.hwRender.active) {
         // Beetle renders at native resolution (e.g. 256x240) via glViewport into
         // the bottom-left corner of the full FBO (e.g. 700x576). frameWidth/Height
@@ -4052,29 +4052,56 @@ static Texture2D GetLibretroTexture(void) {
  * @return Essentially a screenshot of the libretro game. Empty image otherwise.
  */
 static Image LoadImageFromLibretro() {
+    Image image = {0};
     if (!IsLibretroGameReady()) {
-        Image empty = {0};
-        return empty;
+        return image;
     }
 
-    Image image;
+    // Determine the width/height of the final image.
+    int height = (int)LIBRETRO.core.height;
+    float aspect = GetLibretroAspectRatio();
+    int width = (aspect > 0.0f) ? (int)((float)height * aspect + 0.5f) : (int)LIBRETRO.core.width;
+    if (width <= 0) width = (int)LIBRETRO.core.width;
+
+    // Hardware Rendering
     if (LIBRETRO.core.hwRender.active) {
-        image = LoadImageFromTexture(LIBRETRO.core.texture);
-    } else {
+        // Redraw onto a render texture, to correct the source size and scale to the aspect-corrected width in one pass.
+        RenderTexture2D rt = LoadRenderTexture(width, height);
+        if (!IsRenderTextureValid(rt)) {
+            return image;
+        }
+        SetTextureFilter(rt.texture, TEXTURE_FILTER_ANISOTROPIC_4X);
+        Rectangle source = LibretroSourceRect();
+        source.height = -source.height; // FBO renders from bottom-left.
+        BeginTextureMode(rt);
+            ClearBackground(BLANK);
+            DrawTexturePro(LIBRETRO.core.texture, source,
+                           (Rectangle){0, 0, (float)width, (float)height},
+                           (Vector2){0, 0}, 0.0f, WHITE);
+        EndTextureMode();
+        image = LoadImageFromTexture(rt.texture);
+        UnloadRenderTexture(rt);
+    }
+
+    // Software Rendering
+    else {
         if (LIBRETRO.core.frameBuffer == NULL || LIBRETRO.core.frameBufferSize == 0) {
-            Image empty = {0};
-            return empty;
+            return image;
+        }
+        image.data = MemAlloc((unsigned int)LIBRETRO.core.frameBufferSize);
+        if (image.data == NULL) {
+            return image;
         }
         image.width = (int)LIBRETRO.core.width;
         image.height = (int)LIBRETRO.core.height;
         image.mipmaps = 1;
         image.format = LibretroRetroPixelFormatToPixelFormat(LIBRETRO.core.pixelFormat);
-        image.data = MemAlloc((unsigned int)LIBRETRO.core.frameBufferSize);
-        if (image.data == NULL) {
-            Image empty = {0};
-            return empty;
-        }
         memcpy(image.data, LIBRETRO.core.frameBuffer, LIBRETRO.core.frameBufferSize);
+
+        // Ensure the display aspect ratio is retained.
+        if (width != image.width) {
+            ImageResize(&image, width, height);
+        }
     }
 
     switch (LIBRETRO.core.rotation) {
