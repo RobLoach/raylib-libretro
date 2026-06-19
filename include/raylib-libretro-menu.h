@@ -589,7 +589,18 @@ static void LibretroMenuApplyVideoSettings(void) {
     } else {
         ClearWindowState(FLAG_VSYNC_HINT);
     }
-    SetTargetFPS(LibretroMenuResolveTargetFps());
+    int targetFps = LibretroMenuResolveTargetFps();
+#if defined(__EMSCRIPTEN__)
+    // On web the browser's requestAnimationFrame (the emscripten main loop) paces
+    // the frame rate. raylib's SetTargetFPS limiter would make EndDrawing() call
+    // WaitTime() -> nanosleep(), which Emscripten implements as emscripten_sleep()
+    // and aborts unless the program is built with ASYNCIFY. Disable raylib's
+    // limiter (target 0) so EndDrawing skips WaitTime and lets RAF drive cadence.
+    (void)targetFps;
+    SetTargetFPS(0);
+#else
+    SetTargetFPS(targetFps);
+#endif
 }
 
 static void LibretroMenuVideoChanged(nk_console* widget, void* user_data) {

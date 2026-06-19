@@ -1154,9 +1154,13 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                     (cb->version_major == ceil_major && cb->version_minor <= ceil_minor))
                     accept = true;
             }
-#elif defined(GRAPHICS_API_OPENGL_ES2)
+#elif defined(GRAPHICS_API_OPENGL_ES2) || defined(GRAPHICS_API_OPENGL_ES3)
             if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES2) accept = true;
+            // ES3 context (WebGL2) only honored when raylib itself is built for ES3,
+            // since the capture-blit + state-restore below rely on ES3 entry points.
+#if defined(GRAPHICS_API_OPENGL_ES3)
             if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES3) accept = true;
+#endif
 #endif
             if (!accept) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER unsupported context_type %d", cb->context_type);
@@ -2217,7 +2221,12 @@ static void LibretroTick(void) {
         rlEnableDepthMask();
         rlDisableBackfaceCulling();
         rlColorMask(true, true, true, true);
-#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43)
+        // VAOs, sampler objects and the UNPACK_ROW_LENGTH/SKIP_* pixel-store params
+        // are all core in desktop GL 3.3+ and GLES3 (WebGL2). Each entry point is
+        // still resolved through rlGetProcAddress and NULL-checked, so a backend
+        // that lacks one simply no-ops. UNPACK_SWAP_BYTES is desktop-only (it does
+        // not exist in GLES), so it stays under the desktop guard.
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43) || defined(GRAPHICS_API_OPENGL_ES3)
         if (_gen)  _gen(LIBRETRO_GL_BLEND_CAP);     // re-enable alpha blending
         if (_gdis) _gdis(LIBRETRO_GL_STENCIL_TEST); // disable stencil
         if (_gup)  _gup(0);                         // unbind shader program
@@ -2233,7 +2242,9 @@ static void LibretroTick(void) {
         // Restore all pixel store parameters — some cores set ROW_LENGTH / SWAP_BYTES
         // which garbles subsequent texture uploads (e.g. Nuklear font atlas)
         if (_gpx) {
-            _gpx(LIBRETRO_GL_UNPACK_SWAP_BYTES, 0);
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43)
+            _gpx(LIBRETRO_GL_UNPACK_SWAP_BYTES, 0); // desktop-only enum
+#endif
             _gpx(LIBRETRO_GL_UNPACK_ROW_LENGTH,  0);
             _gpx(LIBRETRO_GL_UNPACK_SKIP_ROWS,   0);
             _gpx(LIBRETRO_GL_UNPACK_SKIP_PIXELS, 0);
@@ -2490,11 +2501,6 @@ static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *
  */
 static void LibretroVideoRefresh(const void *data, unsigned width, unsigned height, size_t pitch) {
     if (data == RETRO_HW_FRAME_BUFFER_VALID) {
-        static int hwVidFrames = 0;
-        if (hwVidFrames++ < 3)
-            TraceLog(LOG_INFO, "LIBRETRO HW: video_refresh HW frame %ux%u (was %ux%u) texSize=%dx%d",
-                width, height, LIBRETRO.core.width, LIBRETRO.core.height,
-                LIBRETRO.core.texture.width, LIBRETRO.core.texture.height);
         LIBRETRO.core.hwRender.frameWidth  = width;
         LIBRETRO.core.hwRender.frameHeight = height;
         if (width != LIBRETRO.core.width || height != LIBRETRO.core.height) {
@@ -3674,13 +3680,6 @@ static void DrawLibretroTint(Color tint) {
     Rectangle source = LibretroSourceRect();
     Rectangle dest = {cx, cy, (float)destW, (float)destH};
     Vector2 origin = {destW / 2.0f, destH / 2.0f};
-    static int drawFrames = 0;
-    if (drawFrames++ < 3)
-        TraceLog(LOG_INFO, "LIBRETRO: DrawLibretroTint screen=%dx%d dest={%.0f,%.0f,%.0f,%.0f} src={%.0f,%.0f,%.0f,%.0f} tex=%dx%d",
-            GetScreenWidth(), GetScreenHeight(),
-            dest.x, dest.y, dest.width, dest.height,
-            source.x, source.y, source.width, source.height,
-            LIBRETRO.core.texture.width, LIBRETRO.core.texture.height);
     // HW FBO: use GL_ONE/GL_ZERO so the display isn't masked by alpha=0 pixels
     // in the FBO's color attachment (which can happen when the core leaves background
     // pixels at alpha=0). Restore BLEND_ALPHA afterward for the rest of the frame.
