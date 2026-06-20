@@ -13,7 +13,7 @@
 // CACHE_VERSION is replaced at release time with the tag (e.g. v1.2.3).
 // Bump the suffix here whenever the app shell changes significantly so
 // existing browsers pick up the new cache on next activate.
-const CACHE_VERSION = 'raylib-libretro-__VERSION__-2';
+const CACHE_VERSION = 'raylib-libretro-__VERSION__';
 
 // Best-effort precache of the app shell. Big binaries (index.wasm / index.data)
 // are cached lazily on first fetch so a single 404 can't break installation.
