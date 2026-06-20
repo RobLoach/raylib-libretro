@@ -19,7 +19,9 @@ else()
     set_target_properties(test_opengl_libretro PROPERTIES SUFFIX ".so")
 endif()
 
-target_link_libraries(test_opengl_libretro PRIVATE m)
+if (NOT WIN32)
+    target_link_libraries(test_opengl_libretro PRIVATE m)
+endif()
 
 # Copy built core next to the other cores so the frontend finds it.
 add_custom_command(TARGET test_opengl_libretro POST_BUILD
