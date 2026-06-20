@@ -153,6 +153,10 @@ To build the Doxygen documentation...
 doxygen .Doxyfile
 ```
 
+### Cores
+
+Cores are downlownloaded straight from libretro's build bot, or [libretro-wasm-cores](https://github.com/konsumer/libretro-wasm-cores).
+
 ## Contributors
 
 - [Konsumer](https://github.com/konsumer)
