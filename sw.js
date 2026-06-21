@@ -10,7 +10,10 @@
 
 // CACHE_VERSION is replaced at release time with the tag (e.g. v1.2.3)
 // so each deployment evicts the previous cache on mobile devices.
-const CACHE_VERSION = 'raylib-libretro-v0.0.30';
+// CACHE_VERSION is replaced at release time with the tag (e.g. v1.2.3).
+// Bump the suffix here whenever the app shell changes significantly so
+// existing browsers pick up the new cache on next activate.
+const CACHE_VERSION = 'raylib-libretro-v0.0.31';
 
 // Best-effort precache of the app shell. Big binaries (index.wasm / index.data)
 // are cached lazily on first fetch so a single 404 can't break installation.
@@ -51,6 +54,13 @@ self.addEventListener('fetch', (event) => {
   // Only handle same-origin GETs. Let the browser deal with cross-origin
   // (ROM/core downloads) and non-GET requests normally.
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) {
+    return;
+  }
+
+  // Never cache build artifacts — they change on every rebuild and are too large.
+  const url = new URL(req.url);
+  const path = url.pathname;
+  if (path.endsWith('.data') || path.endsWith('.wasm')) {
     return;
   }
 
