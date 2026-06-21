@@ -8,6 +8,16 @@
 
 #include "raylib.h"
 
+// On web, raylib-app's built-in loop (RaylibAppWebUpdate) calls WindowShouldClose()
+// every frame, which raylib's web backend implements with emscripten_sleep(12).
+// emscripten_sleep aborts unless the program is built with ASYNCIFY (which we avoid,
+// since it force-enables DYNCALLS and breaks JS->wasm callbacks). WindowShouldClose()
+// is always false on web anyway, so we supply our own entry point below that drives
+// the emscripten main loop directly and never makes that call. Native keeps raylib-app's
+// standard main().
+#if defined(__EMSCRIPTEN__)
+    #define RAYLIB_APP_NO_ENTRY
+#endif
 #define RAYLIB_APP_IMPLEMENTATION
 #include "raylib-app.h"
 
