@@ -877,13 +877,14 @@ static void LibretroMenuRefreshBiosFiles(void) {
     int fileCount = 0;
     for (unsigned int i = 0; i < files.count; i++) {
         if (!IsPathFile(files.paths[i])) continue;
-        nk_console_label(parent, GetFileName(files.paths[i]));
         fileCount++;
     }
     UnloadDirectoryFiles(files);
 
     if (fileCount == 0) {
-        nk_console_label(parent, "(empty)");
+        nk_console_label(parent, "No BIOS files found");
+    } else {
+        nk_console_label(parent, TextFormat("%d BIOS file%s found", fileCount, fileCount == 1 ? "" : "s"));
     }
 }
 
