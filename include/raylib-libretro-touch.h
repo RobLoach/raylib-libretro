@@ -192,7 +192,7 @@ static bool LibretroTouchIsPhysicalButtonDown(int buttonId) {
     int key = LibretroTouchJoypadKeyboard(buttonId);
     if (key != KEY_NULL && IsKeyDown(key)) return true;
     if (IsGamepadAvailable(0)) {
-        int gbtn = LibretroRetroJoypadButtonToGamepadButton(buttonId);
+        int gbtn = LibretroGetGamepadButtonForPort(0, buttonId);
         if (gbtn != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gbtn)) return true;
     }
     return false;

@@ -131,6 +131,7 @@ static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *
 
 static int LibretroRetroPixelFormatToPixelFormat(int pixelFormat);
 static int LibretroRetroJoypadButtonToGamepadButton(int button);
+static int LibretroGetGamepadButtonForPort(int port, int button);
 static int LibretroRetroJoypadButtontoRetroKey(int button);
 static bool LibretroAnalogToDpadPressed(int port, int btn);
 static int LibretroRetroKeyToKeyboardKey(int key);
@@ -407,6 +408,9 @@ typedef struct LibretroData {
     bool integerScaling;
     int analogToDpadIndex; // 0=None, 1=Left Analog, 2=Right Analog
     int keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
+    // Per-port libretro→raylib gamepad button remap. 0 (GAMEPAD_BUTTON_UNKNOWN)
+    // means "use the default identity mapping" — see LibretroGetGamepadButtonForPort().
+    int gamepadButtonMap[16][RETRO_DEVICE_ID_JOYPAD_R3 + 1];
     char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -2611,7 +2615,7 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                         if (btn < 16 && LIBRETRO.core.virtualJoypadState[btn]) {
                             pressed = true;
                         } else if (gpAvail) {
-                            int gamepadButton = LibretroRetroJoypadButtonToGamepadButton(btn);
+                            int gamepadButton = LibretroGetGamepadButtonForPort(0, btn);
                             pressed = (gamepadButton != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gamepadButton));
                         }
                         if (!pressed) {
@@ -2627,7 +2631,7 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                             }
                         }
                     } else if (gpAvail) {
-                        pressed = IsGamepadButtonDown((int)physicalPad, LibretroRetroJoypadButtonToGamepadButton(btn));
+                        pressed = IsGamepadButtonDown((int)physicalPad, LibretroGetGamepadButtonForPort((int)physicalPad, btn));
                     }
                     if (!pressed) pressed = LibretroAnalogToDpadPressed((int)physicalPad, btn);
                     if (pressed) mask |= (1 << btn);
@@ -2641,7 +2645,7 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                     return 1;
                 }
                 if (IsGamepadAvailable(0)) {
-                    int gamepadButton = LibretroRetroJoypadButtonToGamepadButton(id);
+                    int gamepadButton = LibretroGetGamepadButtonForPort(0, id);
                     if (gamepadButton != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gamepadButton)) {
                         return 1;
                     }
@@ -2663,7 +2667,7 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
             if (!IsGamepadAvailable((int)physicalPad)) {
                 return LibretroAnalogToDpadPressed((int)physicalPad, id) ? 1 : 0;
             }
-            int gamepadButton = LibretroRetroJoypadButtonToGamepadButton(id);
+            int gamepadButton = LibretroGetGamepadButtonForPort((int)physicalPad, id);
             if (IsGamepadButtonDown((int)physicalPad, gamepadButton)) return 1;
             return LibretroAnalogToDpadPressed((int)physicalPad, id) ? 1 : 0;
         }
@@ -2755,7 +2759,7 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                         float value = GetGamepadAxisMovement(port, GAMEPAD_AXIS_RIGHT_TRIGGER);
                         return (int16_t)((value + 1.0f) * 0.5f * 0x7fff);
                     }
-                    int gamepadButton = LibretroRetroJoypadButtonToGamepadButton(id);
+                    int gamepadButton = LibretroGetGamepadButtonForPort(port, id);
                     return IsGamepadButtonDown(port, gamepadButton) ? 0x7fff : 0;
                 }
             }
@@ -4731,6 +4735,59 @@ static int LibretroRetroJoypadButtonToGamepadButton(int button) {
     }
 
     return GAMEPAD_BUTTON_UNKNOWN;
+}
+
+/**
+ * Look up the raylib GamepadButton for a libretro joypad button, consulting
+ * any per-port remap configured via SetLibretroGamepadButtonMapping(). When
+ * the remap slot is 0 (GAMEPAD_BUTTON_UNKNOWN) the default identity mapping
+ * from LibretroRetroJoypadButtonToGamepadButton() is returned.
+ */
+static int LibretroGetGamepadButtonForPort(int port, int button) {
+    if (port >= 0 && port < 16 && button >= 0 && button <= RETRO_DEVICE_ID_JOYPAD_R3) {
+        int mapped = LIBRETRO.gamepadButtonMap[port][button];
+        if (mapped != GAMEPAD_BUTTON_UNKNOWN) {
+            return mapped;
+        }
+    }
+    return LibretroRetroJoypadButtonToGamepadButton(button);
+}
+
+/**
+ * Override the raylib GamepadButton that a libretro joypad button maps to for
+ * the given physical gamepad port. Pass GAMEPAD_BUTTON_UNKNOWN to clear the
+ * override and fall back to the default identity mapping.
+ * @param port Physical gamepad port (0-15).
+ * @param retroButton One of RETRO_DEVICE_ID_JOYPAD_* up to _R3.
+ * @param gamepadButton raylib GamepadButton, or GAMEPAD_BUTTON_UNKNOWN to clear.
+ * @return true on success, false if port or retroButton is out of range.
+ */
+static bool SetLibretroGamepadButtonMapping(int port, int retroButton, int gamepadButton) {
+    if (port < 0 || port >= 16) return false;
+    if (retroButton < 0 || retroButton > RETRO_DEVICE_ID_JOYPAD_R3) return false;
+    LIBRETRO.gamepadButtonMap[port][retroButton] = gamepadButton;
+    return true;
+}
+
+/**
+ * Get the configured per-port override for a libretro joypad button.
+ * Returns 0 (GAMEPAD_BUTTON_UNKNOWN) when no override is configured —
+ * call LibretroGetGamepadButtonForPort() for the effective mapping.
+ */
+static int GetLibretroGamepadButtonMapping(int port, int retroButton) {
+    if (port < 0 || port >= 16) return GAMEPAD_BUTTON_UNKNOWN;
+    if (retroButton < 0 || retroButton > RETRO_DEVICE_ID_JOYPAD_R3) return GAMEPAD_BUTTON_UNKNOWN;
+    return LIBRETRO.gamepadButtonMap[port][retroButton];
+}
+
+/**
+ * Clear every per-button override for a port, restoring the default mapping.
+ */
+static void ResetLibretroGamepadButtonMapping(int port) {
+    if (port < 0 || port >= 16) return;
+    for (int b = 0; b <= RETRO_DEVICE_ID_JOYPAD_R3; b++) {
+        LIBRETRO.gamepadButtonMap[port][b] = GAMEPAD_BUTTON_UNKNOWN;
+    }
 }
 
 static bool LibretroAnalogToDpadPressed(int port, int btn) {
