@@ -7,7 +7,8 @@
 ## Features
 
 - Multi-System Emulator for NES, SNES, GB, GBA, SMS/GG, PlayStation
-- Shipped Cores: fceumm, snes9x, mgba, genesis_plus_gx, prboom, pcsx_rearmed
+- Shipped Cores: fceumm, snes9x, mgba, genesis_plus_gx, prboom, pcsx_rearmed, mednafen_psx_hw
+- Hardware-accelerated OpenGL rendering for GPU-rendered cores
 - Gamepad, Keyboard, On-Screen Controls
 - Audio
 - Fast Forward, Slow Motion, Rewind
@@ -29,6 +30,8 @@
 | WonderSwan / WonderSwan Color | `mednafen_wswan` | `.ws`, `.wsc`, `.pc2` |
 | Doom (PrBoom Engine) | `prboom` | `.wad`, `.iwad`, `.pwad`, `.lmp`, `.m3u` |
 | PlayStation | `pcsx_rearmed` | `.bin`, `.cue`, `.img`, `.mdf`, `.pbp`, `.toc`, `.cbn`, `.m3u`, `.ccd`, `.chd`, `.iso` |
+| PlayStation (HW) | `mednafen_psx_hw` | `.cue`, `.toc`, `.m3u`, `.ccd`, `.exe`, `.pbp`, `.chd` |
+| PlayStation | `mednafen_psx` | `.cue`, `.toc`, `.m3u`, `.ccd`, `.exe`, `.pbp`, `.chd` |
 
 ## Usage
 
@@ -152,6 +155,10 @@ To build the Doxygen documentation...
 ```sh
 doxygen .Doxyfile
 ```
+
+### Cores
+
+Cores are downlownloaded straight from libretro's build bot, or [libretro-wasm-cores](https://github.com/konsumer/libretro-wasm-cores).
 
 ## Contributors
 
