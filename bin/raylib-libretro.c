@@ -617,3 +617,47 @@ App Main() {
     };
 }
 
+#if defined(__EMSCRIPTEN__)
+// Web entry point. Mirrors raylib-app's main() setup but drives the emscripten
+// main loop with our own per-frame callback that does NOT call WindowShouldClose()
+// (see the RAYLIB_APP_NO_ENTRY note at the top of this file). The browser hands
+// control back between frames on its own, so no emscripten_sleep yield is needed.
+// webApp is file-static rather than a main() stack variable because
+// emscripten_set_main_loop(..., simulateInfiniteLoop=1) unwinds main()'s frame.
+static App webApp;
+
+static void WebMainLoop(void) {
+    if (webApp.update != NULL) {
+        if (!webApp.update(webApp.userData)) {
+            if (webApp.close != NULL) webApp.close(webApp.userData);
+            CloseWindow();
+            emscripten_cancel_main_loop();
+            return;
+        }
+    }
+    if (webApp.draw != NULL) {
+        BeginDrawing();
+        webApp.draw(webApp.userData);
+        EndDrawing();
+    }
+}
+
+int main(int argc, char* argv[]) {
+    webApp = Main();
+    if (webApp.configFlags != 0) SetConfigFlags(webApp.configFlags);
+    InitWindow(webApp.width, webApp.height, webApp.title);
+    if (!IsWindowReady()) return 1;
+    if (webApp.fps <= 0) webApp.fps = 0;
+    if (webApp.init != NULL) {
+        if (!webApp.init(&webApp.userData, argc, argv)) {
+            if (webApp.close != NULL) webApp.close(webApp.userData);
+            CloseWindow();
+            return 1;
+        }
+    }
+    // simulateInfiniteLoop=1: this call does not return; it unwinds the stack and
+    // schedules WebMainLoop via requestAnimationFrame (fps<=0) or setTimeout (fps>0).
+    emscripten_set_main_loop(WebMainLoop, webApp.fps, 1);
+    return 0;
+}
+#endif
