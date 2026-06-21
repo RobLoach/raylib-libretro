@@ -438,8 +438,8 @@ static LibretroMenu menu = {
         },
         [LIBRETRO_HOTKEY_DISABLE_HOTKEYS] = {
             .name = "Disable Hot Keys",
-            .defaultKey = NK_CONSOLE_KEY_F12,
-            .key = NK_CONSOLE_KEY_F12,
+            .defaultKey = NK_CONSOLE_KEY_NONE,
+            .key = NK_CONSOLE_KEY_NONE,
             .gamepad = NK_GAMEPAD_BUTTON_INVALID
         },
     },
