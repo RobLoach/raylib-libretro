@@ -37,6 +37,8 @@
 #define RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
 #include "../include/raylib-libretro-shaders.h"
 
+#include "raylib-libretro-android.h"
+
 #define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
 #include "../include/raylib-libretro-menu.h"
 
@@ -45,8 +47,6 @@
 
 #define RAYLIB_LIBRETRO_LOGO_IMPLEMENTATION
 #include "../include/raylib-libretro-logo.h"
-
-#include "raylib-libretro-android.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>        // emscripten_set_main_loop / emscripten_cancel_main_loop
