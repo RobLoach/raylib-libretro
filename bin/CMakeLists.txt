@@ -169,10 +169,15 @@ if ("${PLATFORM}" STREQUAL "Web")
         -sUSE_ZLIB=1 # pcsx_rearmed's side module imports zlib symbols at dlopen; provide the port here
         -sGL_ENABLE_GET_PROC_ADDRESS=1 # allow cores to resolve GL procs at runtime
         -sALLOW_MEMORY_GROWTH=1
+        -sENVIRONMENT=web # browser-only target. Drop the Node/worker glue we never ship.
         -sEXPORTED_RUNTIME_METHODS=ccall # shell.html ccalls LoadLibretroGameFromJS / ResizeCanvasFromJS
         -lidbfs.js # Emscripten's File System API
         --preload-file "${CORES_DIR}@/cores"
         --shell-file "${CMAKE_CURRENT_SOURCE_DIR}/shell.html"
+        # Emscripten links at -O0 even when the sources were compiled -O3, and the
+        # link step is where wasm-opt runs, so pass the optimization level to the
+        # linker too.
+        $<$<CONFIG:Release>:-O3>
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
