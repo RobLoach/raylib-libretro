@@ -140,7 +140,7 @@ A roadmap of some interesting features to consider.
 
 ## libretro API Coverage
 
-- [ ] OpenGL cores / hardware rendering context (`SET_HW_RENDER`)
+- [x] OpenGL cores / hardware rendering context (`SET_HW_RENDER`)
 - [ ] Sensor interface (accelerometer / gyro) for mobile / handheld
 - [ ] LED interface for RGB keyboards / DualSense
 

@@ -127,161 +127,60 @@ set(CORES
     mednafen_pce_fast
     mednafen_wswan
     pcsx_rearmed
+    mednafen_psx
+    mednafen_psx_hw
 )
 
 if ("${PLATFORM}" STREQUAL "Web")
     set_target_properties(raylib-libretro PROPERTIES OUTPUT_NAME "index")
     set_target_properties(raylib-libretro PROPERTIES SUFFIX ".html")
 
-    find_program(EMMAKE_EXECUTABLE emmake REQUIRED)
-    find_program(EMCC_EXECUTABLE   emcc   REQUIRED)
-
-    # libretro symbols exported by every side-module core so the MAIN_MODULE
-    # host can resolve them via dlsym after dlopen.
-    set(LIBRETRO_EXPORTS
-        _retro_init _retro_deinit _retro_api_version
-        _retro_get_system_info _retro_get_system_av_info
-        _retro_set_environment _retro_set_video_refresh
-        _retro_set_audio_sample _retro_set_audio_sample_batch
-        _retro_set_input_poll _retro_set_input_state
-        _retro_set_controller_port_device
-        _retro_reset _retro_run
-        _retro_serialize_size _retro_serialize _retro_unserialize
-        _retro_cheat_reset _retro_cheat_set
-        _retro_load_game _retro_load_game_special _retro_unload_game
-        _retro_get_region _retro_get_memory_data _retro_get_memory_size
-    )
-    string(REPLACE ";" "," LIBRETRO_EXPORTS_CSV "${LIBRETRO_EXPORTS}")
-
+    # Download pre-built wasm SIDE_MODULE cores from the nightly release.
+    # Each .wasm is a SIDE_MODULE=2 with all libretro API symbols exported,
+    # ready to be dlopen'd by the MAIN_MODULE frontend at runtime.
+    set(WASM_CORES_BASE_URL "https://github.com/konsumer/libretro-wasm-cores/releases/download/nightly")
     file(MAKE_DIRECTORY "${CORES_DIR}")
-    set(LIBRETRO_SIDE_MODULES "")
-
-    # Build a libretro core from source as a wasm SIDE_MODULE that the
-    # MAIN_MODULE host can dlopen at runtime. Each core's stock Makefile
-    # produces a static archive named *_libretro_emscripten.bc; that file is
-    # actually an ar archive that we link as a side module with the libretro
-    # API symbols exported.
-    #
-    # Args:
-    #   CORE_NAME  short core name; the output is ${CORE_NAME}_libretro.so
-    #   REPO       git URL
-    #   MAKEFILE   Makefile filename (e.g. Makefile or Makefile.libretro)
-    #   SUBDIR     subdirectory of source to run make in (pass "" for root)
-    #   ARGN...    extra flags injected via EMCC_CFLAGS for the make step, so
-    #              every emcc compile/link picks them up regardless of the core's
-    #              Makefile (e.g. -sUSE_ZLIB=1 to give a core zlib's headers/port).
-    #              Pair with a matching flag on the main module's link options so
-    #              the symbols exist there.
-    function(build_libretro_side_module CORE_NAME REPO MAKEFILE SUBDIR)
-        # ARGN carries optional flags for EMCC_CFLAGS (see header above).
-        set(EXTRA_EMCC_CFLAGS "${ARGN}")
-        string(REPLACE ";" " " EXTRA_EMCC_CFLAGS "${EXTRA_EMCC_CFLAGS}")
-        set(SRC_DIR "${CMAKE_BINARY_DIR}/cores-src/${CORE_NAME}")
-        if (SUBDIR)
-            set(BUILD_DIR "${SRC_DIR}/${SUBDIR}")
+    set(WASM_CORE_FILES "")
+    foreach(CORE IN LISTS CORES)
+        set(WASM_URL "${WASM_CORES_BASE_URL}/${CORE}_libretro.wasm")
+        set(WASM_DST "${CORES_DIR}/${CORE}_libretro.wasm")
+        if (NOT EXISTS "${WASM_DST}")
+            message(STATUS "Downloading wasm core: ${CORE}")
+            file(DOWNLOAD "${WASM_URL}" "${WASM_DST}"
+                STATUS DL_STATUS SHOW_PROGRESS)
+            list(GET DL_STATUS 0 DL_CODE)
+            if (NOT DL_CODE EQUAL 0)
+                list(GET DL_STATUS 1 DL_MSG)
+                message(WARNING "Failed to download ${CORE}: ${DL_MSG} — skipping")
+                file(REMOVE "${WASM_DST}")
+            else()
+                list(APPEND WASM_CORE_FILES "${WASM_DST}")
+            endif()
         else()
-            set(BUILD_DIR "${SRC_DIR}")
+            list(APPEND WASM_CORE_FILES "${WASM_DST}")
         endif()
-        set(BC_FILE "${BUILD_DIR}/${CORE_NAME}_libretro_emscripten.bc")
-        set(A_FILE  "${BUILD_DIR}/${CORE_NAME}_libretro_emscripten.a")
-        set(SO_FILE "${CORES_DIR}/${CORE_NAME}_libretro.so")
+    endforeach()
 
-        if (NOT EXISTS "${SRC_DIR}/.git")
-            message(STATUS "Cloning libretro core: ${CORE_NAME}")
-            file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/cores-src")
-            execute_process(
-                COMMAND git clone --depth 1 --recurse-submodules --shallow-submodules
-                        "${REPO}" "${SRC_DIR}"
-                RESULT_VARIABLE CLONE_RC
-            )
-            if (NOT CLONE_RC EQUAL 0)
-                message(WARNING "Failed to clone ${CORE_NAME}; the web build will not include this core.")
-                return()
-            endif()
-
-            # Many cores' Makefile.common gates the libretro-common SOURCES_C
-            # block behind `ifneq ($(STATIC_LINKING), 1)`, on the assumption
-            # that a static-linked core's frontend provides those symbols. As
-            # a self-contained side module the core must include them itself,
-            # so neutralise the gate to always-true.
-            if (EXISTS "${SRC_DIR}/Makefile.common")
-                file(READ "${SRC_DIR}/Makefile.common" MK_COMMON)
-                string(REPLACE "ifneq (\$(STATIC_LINKING), 1)" "ifeq (1, 1)"
-                       MK_COMMON_PATCHED "${MK_COMMON}")
-                if (NOT MK_COMMON STREQUAL MK_COMMON_PATCHED)
-                    message(STATUS "Patching ${CORE_NAME}/Makefile.common to always include libretro-common")
-                    file(WRITE "${SRC_DIR}/Makefile.common" "${MK_COMMON_PATCHED}")
-                endif()
-            endif()
-
-            # mgba's libretro-build/Makefile.common defines -DHAVE_CRC32 when
-            # STATIC_LINKING=1, which makes the core call zlib's crc32 instead
-            # of its own internal implementation. We don't provide zlib in the
-            # main module, so drop the define and use mgba's internal crc32.
-            if (EXISTS "${SRC_DIR}/libretro-build/Makefile.common")
-                file(READ "${SRC_DIR}/libretro-build/Makefile.common" MGBA_MK)
-                string(REPLACE "RETRODEFS += -DHAVE_CRC32" "# patched: use internal crc32"
-                       MGBA_MK_PATCHED "${MGBA_MK}")
-                if (NOT MGBA_MK STREQUAL MGBA_MK_PATCHED)
-                    message(STATUS "Patching ${CORE_NAME}/libretro-build/Makefile.common to drop -DHAVE_CRC32")
-                    file(WRITE "${SRC_DIR}/libretro-build/Makefile.common" "${MGBA_MK_PATCHED}")
-                endif()
-            endif()
-        endif()
-
-        # emcc reads EMCC_CFLAGS and appends it to every compile/link it runs,
-        # so this reaches the core's sources without the Makefile cooperating.
-        # Force -O3 on every core translation unit for the best emulation
-        # performance, regardless of the core Makefile's own default: EMCC_CFLAGS
-        # is appended last and the last -O on the command line wins.
-        set(CORE_EMCC_CFLAGS "-O3 ${EXTRA_EMCC_CFLAGS}")
-        string(STRIP "${CORE_EMCC_CFLAGS}" CORE_EMCC_CFLAGS)
-        set(MAKE_ENV ${CMAKE_COMMAND} -E env "EMCC_CFLAGS=${CORE_EMCC_CFLAGS}")
-
-        add_custom_command(
-            OUTPUT "${SO_FILE}"
-            COMMAND ${MAKE_ENV} "${EMMAKE_EXECUTABLE}" make -f "${MAKEFILE}"
-                    platform=emscripten fpic=-fPIC -j
-            COMMAND ${CMAKE_COMMAND} -E copy "${BC_FILE}" "${A_FILE}"
-            COMMAND "${EMCC_EXECUTABLE}" -O3 -sSIDE_MODULE=2
-                    "-sEXPORTED_FUNCTIONS=${LIBRETRO_EXPORTS_CSV}"
-                    -Wl,--whole-archive "${A_FILE}" -Wl,--no-whole-archive
-                    -o "${SO_FILE}"
-            WORKING_DIRECTORY "${BUILD_DIR}"
-            COMMENT "Building libretro side module: ${CORE_NAME}"
-            VERBATIM
-        )
-
-        list(APPEND LIBRETRO_SIDE_MODULES "${SO_FILE}")
-        set(LIBRETRO_SIDE_MODULES "${LIBRETRO_SIDE_MODULES}" PARENT_SCOPE)
-    endfunction()
-
-    build_libretro_side_module(fceumm    "https://github.com/libretro/libretro-fceumm"   "Makefile.libretro" "")
-    build_libretro_side_module(snes9x    "https://github.com/libretro/snes9x"            "Makefile"          "libretro")
-    build_libretro_side_module(mgba      "https://github.com/libretro/mgba"              "Makefile.libretro" "")
-    build_libretro_side_module(genesis_plus_gx "https://github.com/libretro/Genesis-Plus-GX" "Makefile.libretro" "")
-    build_libretro_side_module(prboom        "https://github.com/libretro/libretro-prboom"       "Makefile"          "")
-    build_libretro_side_module(mednafen_pce_fast "https://github.com/libretro/beetle-pce-fast-libretro" "Makefile"     "")
-    build_libretro_side_module(mednafen_wswan "https://github.com/libretro/beetle-wswan-libretro" "Makefile"          "")
-    build_libretro_side_module(pcsx_rearmed  "https://github.com/libretro/pcsx_rearmed"           "Makefile.libretro" "" "-sUSE_ZLIB=1")
-
-    if (LIBRETRO_SIDE_MODULES)
-        add_custom_target(libretro-side-modules ALL DEPENDS ${LIBRETRO_SIDE_MODULES})
-        add_dependencies(raylib-libretro libretro-side-modules)
-        # Make the final web binary relink whenever a preloaded core changes.
-        set_property(TARGET raylib-libretro APPEND PROPERTY
-            LINK_DEPENDS ${LIBRETRO_SIDE_MODULES})
+    # Relink whenever any core wasm file changes so the preload archive is rebuilt.
+    if (WASM_CORE_FILES)
+        set_property(TARGET raylib-libretro APPEND PROPERTY LINK_DEPENDS ${WASM_CORE_FILES})
     endif()
 
     target_link_options(raylib-libretro PUBLIC
         -sUSE_GLFW=3
         -sMAIN_MODULE=1
         -sUSE_ZLIB=1 # pcsx_rearmed's side module imports zlib symbols at dlopen; provide the port here
+        -sGL_ENABLE_GET_PROC_ADDRESS=1 # allow cores to resolve GL procs at runtime
         -sALLOW_MEMORY_GROWTH=1
+        #-sENVIRONMENT=web # browser-only target. Drop the Node/worker glue we never ship.
         -sEXPORTED_RUNTIME_METHODS=ccall # shell.html ccalls LoadLibretroGameFromJS / ResizeCanvasFromJS
         -lidbfs.js # Emscripten's File System API
         --preload-file "${CORES_DIR}@/cores"
         --shell-file "${CMAKE_CURRENT_SOURCE_DIR}/shell.html"
+        # Emscripten links at -O0 even when the sources were compiled -O3, and the
+        # link step is where wasm-opt runs, so pass the optimization level to the
+        # linker too.
+        #$<$<CONFIG:Release>:-O3>
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
