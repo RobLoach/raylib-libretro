@@ -134,6 +134,8 @@ typedef struct LibretroMenu {
     nk_rune keyboardControls[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
     cvector(LibretroCoreInfo*) coreInfos;
     nk_console* corePickerMenu;
+    nk_console* biosMenu;
+    char biosFilePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char pendingGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char pendingCorePaths[LIBRETRO_MAX_GAME_CORES][512];
     char pendingCoreNames[LIBRETRO_MAX_GAME_CORES][128]; // stable picker button labels (GetFileNameWithoutExt reuses a shared static buffer)
@@ -221,6 +223,25 @@ static void LibretroMenuEmscriptenLoadGameClicked(nk_console* widget, void* user
     TraceLog(LOG_INFO, "LIBRETRO: Opening the file dialog");
     LibretroMenuEmscriptenOpenFilePicker();
 }
+
+EM_JS(void, LibretroMenuEmscriptenOpenBiosPicker, (const char* sysDir), {
+    let sysDirStr = UTF8ToString(sysDir);
+    let input = document.createElement('input');
+    input.type = 'file';
+    input.onchange = function(e) {
+        let file = e.target.files[0];
+        if (!file) return;
+        let reader = new FileReader();
+        reader.onload = function() {
+            let uint8Array = new Uint8Array(reader.result);
+            let destPath = sysDirStr + '/' + file.name;
+            FS.writeFile(destPath, uint8Array);
+            Module._LibretroMenuBiosFileAdded();
+        };
+        reader.readAsArrayBuffer(file);
+    };
+    input.click();
+});
 #else
 #define LibretroFlushPersistentStorage() ((void)0)
 #endif /* __EMSCRIPTEN__ */
@@ -831,6 +852,111 @@ static void MenuCommitSettings(nk_console* widget, void* user_data) {
 }
 
 static void ScanLibretroCoreDirectory(void);
+
+#if !defined(__EMSCRIPTEN__) && !defined(PLATFORM_WEB)
+static void MenuBiosFileSelected(nk_console* widget, void* user_data);
+#endif
+#if defined(__EMSCRIPTEN__) || defined(PLATFORM_WEB)
+static void MenuEmscriptenBiosAddClicked(nk_console* widget, void* user_data);
+#endif
+
+static void LibretroMenuRefreshBiosFiles(void) {
+    if (!menu.biosMenu) return;
+
+    nk_console* parent = menu.biosMenu;
+
+    nk_console_free_children(parent);
+
+    nk_console_button_set_symbol(
+        nk_console_button_onclick(parent, "BIOS Files", &nk_console_button_back),
+        NK_SYMBOL_TRIANGLE_UP);
+
+#if defined(__EMSCRIPTEN__) || defined(PLATFORM_WEB)
+    nk_console_button_onclick(parent, "Add File", &MenuEmscriptenBiosAddClicked);
+#else
+    nk_console* biosFileWidget = nk_console_file_action(parent, "Add File", menu.biosFilePath, RAYLIB_LIBRETRO_VFS_MAX_PATH);
+    nk_console_add_event_handler(biosFileWidget, NK_CONSOLE_EVENT_CHANGED, &MenuBiosFileSelected, NULL, NULL);
+#endif
+
+    const char* sysDir = LIBRETRO.systemDirectory;
+    if (sysDir[0] == '\0' || !DirectoryExists(sysDir)) {
+        nk_console_label(parent, "(no system directory set)");
+        return;
+    }
+
+    FilePathList files = LoadDirectoryFiles(sysDir);
+    int fileCount = 0;
+    for (unsigned int i = 0; i < files.count; i++) {
+        if (!IsPathFile(files.paths[i])) continue;
+        fileCount++;
+    }
+    UnloadDirectoryFiles(files);
+
+    if (fileCount == 0) {
+        nk_console_label(parent, "No BIOS files found");
+    } else {
+        nk_console_label(parent, TextFormat("%d BIOS file%s found", fileCount, fileCount == 1 ? "" : "s"));
+    }
+}
+
+#if !defined(__EMSCRIPTEN__) && !defined(PLATFORM_WEB)
+static void MenuBiosFileSelected(nk_console* widget, void* user_data) {
+    (void)widget;
+    (void)user_data;
+    if (menu.biosFilePath[0] == '\0') return;
+    if (!IsPathFile(menu.biosFilePath)) return;
+
+    const char* sysDir = LIBRETRO.systemDirectory;
+    if (sysDir[0] == '\0') return;
+
+    if (!DirectoryExists(sysDir)) {
+        MakeDirectory(sysDir);
+    }
+
+    const char* fileName = GetFileName(menu.biosFilePath);
+    const char* destPath = TextFormat("%s/%s", sysDir, fileName);
+
+    int fileSize = 0;
+    unsigned char* fileData = LoadFileData(menu.biosFilePath, &fileSize);
+    if (fileData && fileSize > 0) {
+        SaveFileData(destPath, fileData, fileSize);
+        TraceLog(LOG_INFO, "LIBRETRO: Copied BIOS file to %s", destPath);
+    }
+    UnloadFileData(fileData);
+
+    menu.biosFilePath[0] = '\0';
+    LibretroMenuRefreshBiosFiles();
+}
+#else
+EMSCRIPTEN_KEEPALIVE
+void LibretroMenuBiosFileAdded(void) {
+    TraceLog(LOG_INFO, "LIBRETRO: BIOS file added from browser");
+    LibretroMenuRefreshBiosFiles();
+    LibretroFlushPersistentStorage();
+}
+#endif
+
+#if defined(__EMSCRIPTEN__) || defined(PLATFORM_WEB)
+static void MenuEmscriptenBiosAddClicked(nk_console* widget, void* user_data) {
+    (void)widget;
+    (void)user_data;
+    const char* sysDir = LIBRETRO.systemDirectory;
+    if (sysDir[0] == '\0') {
+        TraceLog(LOG_WARNING, "LIBRETRO: No system directory set");
+        return;
+    }
+    if (!DirectoryExists(sysDir)) {
+        MakeDirectory(sysDir);
+    }
+    LibretroMenuEmscriptenOpenBiosPicker(sysDir);
+}
+#endif
+
+static void MenuBiosMenuOpened(nk_console* widget, void* user_data) {
+    (void)user_data;
+    LibretroMenuRefreshBiosFiles();
+    nk_console_set_active_parent(widget);
+}
 
 static void LibretroMenuEnsureSaveDir(void) {
     if (LIBRETRO.saveDirectory[0] != '\0' && !DirectoryExists(LIBRETRO.saveDirectory)) {
@@ -1772,6 +1898,14 @@ LibretroMenu* InitLibretroMenu(void) {
             // Content
             nk_console* fileBrowserStartDirectory = nk_console_dir(dirMenu, "Content", LIBRETRO.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuContentDirChanged, NULL, NULL);
+        }
+
+        // BIOS Files
+        {
+            menu.biosMenu = nk_console_button(settings, "BIOS Files");
+            nk_console_button_set_symbol(menu.biosMenu, NK_SYMBOL_TRIANGLE_RIGHT);
+            nk_console_add_event(menu.biosMenu, NK_CONSOLE_EVENT_CLICKED, &MenuBiosMenuOpened);
+            LibretroMenuRefreshBiosFiles();
         }
 
         // Core Options (nested inside Settings)
