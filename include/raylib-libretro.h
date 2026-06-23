@@ -151,6 +151,11 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#if defined(_WIN32)
+    #include <windows.h>
+#elif defined(__unix__) || defined(__APPLE__)
+    #include <sys/mman.h>
+#endif
 
 #include "rlgl.h"
 
@@ -2061,6 +2066,76 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         case RETRO_ENVIRONMENT_GET_NETPLAY_CLIENT_INDEX: {
             TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_NETPLAY_CLIENT_INDEX not implemented");
             return false;
+        }
+
+        case RETRO_ENVIRONMENT_EXEC_MEM_ALLOC: {
+            struct retro_exec_mem_alloc* mem = (struct retro_exec_mem_alloc*)data;
+            if (mem == NULL) {
+                return false;
+            }
+            mem->rx = NULL;
+            mem->rw = NULL;
+            #if defined(_WIN32)
+                if (mem->size == 0) {
+                    mem->mode = RETRO_EXEC_MEM_MODE_RWX;
+                    return true;
+                }
+                {
+                    size_t total = sizeof(size_t) + mem->size;
+                    void* base = VirtualAlloc(NULL, total, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                    if (base == NULL) {
+                        return false;
+                    }
+                    *(size_t*)base = mem->size;
+                    mem->rx = (char*)base + sizeof(size_t);
+                    mem->rw = mem->rx;
+                    mem->mode = RETRO_EXEC_MEM_MODE_RWX;
+                    return true;
+                }
+            #elif defined(__unix__) || defined(__APPLE__)
+                if (mem->size == 0) {
+                    mem->mode = RETRO_EXEC_MEM_MODE_RWX;
+                    return true;
+                }
+                {
+                    size_t total = sizeof(size_t) + mem->size;
+                    void* base = mmap(NULL, total, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+                    if (base == MAP_FAILED) {
+                        return false;
+                    }
+                    *(size_t*)base = mem->size;
+                    mem->rx = (char*)base + sizeof(size_t);
+                    mem->rw = mem->rx;
+                    mem->mode = RETRO_EXEC_MEM_MODE_RWX;
+                    return true;
+                }
+            #else
+                mem->mode = RETRO_EXEC_MEM_MODE_UNAVAILABLE;
+                return false;
+            #endif
+        }
+
+        case RETRO_ENVIRONMENT_EXEC_MEM_FREE: {
+            struct retro_exec_mem_free* mem = (struct retro_exec_mem_free*)data;
+            if (mem == NULL || mem->rx == NULL) {
+                return false;
+            }
+            #if defined(_WIN32)
+                {
+                    void* base = (char*)mem->rx - sizeof(size_t);
+                    VirtualFree(base, 0, MEM_RELEASE);
+                    return true;
+                }
+            #elif defined(__unix__) || defined(__APPLE__)
+                {
+                    void* base = (char*)mem->rx - sizeof(size_t);
+                    size_t size = *(size_t*)base;
+                    munmap(base, sizeof(size_t) + size);
+                    return true;
+                }
+            #else
+                return false;
+            #endif
         }
     }
 
