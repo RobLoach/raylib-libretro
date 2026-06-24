@@ -73,6 +73,7 @@ static unsigned GetLibretroWidth(void);
 static unsigned GetLibretroHeight(void);
 static int GetLibretroRotation(void);
 static Texture2D GetLibretroTexture(void);
+static bool ResetLibretroVideo(void);
 static Image LoadImageFromLibretro();
 static bool IsLibretroGameRequired(void);
 static bool ResetLibretro(void);
@@ -715,6 +716,7 @@ static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
 }
 
 static void InitLibretroAudio(void);  // Forward declaration.
+static bool InitLibretroVideo(void);  // Forward declaration.
 static size_t UpdateLibretroAudioSampleBatch(const int16_t *data, size_t frames);  // Forward declaration.
 
 static uintptr_t LibretroHwGetCurrentFramebuffer(void) {
@@ -777,6 +779,85 @@ static bool hw_InitLibretroVideo(void) {
     LIBRETRO.core.textureRebuild = false;
     TraceLog(LOG_INFO, "LIBRETRO HW: FBO %ux%u created (id=%u)", fboW, fboH, LIBRETRO.core.hwRender.target.id);
     return true;
+}
+
+// Fire the core's context_reset with our FBO bound, then restore the previously-bound
+// target. Cores commonly query get_current_framebuffer and build GL objects against the
+// FBO here, so it must be current. No-op (and leaves active=false) when the core supplied
+// no context_reset, matching the contract that such a core never enters the HW path.
+static void hw_FireContextReset(void) {
+    if (!LIBRETRO.core.hwRender.enabled || LIBRETRO.core.hwRender.cb.context_reset == NULL) {
+        return;
+    }
+    rlDrawRenderBatchActive();
+    unsigned savedFbo = rlGetActiveFramebuffer();
+    rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
+    LIBRETRO.core.hwRender.cb.context_reset();
+    if (savedFbo != 0)
+        rlEnableFramebuffer(savedFbo);
+    else
+        rlDisableFramebuffer();
+    LIBRETRO.core.hwRender.active = true;
+    TraceLog(LOG_INFO, "LIBRETRO HW: context_reset fired");
+}
+
+// Fire the core's context_destroy with our FBO bound so it can release the GL resources
+// it created in context_reset. No-op when the HW context is not currently live.
+static void hw_FireContextDestroy(void) {
+    if (!LIBRETRO.core.hwRender.active) {
+        return;
+    }
+    if (LIBRETRO.core.hwRender.cb.context_destroy != NULL) {
+        rlDrawRenderBatchActive();
+        rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
+        LIBRETRO.core.hwRender.cb.context_destroy();
+        rlDisableFramebuffer();
+    }
+    LIBRETRO.core.hwRender.active = false;
+}
+
+// Recreate the HW render FBO while the GL context itself is unchanged (e.g. the core's
+// max geometry grew, or the platform recreated the context). The core's GL resources are
+// torn down (context_destroy) and re-established (context_reset) around the rebuild so it
+// rebinds to the new framebuffer instead of the destroyed one. Returns false on failure,
+// leaving the HW context inactive.
+static bool hw_RebuildLibretroVideo(void) {
+    if (!LIBRETRO.core.hwRender.enabled) {
+        return false;
+    }
+    bool wasActive = LIBRETRO.core.hwRender.active;
+    hw_FireContextDestroy();   // no-op when not active
+    CloseLibretroVideo();      // unload the old FBO + color attachment
+    if (!hw_InitLibretroVideo()) {
+        TraceLog(LOG_ERROR, "LIBRETRO HW: FBO rebuild failed");
+        return false;
+    }
+    if (wasActive) {
+        hw_FireContextReset(); // re-create the core's GL resources on the new FBO
+    }
+    return true;
+}
+
+/**
+ * Rebuild the video pipeline after the platform recreated the GL context.
+ *
+ * For HW-rendered cores this tears down and re-establishes the core's GL resources
+ * (context_destroy -> new FBO -> context_reset); for software cores it rebuilds the
+ * upload texture. Call this ONLY when the GL context was genuinely recreated.
+ *
+ * Note: raylib preserves the GL context across a normal Android pause/resume (the EGL
+ * context is detached and re-attached, not destroyed), so this is not needed there and
+ * calling it would force the core to needlessly reinitialize. There is currently no
+ * portable raylib signal for a true context re-creation, so this is exposed for platform
+ * glue that can detect one (e.g. a confirmed GL context loss).
+ *
+ * @return true on success.
+ */
+static bool ResetLibretroVideo(void) {
+    if (LIBRETRO.core.hwRender.enabled) {
+        return hw_RebuildLibretroVideo();
+    }
+    return InitLibretroVideo();
 }
 
 static bool InitLibretroVideo(void) {
@@ -1355,7 +1436,19 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 LIBRETRO.core.height,
                 LIBRETRO.core.fps
             );
-            if (dimsChanged) {
+            if (LIBRETRO.core.hwRender.active) {
+                // HW cores render into an FBO sized to max geometry; a base-dimension
+                // change is only a smaller visible crop (tracked per-frame via
+                // RETRO_HW_FRAME_BUFFER_VALID), so the FBO is left alone. Only a *grow* in
+                // max geometry (e.g. an internal-resolution option) needs a new FBO, and
+                // hw_RebuildLibretroVideo re-fires context_destroy/context_reset so the core
+                // rebinds to it rather than the destroyed one.
+                unsigned newMaxW = av.geometry.max_width  > 0 ? av.geometry.max_width  : LIBRETRO.core.width;
+                unsigned newMaxH = av.geometry.max_height > 0 ? av.geometry.max_height : LIBRETRO.core.height;
+                if (newMaxW > LIBRETRO.core.hwRender.fboWidth || newMaxH > LIBRETRO.core.hwRender.fboHeight) {
+                    hw_RebuildLibretroVideo();
+                }
+            } else if (!LIBRETRO.core.hwRender.enabled && dimsChanged) {
                 InitLibretroVideo();
             }
             if (sampleRateChanged) {
@@ -2882,18 +2975,7 @@ static bool InitLibretroAudioVideo(void) {
     InitLibretroVideo();
     InitLibretroAudio();
 
-    if (LIBRETRO.core.hwRender.enabled && LIBRETRO.core.hwRender.cb.context_reset != NULL) {
-        rlDrawRenderBatchActive();
-        unsigned savedFbo = rlGetActiveFramebuffer();
-        rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
-        LIBRETRO.core.hwRender.cb.context_reset();
-        if (savedFbo != 0)
-            rlEnableFramebuffer(savedFbo);
-        else
-            rlDisableFramebuffer();
-        LIBRETRO.core.hwRender.active = true;
-        TraceLog(LOG_INFO, "LIBRETRO HW: context_reset fired");
-    }
+    hw_FireContextReset();
 
     // A fresh game load is a wall-clock discontinuity (disk I/O, core init);
     // start the time accumulator clean so the first frame doesn't burst.
@@ -4175,14 +4257,7 @@ static bool SetLibretroSRAMData(const void* data, size_t size) {
  * Unload the currently loaded content without closing the core.
  */
 static void UnloadLibretroGame(void) {
-    if (LIBRETRO.core.hwRender.active) {
-        if (LIBRETRO.core.hwRender.cb.context_destroy != NULL) {
-            rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
-            LIBRETRO.core.hwRender.cb.context_destroy();
-            rlDisableFramebuffer();
-        }
-        LIBRETRO.core.hwRender.active = false;
-    }
+    hw_FireContextDestroy();
     if (LIBRETRO.core.hwRender.enabled) {
         CloseLibretroVideo();
         LIBRETRO.core.hwRender.enabled = false;
