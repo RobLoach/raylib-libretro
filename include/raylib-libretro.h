@@ -392,7 +392,6 @@ typedef struct LibretroCoreData {
         bool fboUsedThisFrame;                 // get_current_framebuffer was called; core rendered to our FBO
         struct retro_hw_render_callback cb;    // verbatim copy from the core
         RenderTexture2D target;                // FBO + color attachment
-        unsigned int depthStencilRb;           // manually-created renderbuffer (stencil path only)
         unsigned fboWidth, fboHeight;          // allocated FBO size (max geometry)
         unsigned frameWidth, frameHeight;      // last valid sub-region from RETRO_HW_FRAME_BUFFER_VALID
     } hwRender;
@@ -729,12 +728,6 @@ static retro_proc_address_t LibretroHwGetProcAddress(const char *sym) {
 
 static void CloseLibretroVideo(void) {
     if (LIBRETRO.core.hwRender.enabled) {
-        if (LIBRETRO.core.hwRender.depthStencilRb != 0) {
-            typedef void (*lrgl_DelRb)(int, const unsigned int *);
-            lrgl_DelRb _delRb = (lrgl_DelRb)rlGetProcAddress("glDeleteRenderbuffers");
-            if (_delRb) _delRb(1, &LIBRETRO.core.hwRender.depthStencilRb);
-            LIBRETRO.core.hwRender.depthStencilRb = 0;
-        }
         if (IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
             UnloadRenderTexture(LIBRETRO.core.hwRender.target);
             memset(&LIBRETRO.core.hwRender.target, 0, sizeof(LIBRETRO.core.hwRender.target));
@@ -813,7 +806,6 @@ static bool hw_InitLibretroVideo(void) {
             rlUnloadFramebuffer(fboId);
             return false;
         }
-        LIBRETRO.core.hwRender.depthStencilRb = rbId;
         LIBRETRO.core.hwRender.target.id = fboId;
         LIBRETRO.core.hwRender.target.texture.id = texId;
         LIBRETRO.core.hwRender.target.texture.width = (int)fboW;
