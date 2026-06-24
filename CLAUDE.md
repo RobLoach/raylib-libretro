@@ -41,7 +41,7 @@ Per-frame flow (all on the main thread inside `LibretroTick`, outside `BeginDraw
 3. Post-run: restore GL state (FBO, viewport, blend, depth, scissor, VAO, sampler objects, pixel-store params) through raylib setters + raw GL so the `RLGL` cache stays consistent.
 4. `Draw()` blits `LIBRETRO.core.texture` (aliased to the FBO color attachment) with a vertical flip for `bottom_left_origin` cores.
 
-FBO is sized to `max_width × max_height` from `retro_get_system_av_info`. Stencil-requesting cores get a manually-built `DEPTH24_STENCIL8` renderbuffer (tracked in `hwRender.depthStencilRb`); depth-only cores use `LoadRenderTexture`. `context_reset` fires after `InitLibretroVideo`; `context_destroy` fires in `UnloadLibretroGame` before FBO teardown.
+FBO is sized to `max_width × max_height` from `retro_get_system_av_info`, built with raylib's `LoadRenderTexture` (color + depth) so rlgl owns the GL objects and teardown is a plain `UnloadRenderTexture`. No stencil buffer is provided — cores that request one fall back to depth-only, which keeps the FBO complete across every supported GL/GLES config. `context_reset` fires after `InitLibretroVideo`; `context_destroy` fires in `UnloadLibretroGame` before FBO teardown.
 
 Accepted context types depend on the build: desktop GL 3.3 (`OPENGL`/`OPENGL_CORE` ≤ 3.3), GL 4.3 with opt-in rebuild, GLES2, GLES3 (WebGL2). Vulkan/D3D cores are rejected cleanly. Test core in `tests/test_opengl/`.
 

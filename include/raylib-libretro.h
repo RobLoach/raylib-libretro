@@ -758,66 +758,18 @@ static bool hw_InitLibretroVideo(void) {
     LIBRETRO.core.hwRender.frameWidth  = LIBRETRO.core.width;
     LIBRETRO.core.hwRender.frameHeight = LIBRETRO.core.height;
 
+    // Build the FBO with raylib's render texture (color + depth). raylib/rlgl owns the
+    // GL objects, so teardown is a plain UnloadRenderTexture and the depth attachment is
+    // chosen to fit whichever GRAPHICS_API_* config raylib was compiled against. A stencil
+    // buffer is not provided; cores that request one fall back to depth-only, which keeps
+    // the FBO complete across every supported GL/GLES configuration.
+    LIBRETRO.core.hwRender.target = LoadRenderTexture((int)fboW, (int)fboH);
+    if (!IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
+        TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to load render texture");
+        return false;
+    }
     if (LIBRETRO.core.hwRender.cb.stencil) {
-        // depth+stencil: build packed DEPTH24_STENCIL8 FBO manually
-        unsigned int fboId = rlLoadFramebuffer();
-        if (fboId == 0) {
-            TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to create framebuffer");
-            return false;
-        }
-        unsigned int texId = rlLoadTexture(NULL, (int)fboW, (int)fboH,
-            RL_PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, 1);
-        rlFramebufferAttach(fboId, texId, RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_TEXTURE2D, 0);
-        // rlLoadTextureDepth creates a depth-only buffer; build DEPTH24_STENCIL8 via runtime GL.
-        // glad.h is only included inside RLGL_IMPLEMENTATION so we use rlGetProcAddress + manual
-        // constants rather than referencing the glad symbols directly.
-#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43)
-        #ifndef LIBRETRO_GL_RENDERBUFFER
-        #define LIBRETRO_GL_RENDERBUFFER             0x8D41U
-        #define LIBRETRO_GL_DEPTH24_STENCIL8         0x88F0U
-        #define LIBRETRO_GL_DEPTH_STENCIL_ATTACHMENT 0x821AU
-        #define LIBRETRO_GL_FRAMEBUFFER              0x8D40U
-        #endif
-        typedef void (*lrgl_GenRb)(int, unsigned int *);
-        typedef void (*lrgl_BindRb)(unsigned int, unsigned int);
-        typedef void (*lrgl_RbStorage)(unsigned int, unsigned int, int, int);
-        typedef void (*lrgl_BindFb)(unsigned int, unsigned int);
-        typedef void (*lrgl_FbRb)(unsigned int, unsigned int, unsigned int, unsigned int);
-        lrgl_GenRb    _genRb     = (lrgl_GenRb)rlGetProcAddress("glGenRenderbuffers");
-        lrgl_BindRb   _bindRb    = (lrgl_BindRb)rlGetProcAddress("glBindRenderbuffer");
-        lrgl_RbStorage _rbStorage = (lrgl_RbStorage)rlGetProcAddress("glRenderbufferStorage");
-        lrgl_BindFb   _bindFb    = (lrgl_BindFb)rlGetProcAddress("glBindFramebuffer");
-        lrgl_FbRb     _fbRb      = (lrgl_FbRb)rlGetProcAddress("glFramebufferRenderbuffer");
-        unsigned int rbId = 0;
-        _genRb(1, &rbId);
-        _bindRb(LIBRETRO_GL_RENDERBUFFER, rbId);
-        _rbStorage(LIBRETRO_GL_RENDERBUFFER, LIBRETRO_GL_DEPTH24_STENCIL8, (int)fboW, (int)fboH);
-        _bindRb(LIBRETRO_GL_RENDERBUFFER, 0);
-        _bindFb(LIBRETRO_GL_FRAMEBUFFER, fboId);
-        _fbRb(LIBRETRO_GL_FRAMEBUFFER, LIBRETRO_GL_DEPTH_STENCIL_ATTACHMENT, LIBRETRO_GL_RENDERBUFFER, rbId);
-        _bindFb(LIBRETRO_GL_FRAMEBUFFER, 0);
-#else
-        unsigned int rbId = rlLoadTextureDepth((int)fboW, (int)fboH, true);
-        rlFramebufferAttach(fboId, rbId, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_RENDERBUFFER, 0);
-#endif
-        if (!rlFramebufferComplete(fboId)) {
-            TraceLog(LOG_ERROR, "LIBRETRO HW: Framebuffer incomplete (depth+stencil)");
-            rlUnloadTexture(texId);
-            rlUnloadFramebuffer(fboId);
-            return false;
-        }
-        LIBRETRO.core.hwRender.target.id = fboId;
-        LIBRETRO.core.hwRender.target.texture.id = texId;
-        LIBRETRO.core.hwRender.target.texture.width = (int)fboW;
-        LIBRETRO.core.hwRender.target.texture.height = (int)fboH;
-        LIBRETRO.core.hwRender.target.texture.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-        LIBRETRO.core.hwRender.target.texture.mipmaps = 1;
-    } else {
-        LIBRETRO.core.hwRender.target = LoadRenderTexture((int)fboW, (int)fboH);
-        if (!IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
-            TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to load render texture");
-            return false;
-        }
+        TraceLog(LOG_WARNING, "LIBRETRO HW: core requested a stencil buffer; providing depth only");
     }
 
     LIBRETRO.core.texture = LIBRETRO.core.hwRender.target.texture;
@@ -1144,35 +1096,50 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             struct retro_hw_render_callback *cb = (struct retro_hw_render_callback *)data;
+            // Accept only context types the GL context raylib created can actually serve.
+            // We share raylib's single GL context with the core (no second/shared context),
+            // so the requested API must match the GRAPHICS_API_* config raylib was built with.
             bool accept = false;
 #if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43)
-            if (cb->context_type == RETRO_HW_CONTEXT_OPENGL) accept = true;
-            if (cb->context_type == RETRO_HW_CONTEXT_OPENGL_CORE) {
-                unsigned ceil_major = 3, ceil_minor = 3;
+            // Desktop GL build: the legacy compatibility context (OPENGL) always works, and
+            // modern core contexts (OPENGL_CORE) up to the version raylib compiled against.
+            unsigned ceil_major = 3, ceil_minor = 3;
 #if defined(GRAPHICS_API_OPENGL_43)
-                ceil_major = 4; ceil_minor = 3;
+            ceil_major = 4; ceil_minor = 3;
 #endif
-                if (cb->version_major < ceil_major ||
-                    (cb->version_major == ceil_major && cb->version_minor <= ceil_minor))
-                    accept = true;
+            if (cb->context_type == RETRO_HW_CONTEXT_OPENGL) {
+                accept = true;
+            } else if (cb->context_type == RETRO_HW_CONTEXT_OPENGL_CORE) {
+                accept = (cb->version_major < ceil_major) ||
+                         (cb->version_major == ceil_major && cb->version_minor <= ceil_minor);
             }
 #elif defined(GRAPHICS_API_OPENGL_ES2) || defined(GRAPHICS_API_OPENGL_ES3)
-            if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES2) accept = true;
-            // ES3 context (WebGL2) only honored when raylib itself is built for ES3,
-            // since the capture-blit + state-restore below rely on ES3 entry points.
+            // GLES build: ES2 is always serviceable. ES3 (and ES3.x requested via
+            // OPENGLES_VERSION) is only honored when raylib itself is an ES3 build, since the
+            // capture-blit + state-restore below rely on ES3 entry points. That ES3 build maps
+            // to WebGL2 == GLES 3.0, so cap the OPENGLES_VERSION request at 3.0.
+            if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES2) {
+                accept = true;
+            }
 #if defined(GRAPHICS_API_OPENGL_ES3)
-            if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES3) accept = true;
+            else if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES3) {
+                accept = true;
+            } else if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES_VERSION) {
+                accept = (cb->version_major < 3) ||
+                         (cb->version_major == 3 && cb->version_minor == 0);
+            }
 #endif
 #endif
+            // Vulkan / Direct3D context types fall through and are rejected cleanly.
             if (!accept) {
-                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER unsupported context_type %d", cb->context_type);
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER unsupported context_type %d (version %u.%u)",
+                    cb->context_type, cb->version_major, cb->version_minor);
                 return false;
             }
-            LIBRETRO.core.hwRender.cb = *cb;
+            // Patch the core's callback struct, then keep a copy with the patched pointers.
             cb->get_current_framebuffer = LibretroHwGetCurrentFramebuffer;
             cb->get_proc_address        = LibretroHwGetProcAddress;
-            LIBRETRO.core.hwRender.cb.get_current_framebuffer = LibretroHwGetCurrentFramebuffer;
-            LIBRETRO.core.hwRender.cb.get_proc_address        = LibretroHwGetProcAddress;
+            LIBRETRO.core.hwRender.cb = *cb;
             LIBRETRO.core.hwRender.enabled = true;
             TraceLog(LOG_INFO, "LIBRETRO: HW render accepted (context_type=%d depth=%d stencil=%d)", cb->context_type, cb->depth, cb->stencil);
             return true;
