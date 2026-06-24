@@ -1785,9 +1785,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             *contextType = RETRO_HW_CONTEXT_OPENGL_CORE;
 #elif defined(GRAPHICS_API_OPENGL_33)
             *contextType = RETRO_HW_CONTEXT_OPENGL_CORE;
-#elif defined(GRAPHICS_API_OPENGL_ES3)
-            *contextType = RETRO_HW_CONTEXT_OPENGLES3;
-#elif defined(GRAPHICS_API_OPENGL_ES2)
+#elif defined(GRAPHICS_API_OPENGL_ES3) || defined(GRAPHICS_API_OPENGL_ES2)
             *contextType = RETRO_HW_CONTEXT_OPENGLES2;
 #else
             *contextType = RETRO_HW_CONTEXT_NONE;
