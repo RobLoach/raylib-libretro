@@ -54,12 +54,13 @@ if (NOT raylib_FOUND)
     set(SUPPORT_COMPRESSION_API    OFF CACHE BOOL "" FORCE)
     set(SUPPORT_SCREEN_CAPTURE     OFF CACHE BOOL "" FORCE)  # F12 auto-capture; frontend uses its own screenshot key
     set(SUPPORT_SSH_KEYBOARD_RPI   OFF CACHE BOOL "" FORCE)
-    # Web: build raylib for WebGL2 / GLES3 so libretro HW-render cores can use the
-    # FBO capture-blit (glBlitFramebuffer), sampler objects, and full pixel-store
-    # params — all WebGL2-only. raylib appends -sMIN/MAX_WEBGL_VERSION=2 for this
-    # GRAPHICS value (vendor/raylib/src/CMakeLists.txt), and propagates the
-    # -DGRAPHICS_API_OPENGL_ES3 definition PUBLIC so the frontend compiles its ES3
-    # code paths.
+    # Web: build raylib for WebGL2 / GLES3. The frontend itself needs WebGL2 for
+    # glBlitFramebuffer, sampler objects, and pixel-store params used in the HW
+    # state-restore path — all unavailable in WebGL1/GLES2. Prebuilt wasm cores
+    # only implement GLES2, so GET_PREFERRED_HW_RENDER advertises OPENGLES2.
+    # raylib appends -sMIN/MAX_WEBGL_VERSION=2 for this GRAPHICS value
+    # (vendor/raylib/src/CMakeLists.txt) and propagates -DGRAPHICS_API_OPENGL_ES3
+    # PUBLIC so the frontend compiles its ES3 code paths.
     if ("${PLATFORM}" STREQUAL "Web")
         set(GRAPHICS "GRAPHICS_API_OPENGL_ES3" CACHE STRING "" FORCE)
     endif()
