@@ -69,6 +69,7 @@ typedef struct {
     char displayName[256];
     char coreName[256];
     char systemName[256];
+    char systemId[64];      // libretro .info "systemid" (e.g. "super_nes"); "" if unknown
     char license[64];
     char supportedExtensions[RLCONFIG_VALUE_MAX];
     bool supportsNoGame;
@@ -138,6 +139,11 @@ typedef struct LibretroMenu {
     char pendingCorePaths[LIBRETRO_MAX_GAME_CORES][512];
     char pendingCoreNames[LIBRETRO_MAX_GAME_CORES][128]; // stable picker button labels (GetFileNameWithoutExt reuses a shared static buffer)
     int pendingCoreCount;                 // >0 requests the core picker on the next menu update (deferred past the file browser's navigate_back)
+    nk_console* gamesMenu;                // "Games" database page (children rebuilt after each scan)
+    nk_console* gamesListView;            // list view showing the current filtered games
+    int gamesSystemIndex;                 // System combobox index (0 = All)
+    char gamesSystemsOptions[2048];       // "All|<system>|..." pipe list backing the System combobox (must outlive it)
+    char pendingSystemId[48];             // system of the game awaiting the core picker (to remember the choice)
     RLibretroConfig* cfg;                 // persistent config, owned for the lifetime of the menu
 } LibretroMenu;
 
@@ -251,38 +257,8 @@ static nk_bool nk_console_file_add_files_android(nk_console* console, const char
 #define NK_CONSOLE_FREE nk_raylib_mfree
 #include "../vendor/nuklear_console/nuklear_console.h"
 
-#ifdef __ANDROID__
-static nk_bool nk_console_file_add_files_android(nk_console* console, const char* path) {
-    FilePathList filePathList = LoadDirectoryFiles(path);
-    nk_bool result = nk_false;
-
-    for (int pass = 0; pass < 2; pass++) {
-        nk_bool want_dir = (pass == 0) ? nk_true : nk_false;
-        for (int i = 0; i < (int)filePathList.count; i++) {
-            nk_bool is_dir = DirectoryExists(filePathList.paths[i]) ? nk_true : nk_false;
-            if (is_dir != want_dir) continue;
-            if (nk_console_file_add_entry(console, filePathList.paths[i], is_dir) != NULL) {
-                result = nk_true;
-            }
-        }
-    }
-    UnloadDirectoryFiles(filePathList);
-
-    if (!result) {
-        char extStorage[RAYLIB_LIBRETRO_VFS_MAX_PATH];
-        if (AndroidGetExternalStorageDir(GetAndroidApp(), extStorage) && extStorage[0] != '\0') {
-            int pathLen = TextLength(path);
-            int extLen = TextLength(extStorage);
-            if (extLen > pathLen && TextFindIndex(extStorage, path) == 0) {
-                nk_console_file_add_entry(console, extStorage, nk_true);
-                result = nk_true;
-            }
-        }
-    }
-
-    return result;
-}
-#endif
+#define RAYLIB_LIBRETRO_GAMES_IMPLEMENTATION
+#include "raylib-libretro-games.h"
 
 #ifndef RAYLIB_LIBRETRO_CFG_FILE
 #define RAYLIB_LIBRETRO_CFG_FILE "raylib-libretro.cfg"
@@ -855,6 +831,8 @@ static void MenuContentDirChanged(nk_console* widget, void* user_data) {
         nk_console_file_set_directory(menu.loadGameWidget, LIBRETRO.fileBrowserStartDirectory);
     }
 #endif
+    // Re-index the games database for the new content directory.
+    LibretroGamesStartScan(LIBRETRO.fileBrowserStartDirectory);
 }
 
 static bool IsLibretroCoreFile(const char* path) {
@@ -927,6 +905,8 @@ static void ScanLibretroCoreDirectory(void) {
         TextCopy(info->displayName, (displayName && displayName[0]) ? displayName : coreName);
         const char* systemName = rlconfig_get(infoCfg, infoBase, "systemname");
         TextCopy(info->systemName, (systemName && systemName[0]) ? systemName : "");
+        const char* systemId = rlconfig_get(infoCfg, infoBase, "systemid");
+        TextCopy(info->systemId, (systemId && systemId[0]) ? systemId : "");
         const char* license = rlconfig_get(infoCfg, infoBase, "license");
         TextCopy(info->license, (license && license[0]) ? license : "");
         const char* noGame = rlconfig_get(infoCfg, infoBase, "supports_no_game");
@@ -966,6 +946,7 @@ static void ScanLibretroCoreDirectory(void) {
                     TextCopy(info->coreName, name);
                     TextCopy(info->displayName, name);
                     info->systemName[0] = '\0';
+                    info->systemId[0] = '\0';
                     info->license[0] = '\0';
                     info->needsFullpath = GetLibretroNeedFullpath(NULL, NULL);
                     info->supportsNoGame = false;
@@ -1083,7 +1064,13 @@ static bool FindZipInnerExtensionForCore(const char* zipPath, char* outExt) {
     return found;
 }
 
-static int FindCoresForGame(const char* gamePath, char paths[][512], char names[][128], int maxCount) {
+/**
+ * Collect cores able to run @p gamePath (by extension, or supports-no-game when there is no
+ * content). When @p preferSystemId is set and at least one candidate's .info systemid matches
+ * it, the result is narrowed to those cores so the system's core is chosen first.
+ */
+static int FindCoresForGameSystem(const char* gamePath, const char* preferSystemId,
+                                  char paths[][512], char names[][128], int maxCount) {
     if (!paths || !names || maxCount <= 0) return 0;
 
     bool noGame = !gamePath || !gamePath[0];
@@ -1101,22 +1088,38 @@ static int FindCoresForGame(const char* gamePath, char paths[][512], char names[
         }
     }
 
-    int found = 0;
-    for (int i = 0; i < (int)cvector_size(menu.coreInfos) && found < maxCount; i++) {
+    // First pass: collect every candidate core that can load this content.
+    int cand[64];
+    int candCount = 0;
+    bool haveSystemMatch = false;
+    bool wantSystem = (preferSystemId != NULL && preferSystemId[0] != '\0');
+    for (int i = 0; i < (int)cvector_size(menu.coreInfos) && candCount < (int)(sizeof(cand) / sizeof(cand[0])); i++) {
         LibretroCoreInfo* ci = menu.coreInfos[i];
+        if (!ci->path[0]) continue;
         if (noGame) {
             if (!ci->supportsNoGame) continue;
         } else {
             if (!LibretroCoreSupportsExt(i, gameExtLower)) continue;
             // Some cores require "needs_fullpath", like for CD. We allow attempting to load directly from the .zip for now.
         }
+        cand[candCount++] = i;
+        if (wantSystem && ci->systemId[0] && TextIsEqual(ci->systemId, preferSystemId)) haveSystemMatch = true;
+    }
 
-        TextCopy(names[found], LibretroCoreDisplayName(i));
-        if (!ci->path[0]) continue;
+    // Second pass: emit candidates, narrowing to the preferred system when one matched.
+    int found = 0;
+    for (int c = 0; c < candCount && found < maxCount; c++) {
+        LibretroCoreInfo* ci = menu.coreInfos[cand[c]];
+        if (haveSystemMatch && !(ci->systemId[0] && TextIsEqual(ci->systemId, preferSystemId))) continue;
+        TextCopy(names[found], LibretroCoreDisplayName(cand[c]));
         TextCopy(paths[found], TextFormat("%s/%s", LIBRETRO.coreDirectory, ci->path));
         found++;
     }
     return found;
+}
+
+static int FindCoresForGame(const char* gamePath, char paths[][512], char names[][128], int maxCount) {
+    return FindCoresForGameSystem(gamePath, NULL, paths, names, maxCount);
 }
 
 static bool MenuInitCore(const char* corePath) {
@@ -1285,13 +1288,28 @@ static void MenuNavigateInto(nk_console* parent) {
     nk_console_set_active_widget(nk_console_find_first_selectable(parent));
 }
 
+// Per-system preferred core (so a system with multiple matching cores remembers the user's pick).
+static const char* MenuGetSystemCore(const char* systemId) {
+    if (!menu.cfg || !systemId || !systemId[0]) return NULL;
+    return rlconfig_get(menu.cfg, "core_prefs", systemId);
+}
+
+static void MenuSetSystemCore(const char* systemId, const char* corePath) {
+    if (!menu.cfg || !systemId || !systemId[0] || !corePath || !corePath[0]) return;
+    rlconfig_set(menu.cfg, "core_prefs", systemId, corePath);
+    rlconfig_save(menu.cfg, RAYLIB_LIBRETRO_CFG_FILE);
+}
+
 static void MenuCorePickerLoad(nk_console* widget, void* user_data) {
     (void)widget;
     const char* gamePath = menu.pendingGamePath[0] ? menu.pendingGamePath : NULL;
-    if (!MenuLoadCoreAndGame((const char*)user_data, gamePath)) {
+    const char* corePath = (const char*)user_data;
+    if (!MenuLoadCoreAndGame(corePath, gamePath)) {
         ShowLibretroMenu();
         return;
     }
+    // Remember this core as the preference for the game's system.
+    if (menu.pendingSystemId[0]) MenuSetSystemCore(menu.pendingSystemId, corePath);
     // Game loaded: leave the picker behind so reopening the menu lands on the
     // top-level main menu rather than the (now hidden) Select Core submenu.
     MenuNavigateInto(menu.console);
@@ -1340,21 +1358,31 @@ static void MenuShowCorePicker(nk_console* widget, void* user_data) {
     MenuNavigateInto(menu.corePickerMenu);
 }
 
-static bool MenuLoadGame(const char* gamePath) {
+static bool MenuLoadGameWithSystem(const char* gamePath, const char* preferSystemId) {
     // Unload the current game if it's a thing.
     if (IsLibretroGameReady()) {
         UnloadLibretroGame();
     }
 
-    // Find all cores that support this file type.
-    int coreCount = FindCoresForGame(gamePath, menu.pendingCorePaths, menu.pendingCoreNames, LIBRETRO_MAX_GAME_CORES);
+    // Find all cores that support this file type, preferring the content's system.
+    int coreCount = FindCoresForGameSystem(gamePath, preferSystemId, menu.pendingCorePaths, menu.pendingCoreNames, LIBRETRO_MAX_GAME_CORES);
     if (coreCount == 0) {
         nk_console_show_message(menu.console, TextFormat("No core found for %s", GetFileName(gamePath)));
         return false;
     }
 
+    // Record the system so the picker can remember the chosen core for it.
+    TextCopy(menu.pendingSystemId, preferSystemId ? preferSystemId : "");
+
     if (coreCount > 1) {
-        // Defer opening the picker to a post-render event.
+        // If a core was previously chosen for this system and still matches, use it directly.
+        const char* pref = MenuGetSystemCore(preferSystemId);
+        if (pref && pref[0]) {
+            for (int i = 0; i < coreCount; i++) {
+                if (TextIsEqual(menu.pendingCorePaths[i], pref)) return MenuLoadCoreAndGame(pref, gamePath);
+            }
+        }
+        // Otherwise defer opening the picker to a post-render event.
         TextCopy(menu.pendingGamePath, gamePath);
         menu.pendingCoreCount = coreCount;
         ShowLibretroMenu();
@@ -1366,6 +1394,10 @@ static bool MenuLoadGame(const char* gamePath) {
     return MenuLoadCoreAndGame(menu.pendingCorePaths[0], gamePath);
 }
 
+static bool MenuLoadGame(const char* gamePath) {
+    return MenuLoadGameWithSystem(gamePath, NULL);
+}
+
 static void MenuGameFileChanged(nk_console* widget, void* user_data) {
     NK_UNUSED(widget);
     char* path = (char*)user_data;
@@ -1375,6 +1407,116 @@ static void MenuGameFileChanged(nk_console* widget, void* user_data) {
         if (MenuLoadGame(path)) HideLibretroMenu(); else ShowLibretroMenu();
         path[0] = '\0';
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Games database page (browse / search / launch by system)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Games-layer hook: is there an installed core that can run @p extLower for @p systemId?
+ * Extension support is required; when a system is known, the core must be for that system
+ * (exact systemid, the same multi-system family, or a core that declares no system).
+ */
+static bool MenuGamesCoreAvailable(const char* extLower, const char* systemId) {
+    if (!extLower || !extLower[0]) return false;
+    bool wantSystem = (systemId != NULL && systemId[0] != '\0');
+    const char* wantFamily = wantSystem ? LibretroGamesSystemFamily(systemId) : "";
+    for (int i = 0; i < (int)cvector_size(menu.coreInfos); i++) {
+        if (!LibretroCoreSupportsExt(i, extLower)) continue;
+        if (!wantSystem) return true;                            // root content: extension is enough
+        const char* cs = menu.coreInfos[i]->systemId;
+        if (cs[0] == '\0') return true;                          // core declares no system: be permissive
+        if (TextIsEqual(cs, systemId)) return true;              // exact system match
+        if (wantFamily[0] && TextIsEqual(LibretroGamesSystemFamily(cs), wantFamily)) return true; // same family
+    }
+    return false;
+}
+
+/** List view label callback: the title of the filtered game at @p index. */
+static const char* MenuGamesGetLabel(nk_console* widget, nk_uint index) {
+    NK_UNUSED(widget);
+    return LibretroGamesFilteredLabel((int)index);
+}
+
+/** Launch the game currently selected in the games list view, preferring its system's core. */
+static void MenuGamesListClicked(nk_console* widget, void* user_data) {
+    NK_UNUSED(user_data);
+    nk_uint sel = nk_console_list_view_selected(widget);
+    LibretroGameEntry* e = LibretroGamesFilteredEntry((int)sel);
+    if (e == NULL) return;
+
+    // Copy out of the shared raylib text buffer / entry before any further Text* calls.
+    char gamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    TextCopy(gamePath, TextFormat("%s/%s", LibretroGamesContentDir(), e->relpath));
+    char systemId[64];
+    TextCopy(systemId, e->systemId);
+
+    SaveLibretroAllSettings();
+    CloseLibretro();
+    if (MenuLoadGameWithSystem(gamePath, systemId[0] ? systemId : NULL)) HideLibretroMenu();
+    else ShowLibretroMenu();
+}
+
+/** Re-apply the System combobox + Search box selection to the visible list view. */
+static void MenuGamesFilterChanged(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    if (menu.gamesSystemIndex <= 0) {
+        LibretroGamesSetSystemFilter(NULL);
+    } else {
+        LibretroGameSystem* sys = LibretroGamesSystem(menu.gamesSystemIndex - 1);
+        LibretroGamesSetSystemFilter(sys ? sys->id : NULL);
+    }
+    LibretroGamesRebuildFiltered();
+    if (menu.gamesListView != NULL) {
+        nk_console_list_view_set_item_count(menu.gamesListView, (nk_uint)LibretroGamesFilteredCount());
+    }
+}
+
+/** Rebuild the Games page's widgets from the current index (init, after a scan, on rescan). */
+static void MenuRebuildGamesPage(void) {
+    if (menu.gamesMenu == NULL) return;
+    nk_console_free_children(menu.gamesMenu);
+    menu.gamesListView = NULL;
+    menu.gamesSystemIndex = 0;
+    LibretroGamesSetSystemFilter(NULL);
+
+    // The Games entry only appears once the index actually holds games, so there is no empty page.
+    menu.gamesMenu->visible = (nk_bool)(LibretroGamesTotalCount() > 0);
+    if (!menu.gamesMenu->visible) return;
+
+    // Back-button header.
+    nk_console_button_set_symbol(
+        nk_console_button_onclick(menu.gamesMenu, "Games", &nk_console_button_back),
+        NK_SYMBOL_TRIANGLE_UP);
+
+    // System combobox: "All|<system> (n)|...".
+    TextCopy(menu.gamesSystemsOptions, "All");
+    int systemCount = LibretroGamesSystemCount();
+    for (int i = 0; i < systemCount; i++) {
+        LibretroGameSystem* sys = LibretroGamesSystem(i);
+        if (sys == NULL) continue;
+        const char* label = TextFormat("%s (%d)", sys->display, sys->count);
+        if ((int)TextLength(menu.gamesSystemsOptions) + (int)TextLength(label) + 2 >= (int)sizeof(menu.gamesSystemsOptions)) break;
+        TextCopy(menu.gamesSystemsOptions, TextFormat("%s|%s", menu.gamesSystemsOptions, label));
+    }
+    nk_console* systemCombo = nk_console_combobox(menu.gamesMenu, "System",
+        menu.gamesSystemsOptions, '|', &menu.gamesSystemIndex);
+    nk_console_add_event(systemCombo, NK_CONSOLE_EVENT_CHANGED, &MenuGamesFilterChanged);
+
+    // The game list.
+    LibretroGamesRebuildFiltered();
+    menu.gamesListView = nk_console_list_view(menu.gamesMenu, "GamesList", 0,
+        (nk_uint)LibretroGamesFilteredCount(), &MenuGamesGetLabel);
+    nk_console_add_event(menu.gamesListView, NK_CONSOLE_EVENT_CLICKED, &MenuGamesListClicked);
+}
+
+/** Settings > Directories > Rescan Content: re-index the configured content directory. */
+static void MenuRescanGamesClicked(nk_console* widget, void* user_data) {
+    NK_UNUSED(widget);
+    NK_UNUSED(user_data);
+    LibretroGamesStartScan(LIBRETRO.fileBrowserStartDirectory);
 }
 
 static void LibretroMenuLoadStateClicked(nk_console* widget, void* user_data) {
@@ -1489,6 +1631,8 @@ LibretroMenu* InitLibretroMenu(void) {
     LoadLibretroMenuSettings();
     LibretroMenuEnsureSaveDir();
     ScanLibretroCoreDirectory();
+    // Let the games layer consult the loaded core list for playability + read inside archives.
+    LibretroGamesSetCallbacks(&MenuGamesCoreAvailable, &FindZipInnerExtensionForCore);
 
     // Apply VSYNC/FPS even when no config was loaded, so the frame cap is always
     // in place (defends against a vsync hint the driver/compositor ignores).
@@ -1772,6 +1916,11 @@ LibretroMenu* InitLibretroMenu(void) {
             // Content
             nk_console* fileBrowserStartDirectory = nk_console_dir(dirMenu, "Content", LIBRETRO.fileBrowserStartDirectory, RAYLIB_LIBRETRO_VFS_MAX_PATH);
             nk_console_add_event_handler(fileBrowserStartDirectory, NK_CONSOLE_EVENT_CHANGED, &MenuContentDirChanged, NULL, NULL);
+
+            // Rescan the content directory into the games database.
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(dirMenu, "Rescan Content", &MenuRescanGamesClicked),
+                NK_SYMBOL_TRIANGLE_RIGHT);
         }
 
         // Core Options (nested inside Settings)
@@ -1795,6 +1944,11 @@ LibretroMenu* InitLibretroMenu(void) {
         }
         menu.controllersMenu->visible = nk_false;
     }
+
+    // Games (database browser: All / by System, with search)
+    menu.gamesMenu = nk_console_button(menu.console, "Games");
+    nk_console_button_set_symbol(menu.gamesMenu, NK_SYMBOL_TRIANGLE_RIGHT);
+    MenuRebuildGamesPage();
 
     // About
     {
@@ -2641,6 +2795,17 @@ static nk_bool LibretroHotkeyGPPressed(enum nk_gamepad_button btn) {
 void UpdateLibretroMenu(void) { // If there is no menu, skip.
     if (menu.ctx == NULL) {
         return;
+    }
+
+    // While the games database is indexing, the menu is frozen behind the progress
+    // overlay: don't process input so it cannot be navigated mid-scan.
+    if (IsLibretroGamesScanning()) {
+        return;
+    }
+
+    // Rebuild the Games page when the index changes (after a scan, or on first load).
+    if (LibretroGamesScanJustFinished()) {
+        MenuRebuildGamesPage();
     }
 
     MenuTickSRAMAutoSave();

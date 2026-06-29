@@ -11,14 +11,17 @@ add_executable(raylib-libretro
     ../vendor/physfs/src/physfs_archiver_unpacked.c
     ../vendor/physfs/src/physfs_archiver_zip.c
 )
+# sqlite3 (the games database, include/raylib-libretro-games.h) is added at the project root.
 target_link_libraries(raylib-libretro PUBLIC
     raylib-libretro-static
+    sqlite3
 )
 target_include_directories(raylib-libretro PUBLIC
     ../vendor/raygui/src
     ../vendor/raylib-app
     ../vendor/raylib-physfs
     ../vendor/physfs/src
+    ../vendor/sqlite3
 )
 target_compile_definitions(raylib-libretro PRIVATE
     RAYLIB_LIBRETRO_VERSION="${PROJECT_VERSION}"
