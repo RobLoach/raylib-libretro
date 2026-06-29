@@ -41,9 +41,11 @@ Per-frame flow (all on the main thread inside `LibretroTick`, outside `BeginDraw
 3. Post-run: restore GL state (FBO, viewport, blend, depth, scissor, VAO, sampler objects, pixel-store params) through raylib setters + raw GL so the `RLGL` cache stays consistent.
 4. `Draw()` blits `LIBRETRO.core.texture` (aliased to the FBO color attachment) with a vertical flip for `bottom_left_origin` cores.
 
-FBO is sized to `max_width × max_height` from `retro_get_system_av_info`. Stencil-requesting cores get a manually-built `DEPTH24_STENCIL8` renderbuffer (tracked in `hwRender.depthStencilRb`); depth-only cores use `LoadRenderTexture`. `context_reset` fires after `InitLibretroVideo`; `context_destroy` fires in `UnloadLibretroGame` before FBO teardown.
+FBO is sized to `max_width × max_height` from `retro_get_system_av_info`, built with raylib's `LoadRenderTexture` (color + depth) so rlgl owns the GL objects and teardown is a plain `UnloadRenderTexture`. No stencil buffer is provided — cores that request one fall back to depth-only, which keeps the FBO complete across every supported GL/GLES config.
 
-Accepted context types depend on the build: desktop GL 3.3 (`OPENGL`/`OPENGL_CORE` ≤ 3.3), GL 4.3 with opt-in rebuild, GLES2, GLES3 (WebGL2). Vulkan/D3D cores are rejected cleanly. Test core in `tests/test_opengl/`.
+The context lifecycle is funneled through three helpers so every recreation path stays consistent: `hw_FireContextReset` / `hw_FireContextDestroy` (bind the FBO, call the core callback, restore the prior target) and `hw_RebuildLibretroVideo` (destroy → new FBO → reset). `context_reset` fires once after `InitLibretroVideo`; `context_destroy` fires in `UnloadLibretroGame` before FBO teardown. When a core grows its **max** geometry via `SET_SYSTEM_AV_INFO` (e.g. an internal-resolution option), the FBO is rebuilt through `hw_RebuildLibretroVideo` and the context lifecycle re-fires so the core rebinds to the new framebuffer; a base-dimension or `SET_GEOMETRY` change is only a smaller visible crop within the existing FBO and never rebuilds it. The public `ResetLibretroVideo()` wraps the same rebuild for platform glue that detects a genuine GL-context re-creation — but raylib preserves the context across a normal Android pause/resume (it detaches/re-attaches the same EGL context), so it is **not** called there.
+
+Accepted context types depend on the build: desktop GL 3.3 (`OPENGL`/`OPENGL_CORE` ≤ 3.3), GL 4.3 with opt-in rebuild, GLES2. GLES3 requests are accepted when the ES3 build is active but the preferred type advertised via `GET_PREFERRED_HW_RENDER` is always GLES2 — wasm cores don't have a GLES3 path. Vulkan/D3D cores are rejected cleanly. Test core in `tests/test_opengl/`.
 
 ### VFS alt-filesystem bridge
 

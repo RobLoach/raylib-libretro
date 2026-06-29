@@ -73,6 +73,7 @@ static unsigned GetLibretroWidth(void);
 static unsigned GetLibretroHeight(void);
 static int GetLibretroRotation(void);
 static Texture2D GetLibretroTexture(void);
+static bool ResetLibretroVideo(void);
 static Image LoadImageFromLibretro();
 static bool IsLibretroGameRequired(void);
 static bool ResetLibretro(void);
@@ -392,7 +393,6 @@ typedef struct LibretroCoreData {
         bool fboUsedThisFrame;                 // get_current_framebuffer was called; core rendered to our FBO
         struct retro_hw_render_callback cb;    // verbatim copy from the core
         RenderTexture2D target;                // FBO + color attachment
-        unsigned int depthStencilRb;           // manually-created renderbuffer (stencil path only)
         unsigned fboWidth, fboHeight;          // allocated FBO size (max geometry)
         unsigned frameWidth, frameHeight;      // last valid sub-region from RETRO_HW_FRAME_BUFFER_VALID
     } hwRender;
@@ -716,6 +716,7 @@ static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
 }
 
 static void InitLibretroAudio(void);  // Forward declaration.
+static bool InitLibretroVideo(void);  // Forward declaration.
 static size_t UpdateLibretroAudioSampleBatch(const int16_t *data, size_t frames);  // Forward declaration.
 
 static uintptr_t LibretroHwGetCurrentFramebuffer(void) {
@@ -729,12 +730,6 @@ static retro_proc_address_t LibretroHwGetProcAddress(const char *sym) {
 
 static void CloseLibretroVideo(void) {
     if (LIBRETRO.core.hwRender.enabled) {
-        if (LIBRETRO.core.hwRender.depthStencilRb != 0) {
-            typedef void (*lrgl_DelRb)(int, const unsigned int *);
-            lrgl_DelRb _delRb = (lrgl_DelRb)rlGetProcAddress("glDeleteRenderbuffers");
-            if (_delRb) _delRb(1, &LIBRETRO.core.hwRender.depthStencilRb);
-            LIBRETRO.core.hwRender.depthStencilRb = 0;
-        }
         if (IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
             UnloadRenderTexture(LIBRETRO.core.hwRender.target);
             memset(&LIBRETRO.core.hwRender.target, 0, sizeof(LIBRETRO.core.hwRender.target));
@@ -765,67 +760,18 @@ static bool hw_InitLibretroVideo(void) {
     LIBRETRO.core.hwRender.frameWidth  = LIBRETRO.core.width;
     LIBRETRO.core.hwRender.frameHeight = LIBRETRO.core.height;
 
+    // Build the FBO with raylib's render texture (color + depth). raylib/rlgl owns the
+    // GL objects, so teardown is a plain UnloadRenderTexture and the depth attachment is
+    // chosen to fit whichever GRAPHICS_API_* config raylib was compiled against. A stencil
+    // buffer is not provided; cores that request one fall back to depth-only, which keeps
+    // the FBO complete across every supported GL/GLES configuration.
+    LIBRETRO.core.hwRender.target = LoadRenderTexture((int)fboW, (int)fboH);
+    if (!IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
+        TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to load render texture");
+        return false;
+    }
     if (LIBRETRO.core.hwRender.cb.stencil) {
-        // depth+stencil: build packed DEPTH24_STENCIL8 FBO manually
-        unsigned int fboId = rlLoadFramebuffer();
-        if (fboId == 0) {
-            TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to create framebuffer");
-            return false;
-        }
-        unsigned int texId = rlLoadTexture(NULL, (int)fboW, (int)fboH,
-            RL_PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, 1);
-        rlFramebufferAttach(fboId, texId, RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_TEXTURE2D, 0);
-        // rlLoadTextureDepth creates a depth-only buffer; build DEPTH24_STENCIL8 via runtime GL.
-        // glad.h is only included inside RLGL_IMPLEMENTATION so we use rlGetProcAddress + manual
-        // constants rather than referencing the glad symbols directly.
-#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43)
-        #ifndef LIBRETRO_GL_RENDERBUFFER
-        #define LIBRETRO_GL_RENDERBUFFER             0x8D41U
-        #define LIBRETRO_GL_DEPTH24_STENCIL8         0x88F0U
-        #define LIBRETRO_GL_DEPTH_STENCIL_ATTACHMENT 0x821AU
-        #define LIBRETRO_GL_FRAMEBUFFER              0x8D40U
-        #endif
-        typedef void (*lrgl_GenRb)(int, unsigned int *);
-        typedef void (*lrgl_BindRb)(unsigned int, unsigned int);
-        typedef void (*lrgl_RbStorage)(unsigned int, unsigned int, int, int);
-        typedef void (*lrgl_BindFb)(unsigned int, unsigned int);
-        typedef void (*lrgl_FbRb)(unsigned int, unsigned int, unsigned int, unsigned int);
-        lrgl_GenRb    _genRb     = (lrgl_GenRb)rlGetProcAddress("glGenRenderbuffers");
-        lrgl_BindRb   _bindRb    = (lrgl_BindRb)rlGetProcAddress("glBindRenderbuffer");
-        lrgl_RbStorage _rbStorage = (lrgl_RbStorage)rlGetProcAddress("glRenderbufferStorage");
-        lrgl_BindFb   _bindFb    = (lrgl_BindFb)rlGetProcAddress("glBindFramebuffer");
-        lrgl_FbRb     _fbRb      = (lrgl_FbRb)rlGetProcAddress("glFramebufferRenderbuffer");
-        unsigned int rbId = 0;
-        _genRb(1, &rbId);
-        _bindRb(LIBRETRO_GL_RENDERBUFFER, rbId);
-        _rbStorage(LIBRETRO_GL_RENDERBUFFER, LIBRETRO_GL_DEPTH24_STENCIL8, (int)fboW, (int)fboH);
-        _bindRb(LIBRETRO_GL_RENDERBUFFER, 0);
-        _bindFb(LIBRETRO_GL_FRAMEBUFFER, fboId);
-        _fbRb(LIBRETRO_GL_FRAMEBUFFER, LIBRETRO_GL_DEPTH_STENCIL_ATTACHMENT, LIBRETRO_GL_RENDERBUFFER, rbId);
-        _bindFb(LIBRETRO_GL_FRAMEBUFFER, 0);
-#else
-        unsigned int rbId = rlLoadTextureDepth((int)fboW, (int)fboH, true);
-        rlFramebufferAttach(fboId, rbId, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_RENDERBUFFER, 0);
-#endif
-        if (!rlFramebufferComplete(fboId)) {
-            TraceLog(LOG_ERROR, "LIBRETRO HW: Framebuffer incomplete (depth+stencil)");
-            rlUnloadTexture(texId);
-            rlUnloadFramebuffer(fboId);
-            return false;
-        }
-        LIBRETRO.core.hwRender.depthStencilRb = rbId;
-        LIBRETRO.core.hwRender.target.id = fboId;
-        LIBRETRO.core.hwRender.target.texture.id = texId;
-        LIBRETRO.core.hwRender.target.texture.width = (int)fboW;
-        LIBRETRO.core.hwRender.target.texture.height = (int)fboH;
-        LIBRETRO.core.hwRender.target.texture.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-        LIBRETRO.core.hwRender.target.texture.mipmaps = 1;
-    } else {
-        LIBRETRO.core.hwRender.target = LoadRenderTexture((int)fboW, (int)fboH);
-        if (!IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
-            TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to load render texture");
-            return false;
-        }
+        TraceLog(LOG_WARNING, "LIBRETRO HW: core requested a stencil buffer; providing depth only");
     }
 
     LIBRETRO.core.texture = LIBRETRO.core.hwRender.target.texture;
@@ -833,6 +779,85 @@ static bool hw_InitLibretroVideo(void) {
     LIBRETRO.core.textureRebuild = false;
     TraceLog(LOG_INFO, "LIBRETRO HW: FBO %ux%u created (id=%u)", fboW, fboH, LIBRETRO.core.hwRender.target.id);
     return true;
+}
+
+// Fire the core's context_reset with our FBO bound, then restore the previously-bound
+// target. Cores commonly query get_current_framebuffer and build GL objects against the
+// FBO here, so it must be current. No-op (and leaves active=false) when the core supplied
+// no context_reset, matching the contract that such a core never enters the HW path.
+static void hw_FireContextReset(void) {
+    if (!LIBRETRO.core.hwRender.enabled || LIBRETRO.core.hwRender.cb.context_reset == NULL) {
+        return;
+    }
+    rlDrawRenderBatchActive();
+    unsigned savedFbo = rlGetActiveFramebuffer();
+    rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
+    LIBRETRO.core.hwRender.cb.context_reset();
+    if (savedFbo != 0)
+        rlEnableFramebuffer(savedFbo);
+    else
+        rlDisableFramebuffer();
+    LIBRETRO.core.hwRender.active = true;
+    TraceLog(LOG_INFO, "LIBRETRO HW: context_reset fired");
+}
+
+// Fire the core's context_destroy with our FBO bound so it can release the GL resources
+// it created in context_reset. No-op when the HW context is not currently live.
+static void hw_FireContextDestroy(void) {
+    if (!LIBRETRO.core.hwRender.active) {
+        return;
+    }
+    if (LIBRETRO.core.hwRender.cb.context_destroy != NULL) {
+        rlDrawRenderBatchActive();
+        rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
+        LIBRETRO.core.hwRender.cb.context_destroy();
+        rlDisableFramebuffer();
+    }
+    LIBRETRO.core.hwRender.active = false;
+}
+
+// Recreate the HW render FBO while the GL context itself is unchanged (e.g. the core's
+// max geometry grew, or the platform recreated the context). The core's GL resources are
+// torn down (context_destroy) and re-established (context_reset) around the rebuild so it
+// rebinds to the new framebuffer instead of the destroyed one. Returns false on failure,
+// leaving the HW context inactive.
+static bool hw_RebuildLibretroVideo(void) {
+    if (!LIBRETRO.core.hwRender.enabled) {
+        return false;
+    }
+    bool wasActive = LIBRETRO.core.hwRender.active;
+    hw_FireContextDestroy();   // no-op when not active
+    CloseLibretroVideo();      // unload the old FBO + color attachment
+    if (!hw_InitLibretroVideo()) {
+        TraceLog(LOG_ERROR, "LIBRETRO HW: FBO rebuild failed");
+        return false;
+    }
+    if (wasActive) {
+        hw_FireContextReset(); // re-create the core's GL resources on the new FBO
+    }
+    return true;
+}
+
+/**
+ * Rebuild the video pipeline after the platform recreated the GL context.
+ *
+ * For HW-rendered cores this tears down and re-establishes the core's GL resources
+ * (context_destroy -> new FBO -> context_reset); for software cores it rebuilds the
+ * upload texture. Call this ONLY when the GL context was genuinely recreated.
+ *
+ * Note: raylib preserves the GL context across a normal Android pause/resume (the EGL
+ * context is detached and re-attached, not destroyed), so this is not needed there and
+ * calling it would force the core to needlessly reinitialize. There is currently no
+ * portable raylib signal for a true context re-creation, so this is exposed for platform
+ * glue that can detect one (e.g. a confirmed GL context loss).
+ *
+ * @return true on success.
+ */
+static bool ResetLibretroVideo(void) {
+    if (LIBRETRO.core.hwRender.enabled) {
+        return hw_RebuildLibretroVideo();
+    }
+    return InitLibretroVideo();
 }
 
 static bool InitLibretroVideo(void) {
@@ -1152,35 +1177,50 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             struct retro_hw_render_callback *cb = (struct retro_hw_render_callback *)data;
+            // Accept only context types the GL context raylib created can actually serve.
+            // We share raylib's single GL context with the core (no second/shared context),
+            // so the requested API must match the GRAPHICS_API_* config raylib was built with.
             bool accept = false;
 #if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43)
-            if (cb->context_type == RETRO_HW_CONTEXT_OPENGL) accept = true;
-            if (cb->context_type == RETRO_HW_CONTEXT_OPENGL_CORE) {
-                unsigned ceil_major = 3, ceil_minor = 3;
+            // Desktop GL build: the legacy compatibility context (OPENGL) always works, and
+            // modern core contexts (OPENGL_CORE) up to the version raylib compiled against.
+            unsigned ceil_major = 3, ceil_minor = 3;
 #if defined(GRAPHICS_API_OPENGL_43)
-                ceil_major = 4; ceil_minor = 3;
+            ceil_major = 4; ceil_minor = 3;
 #endif
-                if (cb->version_major < ceil_major ||
-                    (cb->version_major == ceil_major && cb->version_minor <= ceil_minor))
-                    accept = true;
+            if (cb->context_type == RETRO_HW_CONTEXT_OPENGL) {
+                accept = true;
+            } else if (cb->context_type == RETRO_HW_CONTEXT_OPENGL_CORE) {
+                accept = (cb->version_major < ceil_major) ||
+                         (cb->version_major == ceil_major && cb->version_minor <= ceil_minor);
             }
 #elif defined(GRAPHICS_API_OPENGL_ES2) || defined(GRAPHICS_API_OPENGL_ES3)
-            if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES2) accept = true;
-            // ES3 context (WebGL2) only honored when raylib itself is built for ES3,
-            // since the capture-blit + state-restore below rely on ES3 entry points.
+            // GLES build: ES2 is always serviceable. ES3 (and ES3.x requested via
+            // OPENGLES_VERSION) is only honored when raylib itself is an ES3 build, since the
+            // capture-blit + state-restore below rely on ES3 entry points. That ES3 build maps
+            // to WebGL2 == GLES 3.0, so cap the OPENGLES_VERSION request at 3.0.
+            if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES2) {
+                accept = true;
+            }
 #if defined(GRAPHICS_API_OPENGL_ES3)
-            if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES3) accept = true;
+            else if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES3) {
+                accept = true;
+            } else if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES_VERSION) {
+                accept = (cb->version_major < 3) ||
+                         (cb->version_major == 3 && cb->version_minor == 0);
+            }
 #endif
 #endif
+            // Vulkan / Direct3D context types fall through and are rejected cleanly.
             if (!accept) {
-                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER unsupported context_type %d", cb->context_type);
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER unsupported context_type %d (version %u.%u)",
+                    cb->context_type, cb->version_major, cb->version_minor);
                 return false;
             }
-            LIBRETRO.core.hwRender.cb = *cb;
+            // Patch the core's callback struct, then keep a copy with the patched pointers.
             cb->get_current_framebuffer = LibretroHwGetCurrentFramebuffer;
             cb->get_proc_address        = LibretroHwGetProcAddress;
-            LIBRETRO.core.hwRender.cb.get_current_framebuffer = LibretroHwGetCurrentFramebuffer;
-            LIBRETRO.core.hwRender.cb.get_proc_address        = LibretroHwGetProcAddress;
+            LIBRETRO.core.hwRender.cb = *cb;
             LIBRETRO.core.hwRender.enabled = true;
             TraceLog(LOG_INFO, "LIBRETRO: HW render accepted (context_type=%d depth=%d stencil=%d)", cb->context_type, cb->depth, cb->stencil);
             return true;
@@ -1396,7 +1436,19 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 LIBRETRO.core.height,
                 LIBRETRO.core.fps
             );
-            if (dimsChanged) {
+            if (LIBRETRO.core.hwRender.active) {
+                // HW cores render into an FBO sized to max geometry; a base-dimension
+                // change is only a smaller visible crop (tracked per-frame via
+                // RETRO_HW_FRAME_BUFFER_VALID), so the FBO is left alone. Only a *grow* in
+                // max geometry (e.g. an internal-resolution option) needs a new FBO, and
+                // hw_RebuildLibretroVideo re-fires context_destroy/context_reset so the core
+                // rebinds to it rather than the destroyed one.
+                unsigned newMaxW = av.geometry.max_width  > 0 ? av.geometry.max_width  : LIBRETRO.core.width;
+                unsigned newMaxH = av.geometry.max_height > 0 ? av.geometry.max_height : LIBRETRO.core.height;
+                if (newMaxW > LIBRETRO.core.hwRender.fboWidth || newMaxH > LIBRETRO.core.hwRender.fboHeight) {
+                    hw_RebuildLibretroVideo();
+                }
+            } else if (!LIBRETRO.core.hwRender.enabled && dimsChanged) {
                 InitLibretroVideo();
             }
             if (sampleRateChanged) {
@@ -1733,9 +1785,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             *contextType = RETRO_HW_CONTEXT_OPENGL_CORE;
 #elif defined(GRAPHICS_API_OPENGL_33)
             *contextType = RETRO_HW_CONTEXT_OPENGL_CORE;
-#elif defined(GRAPHICS_API_OPENGL_ES3)
-            *contextType = RETRO_HW_CONTEXT_OPENGLES3;
-#elif defined(GRAPHICS_API_OPENGL_ES2)
+#elif defined(GRAPHICS_API_OPENGL_ES3) || defined(GRAPHICS_API_OPENGL_ES2)
             *contextType = RETRO_HW_CONTEXT_OPENGLES2;
 #else
             *contextType = RETRO_HW_CONTEXT_NONE;
@@ -2923,18 +2973,7 @@ static bool InitLibretroAudioVideo(void) {
     InitLibretroVideo();
     InitLibretroAudio();
 
-    if (LIBRETRO.core.hwRender.enabled && LIBRETRO.core.hwRender.cb.context_reset != NULL) {
-        rlDrawRenderBatchActive();
-        unsigned savedFbo = rlGetActiveFramebuffer();
-        rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
-        LIBRETRO.core.hwRender.cb.context_reset();
-        if (savedFbo != 0)
-            rlEnableFramebuffer(savedFbo);
-        else
-            rlDisableFramebuffer();
-        LIBRETRO.core.hwRender.active = true;
-        TraceLog(LOG_INFO, "LIBRETRO HW: context_reset fired");
-    }
+    hw_FireContextReset();
 
     // A fresh game load is a wall-clock discontinuity (disk I/O, core init);
     // start the time accumulator clean so the first frame doesn't burst.
@@ -4216,14 +4255,7 @@ static bool SetLibretroSRAMData(const void* data, size_t size) {
  * Unload the currently loaded content without closing the core.
  */
 static void UnloadLibretroGame(void) {
-    if (LIBRETRO.core.hwRender.active) {
-        if (LIBRETRO.core.hwRender.cb.context_destroy != NULL) {
-            rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
-            LIBRETRO.core.hwRender.cb.context_destroy();
-            rlDisableFramebuffer();
-        }
-        LIBRETRO.core.hwRender.active = false;
-    }
+    hw_FireContextDestroy();
     if (LIBRETRO.core.hwRender.enabled) {
         CloseLibretroVideo();
         LIBRETRO.core.hwRender.enabled = false;
