@@ -2580,11 +2580,17 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         LIBRETRO.core.width = width;
         LIBRETRO.core.height = height;
         if (!InitLibretroVideo()) {
+            TraceLog(LOG_ERROR, "LIBRETRO: Failed to reinitialize video at %ux%u", width, height);
             return;
         }
     }
 
     if (!IsTextureValid(LIBRETRO.core.texture)) {
+        return;
+    }
+
+    if (LIBRETRO.core.frameBuffer == NULL) {
+        TraceLog(LOG_WARNING, "LIBRETRO: Frame buffer not allocated, skipping video refresh");
         return;
     }
 
