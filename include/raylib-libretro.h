@@ -178,6 +178,7 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #define LIBRETRO_CORE_VARIABLE_VALUES_LEN 512
 #define LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN 256
 #define LIBRETRO_MAX_CORE_CATEGORIES     64
+#define LIBRETRO_MAX_PERF_COUNTERS       1024
 #define LIBRETRO_CORE_CATEGORY_KEY_LEN   64
 
 /**
@@ -937,6 +938,10 @@ static void SetLibretroPerformanceCounter(struct retro_perf_counter* counter) {
     // Ignore counters already in the array, otherwise a core that registers the
     // same counter twice would get two slots pointing at it.
     if (counter == NULL || counter->registered) {
+        return;
+    }
+    if (LIBRETRO.core.perf_counter_count >= LIBRETRO_MAX_PERF_COUNTERS) {
+        TraceLog(LOG_WARNING, "LIBRETRO: Perf counter limit reached (%d)", LIBRETRO_MAX_PERF_COUNTERS);
         return;
     }
     LIBRETRO.core.perf_counters = (struct retro_perf_counter**)MemRealloc(
