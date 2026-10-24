@@ -1114,7 +1114,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 LIBRETRO.core.subsystemCount = 0;
             }
             unsigned count = 0;
-            for (unsigned i = 0; info[i].ident != NULL; i++) {
+            while (info[count].ident != NULL) {
                 count++;
             }
             if (count > 0) {
@@ -3164,8 +3164,6 @@ static void CloseLibretro(void) {
 
     if (LIBRETRO.core.subsystemInfo != NULL) {
         MemFree(LIBRETRO.core.subsystemInfo);
-        LIBRETRO.core.subsystemInfo = NULL;
-        LIBRETRO.core.subsystemCount = 0;
     }
 
     // Close the dynamically loaded handle.
