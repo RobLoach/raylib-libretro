@@ -1,33 +1,23 @@
 /**********************************************************************************************
 *
-*   raylib-libretro - A libretro frontend using raylib.
+*   raylib-libretro - libretro frontend application using raylib.
 *
-*   LICENSE: zlib/libpng
-*
-*   raylib-libretro is licensed under an unmodified zlib/libpng license, which is an OSI-certified,
-*   BSD-like license that allows static linking with closed source software:
-*
-*   Copyright (c) 2020 Rob Loach (@RobLoach)
-*
-*   This software is provided "as-is", without any express or implied warranty. In no event
-*   will the authors be held liable for any damages arising from the use of this software.
-*
-*   Permission is granted to anyone to use this software for any purpose, including commercial
-*   applications, and to alter it and redistribute it freely, subject to the following restrictions:
-*
-*     1. The origin of this software must not be misrepresented; you must not claim that you
-*     wrote the original software. If you use this software in a product, an acknowledgment
-*     in the product documentation would be appreciated but is not required.
-*
-*     2. Altered source versions must be plainly marked as such, and must not be misrepresented
-*     as being the original software.
-*
-*     3. This notice may not be removed or altered from any source distribution.
+*   LICENSE: GPL-3.0-or-later
 *
 **********************************************************************************************/
 
 #include "raylib.h"
 
+// On web, raylib-app's built-in loop (RaylibAppWebUpdate) calls WindowShouldClose()
+// every frame, which raylib's web backend implements with emscripten_sleep(12).
+// emscripten_sleep aborts unless the program is built with ASYNCIFY (which we avoid,
+// since it force-enables DYNCALLS and breaks JS->wasm callbacks). WindowShouldClose()
+// is always false on web anyway, so we supply our own entry point below that drives
+// the emscripten main loop directly and never makes that call. Native keeps raylib-app's
+// standard main().
+#if defined(__EMSCRIPTEN__)
+    #define RAYLIB_APP_NO_ENTRY
+#endif
 #define RAYLIB_APP_IMPLEMENTATION
 #include "raylib-app.h"
 
@@ -47,13 +37,19 @@
 #define RAYLIB_LIBRETRO_SHADERS_IMPLEMENTATION
 #include "../include/raylib-libretro-shaders.h"
 
+#include "raylib-libretro-android.h"
+
 #define RAYLIB_LIBRETRO_MENU_IMPLEMENTATION
 #include "../include/raylib-libretro-menu.h"
 
 #define RAYLIB_LIBRETRO_TOUCH_IMPLEMENTATION
 #include "../include/raylib-libretro-touch.h"
 
+#define RAYLIB_LIBRETRO_LOGO_IMPLEMENTATION
+#include "../include/raylib-libretro-logo.h"
+
 #ifdef __EMSCRIPTEN__
+#include <emscripten.h>        // emscripten_set_main_loop / emscripten_cancel_main_loop
 #include <emscripten/html5.h>
 
 // JS-callable hot-load entry point. shell.html fetches ?game=<url> in the
@@ -63,15 +59,31 @@
 EMSCRIPTEN_KEEPALIVE
 bool LoadLibretroGameFromJS(const char* gameFile) {
     if (gameFile == NULL || gameFile[0] == '\0') return false;
-    if (IsLibretroReady()) {
-        return LoadLibretroGameFromPhysFS(gameFile);
-    }
+    // Save the SRAM, and close the game prior to loading the new one.
+    MenuSaveGameSRAM();
+    CloseLibretro();
+
+    // Load the game through the menu system.
     return MenuLoadGame(gameFile);
+}
+
+// Called from shell.html on load/resize with physical-pixel dimensions
+// (CSS size × devicePixelRatio) so the WebGL framebuffer matches the device
+// resolution. raylib's own resize callback only sizes the canvas to CSS pixels,
+// leaving HiDPI displays blurry/jagged; this overrides that with the true pixel
+// size. SetWindowSize resizes the canvas backing store and GL viewport on web.
+EMSCRIPTEN_KEEPALIVE
+void ResizeCanvasFromJS(int width, int height) {
+    if (width > 0 && height > 0) {
+        SetWindowSize(width, height);
+    }
 }
 
 #endif
 
-#define REWIND_BUFFER_FRAMES 600  // ~10 seconds at 60fps
+#define REWIND_CAPTURES_PER_SECOND 30
+#define REWIND_CAPTURE_INTERVAL (1.0f / REWIND_CAPTURES_PER_SECOND)  // seconds between snapshots
+#define REWIND_BUFFER_FRAMES 600  // REWIND_BUFFER_FRAMES / REWIND_CAPTURES_PER_SECOND seconds of rewind
 
 typedef struct {
     void* data;
@@ -120,33 +132,57 @@ static void RewindBufferFree(RewindBuffer* rb) {
 typedef struct {
     LibretroMenu* menu;
     RewindBuffer rewind;
+    float rewindTimer;  // seconds accumulated toward the next rewind capture/step
     bool muted;
     bool pendingMenuOpen;
+    int appliedOrientation;  // last orientation pushed to Android; -1 = none yet
 } AppData;
 
+// Breadcrumb logging through startup. On Android these go to logcat (and the
+// file log below); compiled out everywhere else so the desktop log stays clean.
+#if defined(__ANDROID__)
+#define INIT_TRACE(...) TraceLog(LOG_INFO, __VA_ARGS__)
+#else
+#define INIT_TRACE(...) ((void)0)
+#endif
+
+#define RAYLIB_LIBRETRO_ANDROID_IMPLEMENTATION
+#include "../include/raylib-libretro-android.h"
+
 bool Init(void** userData, int argc, char** argv) {
+#if defined(__ANDROID__)
+    // Start teeing the log to a file before anything that can crash, so the
+    // startup trail is recoverable even without a live logcat.
+    AndroidInitCrashLog(GetAndroidApp());
+#endif
+
+    // Display loading screen
+    MenuDrawLoadingScreen(NULL);
+
+    // Window Icon
+    Image logo = GetLibretroLogo();
+    SetWindowIcon(logo);
+    UnloadImage(logo);
+
+    // Window Flags
     SetWindowMinSize(400, 300);
     SetExitKey(KEY_NULL);
 
-    BeginDrawing();
-        ClearBackground(BLACK);
-        const char* loadingText = "Loading";
-        int fontSize = 20;
-        DrawText(loadingText,
-            (GetScreenWidth()  - MeasureText(loadingText, fontSize)) / 2,
-            (GetScreenHeight() - fontSize) / 2,
-            fontSize, GRAY);
-    EndDrawing();
-
+    // Application data.
     AppData* data = (AppData*)MemAlloc(sizeof(AppData));
     memset(data, 0, sizeof(AppData));
+    data->appliedOrientation = -1;  // force the first Update() to apply the saved orientation
     *userData = data;
 
+    TraceLog(LOG_INFO, "LIBRETRO: Initializing Audio");
     InitAudioDevice();
+    TraceLog(LOG_INFO, "LIBRETRO: Initializing physfs");
     InitLibretroPhysFS();
 
     // Load the shaders and the menu.
+    TraceLog(LOG_INFO, "LIBRETRO: Initializing shaders");
     LoadLibretroShaders();
+    TraceLog(LOG_INFO, "LIBRETRO: Initializing Menu");
     data->menu = InitLibretroMenu();
     if (!data->menu) {
         TraceLog(LOG_ERROR, "Failed to initialize menu");
@@ -155,6 +191,18 @@ bool Init(void** userData, int argc, char** argv) {
         CloseAudioDevice();
         return false;
     }
+
+#if defined(__ANDROID__)
+    INIT_TRACE("ANDROID/INIT: android environment");
+    SetupAndroidEnvironment(data->menu);
+
+    // If launched via "Open with" (ACTION_VIEW), load the game from the intent.
+    char intentPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+    if (AndroidGetIntentFilePath(GetAndroidApp(), intentPath, sizeof(intentPath))) {
+        TraceLog(LOG_INFO, "ANDROID: Intent file: %s", intentPath);
+        if (MenuLoadGame(intentPath)) HideLibretroMenu(); else ShowLibretroMenu();
+    }
+#endif
 
     // Parse the command line arguments.
     // -L/--libretro <core> sets the core; the first non-flag argument is the game file.
@@ -179,30 +227,46 @@ bool Init(void** userData, int argc, char** argv) {
     }
 
     if (corePath) {
-        if (MenuInitCore(corePath) && LoadLibretroGameFromPhysFS(gameFile)) {
-            BuildLibretroMenuOptions(data->menu);
-            data->menu->active = false;
+        if (MenuInitCore(corePath)) {
+            bool gameLoaded = gameFile
+                ? LoadLibretroGameFromPhysFS(gameFile)
+                : (!IsLibretroGameRequired() && LoadLibretroGame(NULL));
+            if (gameLoaded) {
+                BuildLibretroMenuOptions(data->menu);
+                HideLibretroMenu();
+            }
         }
     } else if (gameFile) {
-        data->menu->active = !MenuLoadGame(gameFile);
+        if (MenuLoadGame(gameFile)) HideLibretroMenu(); else ShowLibretroMenu();
     }
 
+    TraceLog(LOG_INFO, "LIBRETRO: Init() complete");
     return true;
 }
 
 bool Update(void* userData) {
     AppData* data = (AppData*)userData;
 
+#if defined(__ANDROID__)
+    // Apply the menu's orientation choice when it changes (and the saved value
+    // on the first frame, since appliedOrientation starts at -1).
+    if (data->menu->orientationIndex != data->appliedOrientation) {
+        data->appliedOrientation = data->menu->orientationIndex;
+        AndroidSetOrientation(GetAndroidApp(), data->appliedOrientation);
+    }
+#endif
+
     // Deferred menu open: apply after input has refreshed so the release event
     // that triggered the MENU touch button is gone before Nuklear processes input.
     if (data->pendingMenuOpen) {
-        data->menu->active = true;
+        ShowLibretroMenu();
         data->pendingMenuOpen = false;
     }
 
     // Update virtual joypad from touch controls.
     if (data->menu->touchControls) {
         SetTouchHapticsEnabled(data->menu->touchHapticsEnabled);
+        SetTouchControlsScale(data->menu->touchScale);
         if (!data->menu->active) {
             UpdateLibretroTouchControls();
             if (IsTouchControlsMenuPressed()) {
@@ -215,78 +279,108 @@ bool Update(void* userData) {
 
     // Run a frame of the core.
     if (!data->menu->active) {
-        // Update the shaders, then show OSD if a shader key was pressed.
-        LibretroShaderType shaderTypeBefore = GetActiveLibretroShaderType();
         UpdateLibretroShaders(GetFrameTime());
 
+        // While rewinding we step back one snapshot per capture interval and
+        // render only on that step (via UpdateLibretroEx(true)), so the picture holds
+        // between steps instead of running the core forward.
+        bool rewinding = false;
+
         if (IsLibretroGameReady()) {
-            // Rewind
-            KeyboardKey key = NuklearKeyToKeyboardKey(data->menu->keyRewind);
+            KeyboardKey rewindKey = LibretroHotkeyToKeyboardKey(data->menu->hotkeys[LIBRETRO_HOTKEY_REWIND].key);
+            rewinding = data->menu->rewindEnabled && !data->menu->disableHotKeysActive && (IsKeyDown(rewindKey) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_REWIND].gamepad));
+
+            // Capture and playback both run at REWIND_CAPTURES_PER_SECOND.
             if (data->menu->rewindEnabled) {
-                if (IsKeyDown(key)) {
-                    if (IsKeyPressed(key)) {
-                        SetLibretroVolume(0.0f);
-                    }
+                data->rewindTimer += GetFrameTime();
+            }
+
+            if (rewinding) {
+                if (data->rewindTimer >= REWIND_CAPTURE_INTERVAL) {
+                    data->rewindTimer = 0.0f;
                     void* stateData = NULL;
                     unsigned int stateSize = 0;
                     if (RewindBufferPop(&data->rewind, &stateData, &stateSize)) {
-                        SetLibretroSerializedData(stateData, stateSize);
-                        MemFree(stateData);
+                        if (stateSize != GetLibretroSerializedSize()) {
+                            // Snapshots belong to a different game/core (a new
+                            // game was loaded). Drop the stale buffer instead of
+                            // feeding the core a mismatched state.
+                            MemFree(stateData);
+                            RewindBufferFree(&data->rewind);
+                        } else {
+                            SetLibretroSerializedData(stateData, stateSize);
+                            MemFree(stateData);
+                            SetLibretroMessage("Rewind", 1.0);
+                            // Render the restored snapshot. Bypasses the time
+                            // accumulator, which would run zero ticks when called
+                            // this sparsely and leave the display frozen.
+                            UpdateLibretroEx(true);
+                        }
                     } else {
-                        SetLibretroMessage("Rewind limit reached", 1.0f);
-                    }
-                } else {
-                    if (IsKeyReleased(key)) {
-                        SetLibretroVolume(data->menu->volumeSelected);
-                    }
-                    unsigned int size = 0;
-                    void* state = GetLibretroSerializedData(&size);
-                    if (state != NULL) {
-                        RewindBufferPush(&data->rewind, state, size);
+                        SetLibretroMessage("Rewind limit reached", 1.0);
                     }
                 }
-            } else if (data->rewind.count > 0) {
-                RewindBufferFree(&data->rewind);
-            }
-
-            // Fast Forward
-            key = NuklearKeyToKeyboardKey(data->menu->keyFastForward);
-            KeyboardKey slowMotionKey = NuklearKeyToKeyboardKey(data->menu->keySlowMotion);
-            if (IsKeyDown(key)) {
-                if (IsKeyPressed(key)) {
-                    SetLibretroVolume(0.0f);
-                    SetLibretroSpeed(data->menu->fastForwardSpeed);
-                    SetLibretroMessage(TextFormat("Fast Forward %dx", data->menu->fastForwardSpeed), 1.0f);
+            } else {
+                // Capture a snapshot at the interval while playing forward.
+                if (data->menu->rewindEnabled) {
+                    if (data->rewindTimer >= REWIND_CAPTURE_INTERVAL) {
+                        data->rewindTimer = 0.0f;
+                        unsigned int size = 0;
+                        void* state = GetLibretroSerializedData(&size);
+                        if (state != NULL) {
+                            RewindBufferPush(&data->rewind, state, size);
+                        }
+                    }
+                    if (IsKeyReleased(rewindKey) || LibretroHotkeyGPReleased(data->menu->hotkeys[LIBRETRO_HOTKEY_REWIND].gamepad)) {
+                        SetLibretroMessage(NULL, 0.0);
+                    }
+                } else if (data->rewind.count > 0) {
+                    RewindBufferFree(&data->rewind);
                 }
 
-                // Run the extra frames manually.
-                int steps = (int)GetLibretroSpeed();
-                if (steps < 1) steps = 1;
-                for (int i = 1; i < steps; i++) UpdateLibretro();
-            }
-            else if (IsKeyReleased(key)) {
-                SetLibretroVolume(data->menu->volumeSelected);
-                SetLibretroSpeed(1.0f);
-                SetLibretroMessage(NULL, 0.0f);
-            }
-
-            // Slow Motion
-            else if (IsKeyDown(slowMotionKey)) {
-                if (IsKeyPressed(slowMotionKey)) {
-                    SetLibretroVolume(0.0f);
-                    SetLibretroSpeed(data->menu->slowMotionSpeed);
-                    SetLibretroMessage(TextFormat("Slow Motion %.0f%%", data->menu->slowMotionSpeed * 100.0f), 1.0f);
+                // Fast Forward / Slow Motion
+                KeyboardKey key = LibretroHotkeyToKeyboardKey(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].key);
+                KeyboardKey slowMotionKey = LibretroHotkeyToKeyboardKey(data->menu->hotkeys[LIBRETRO_HOTKEY_SLOW_MOTION].key);
+                if (data->menu->disableHotKeysActive) {
+                    // Skip the Fast Forward / Slow Motion entirely.
                 }
-            }
-            else if (IsKeyReleased(slowMotionKey)) {
-                SetLibretroVolume(data->menu->volumeSelected);
-                SetLibretroSpeed(1.0f);
-                SetLibretroMessage(NULL, 0.0f);
+                else if (IsKeyDown(key) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
+                    if (IsKeyPressed(key) || LibretroHotkeyGPPressed(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
+                        // Halve audio stream volume during fast-forward without touching
+                        // LIBRETRO.volume so restore is just re-applying the stored value.
+                        if (IsAudioStreamValid(LIBRETRO.core.audioStream))
+                            SetAudioStreamVolume(LIBRETRO.core.audioStream, LIBRETRO.volume * 0.5f);
+                        SetLibretroSpeed(data->menu->fastForwardSpeed);
+                        SetLibretroMessage("Fast Forward", 1.0);
+                    }
+                    // The time accumulator in UpdateLibretro() scales by LIBRETRO.speed,
+                    // so the single UpdateLibretro() call below runs the extra ticks.
+                }
+                else if (IsKeyReleased(key) || LibretroHotkeyGPReleased(data->menu->hotkeys[LIBRETRO_HOTKEY_FAST_FORWARD].gamepad)) {
+                    SetLibretroVolume(LIBRETRO.volume);
+                    SetLibretroSpeed(1.0f);
+                    SetLibretroMessage(NULL, 0.0);
+                }
+
+                // Slow Motion
+                else if (IsKeyDown(slowMotionKey) || LibretroHotkeyGPDown(data->menu->hotkeys[LIBRETRO_HOTKEY_SLOW_MOTION].gamepad)) {
+                    if (IsKeyPressed(slowMotionKey) || LibretroHotkeyGPPressed(data->menu->hotkeys[LIBRETRO_HOTKEY_SLOW_MOTION].gamepad)) {
+                        SetLibretroSpeed(data->menu->slowMotionSpeed);
+                        SetLibretroMessage("Slow Motion", 1.0);
+                    }
+                }
+                else if (IsKeyReleased(slowMotionKey) || LibretroHotkeyGPReleased(data->menu->hotkeys[LIBRETRO_HOTKEY_SLOW_MOTION].gamepad)) {
+                    SetLibretroSpeed(1.0f);
+                    SetLibretroMessage(NULL, 0.0);
+                }
             }
         }
 
-        // Run a frame.
-        UpdateLibretro();
+        // Run a paced frame while playing forward. During rewind the core is
+        // advanced by UpdateLibretroEx(true) above, so skip the accumulator here.
+        if (!rewinding) {
+            UpdateLibretro();
+        }
     }
 
     UpdateLibretroMenu();
@@ -298,14 +392,16 @@ bool Update(void* userData) {
             const char* droppedPath = dropped.paths[0];
             SaveLibretroAllSettings();
             CloseLibretro();
+            // The previous game's rewind snapshots are now meaningless.
+            RewindBufferFree(&data->rewind);
             if (IsLibretroCoreFile(droppedPath)) {
                 if (MenuInitCore(droppedPath)) {
                     BuildLibretroMenuOptions(data->menu);
-                    data->menu->active = true;
+                    ShowLibretroMenu();
                 }
             } else {
                 // MenuLoadGame autodetects a core for the dropped game via FindCoreForGame().
-                data->menu->active = !MenuLoadGame(droppedPath);
+                if (MenuLoadGame(droppedPath)) HideLibretroMenu(); else ShowLibretroMenu();
             }
         }
         UnloadDroppedFiles(dropped);
@@ -317,113 +413,140 @@ bool Update(void* userData) {
         SaveLibretroAllSettings();
         UnloadLibretroGame();
         CloseLibretro();
+        ShowLibretroMenu();
     }
     if (data->menu->shouldQuit) {
         return false;
     }
 
-    // Hot Keys
+    // Hot Key
     if (!menu.active) {
+        // Disable HotKeys Button
+        if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_DISABLE_HOTKEYS].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_DISABLE_HOTKEYS].gamepad)) {
+            menu.disableHotKeysActive = !menu.disableHotKeysActive;
+            SetLibretroMessage(menu.disableHotKeysActive ? "Hot Keys Disabled" : "Hot Keys Enabled", 2.0);
+            return true;
+        }
+    }
+
+    // Check all the other Hot Keys
+    if (!menu.active && !menu.disableHotKeysActive) {
 
         // Screenshot
-        if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyScreenshot))) {
+        if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_SCREENSHOT].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_SCREENSHOT].gamepad) && IsLibretroGameReady()) {
             const char* screenshotsDir = GetLibretroDirectory(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
-            bool taken = false;
+            const char* contentName = GetLibretroContentName();
+            const char* baseName = (contentName && contentName[0] != '\0') ? contentName : "screenshot";
+            bool foundSlot = false;
             for (int i = 1; i < 1000; i++) {
-                const char* screenshotName = TextFormat("%s/screenshot-%i.png", screenshotsDir, i);
+                const char* screenshotName = TextFormat("%s/%s-%i.png", screenshotsDir, baseName, i);
                 if (!FileExists(screenshotName)) {
-                    TakeScreenshot(screenshotName);
-                    SetLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0f);
-                    taken = true;
+                    //Image screenshot = LoadImageFromScreen();
+                    //Image screenshot = LoadImageFromTexture(GetLibretroTexture());
+                    Image screenshot = LoadImageFromLibretro();
+                    foundSlot = true;
+                    if (ExportImage(screenshot, screenshotName)) {
+                        SetLibretroMessage(TextFormat("Screenshot: %s", screenshotName), 2.0);
+                    }
+                    else {
+                        SetLibretroMessage(TextFormat("Screenshot failed: %s", screenshotName), 2.0);
+                    }
+                    if (screenshot.data != NULL) {
+                        UnloadImage(screenshot);
+                    }
                     break;
                 }
             }
-            if (!taken) {
-                SetLibretroMessage("Screenshot slots full", 2.0f);
+            if (!foundSlot) {
+                SetLibretroMessage("Screenshot slots full", 2.0);
             }
         }
 
         // FullScreen toggle key won't work in Emscripten.
     #ifndef __EMSCRIPTEN__
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyFullscreen))) {
+        else if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_FULLSCREEN].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_FULLSCREEN].gamepad)) {
             LibretroMenuFullscreenChanged(menu.console, NULL);
         }
     #endif
 
         // Cycle Shader Reverse
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyPrevShader))) {
+        else if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_PREV_SHADER].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_PREV_SHADER].gamepad)) {
             CycleLibretroShaderReverse();
-            SetLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
+            SetLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0);
             menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
         }
 
         // Cycle Shader Next
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyNextShader))) {
+        else if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_NEXT_SHADER].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_NEXT_SHADER].gamepad)) {
             CycleLibretroShader();
-            SetLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0f);
+            SetLibretroMessage(GetLibretroShaderName(GetActiveLibretroShaderType()), 2.0);
             // TODO: For some reason, cycling the shader doens't update the menu label.
             menu.shaderSelectedIndex = (int)GetActiveLibretroShaderType();
         }
 
         // Save State
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keySaveState))) {
+        else if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_SAVE_STATE].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_SAVE_STATE].gamepad)) {
             LibretroMenuSaveStateClicked(menu.console, NULL);
         }
 
         // Load State
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyLoadState))) {
+        else if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_LOAD_STATE].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_LOAD_STATE].gamepad)) {
             LibretroMenuLoadStateClicked(menu.console, NULL);
         }
 
         // Prev Slot
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyPrevSlot))) {
+        else if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_PREV_SLOT].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_PREV_SLOT].gamepad)) {
             menu.saveSlotIndex = (menu.saveSlotIndex - 1 + 10) % 10;
-            SetLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
+            SetLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 2.0);
         }
 
         // Next Slot
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyNextSlot)) ) {
+        else if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_NEXT_SLOT].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_NEXT_SLOT].gamepad)) {
             menu.saveSlotIndex = (menu.saveSlotIndex + 1) % 10;
-            SetLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 1.0f);
+            SetLibretroMessage(TextFormat("Save Slot: %d", menu.saveSlotIndex + 1), 2.0);
         }
 
         // Reset
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyReset))) {
+        else if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_RESET].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_RESET].gamepad)) {
             if (IsLibretroGameReady()) {
                 ResetLibretro();
-                SetLibretroMessage("Reset", 2.0f);
+                SetLibretroMessage("Reset", 2.0);
             }
         }
 
         // Volume Up
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyVolumeUp))) {
+        else if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_VOLUME_UP].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_VOLUME_UP].gamepad)) {
             float vol = GetLibretroVolume() + 0.1f;
             SetLibretroVolume(vol);
             vol = GetLibretroVolume();
-            menu.volumeSelected = vol;
-            SetLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0f);
+            SetLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0);
         }
 
         // Volume Down
-        else if (IsKeyReleased(NuklearKeyToKeyboardKey(menu.keyVolumeDown))) {
+        else if (IsKeyReleased(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_VOLUME_DOWN].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_VOLUME_DOWN].gamepad)) {
             float vol = GetLibretroVolume() - 0.1f;
             SetLibretroVolume(vol);
             vol = GetLibretroVolume();
-            menu.volumeSelected = vol;
-            SetLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0f);
+            SetLibretroMessage(TextFormat("Volume: %d%%", (int)(vol * 10.0f + 0.5f) * 10), 1.0);
         }
 
         // Mute
-        else if (IsKeyPressed(NuklearKeyToKeyboardKey(menu.keyMute))) {
+        else if (IsKeyPressed(LibretroHotkeyToKeyboardKey(menu.hotkeys[LIBRETRO_HOTKEY_MUTE].key)) || LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_MUTE].gamepad)) {
             if (!data->muted) {
-                SetLibretroVolume(0.0f);
+                if (IsAudioStreamValid(LIBRETRO.core.audioStream))
+                    SetAudioStreamVolume(LIBRETRO.core.audioStream, 0.0f);
                 data->muted = true;
-                SetLibretroMessage("Muted", 1.0f);
+                SetLibretroMessage("Mute", 1.0f);
             } else {
-                SetLibretroVolume(data->menu->volumeSelected);
+                SetLibretroVolume(LIBRETRO.volume);
                 data->muted = false;
-                SetLibretroMessage(TextFormat("Volume: %d%%", (int)(data->menu->volumeSelected * 10.0f + 0.5f) * 10), 1.0f);
+                SetLibretroMessage(TextFormat("Volume: %d%%", (int)(LIBRETRO.volume * 10.0f + 0.5f) * 10), 1.0);
             }
+        }
+
+        // Quit (keyboard is handled by SetExitKey; this covers the gamepad binding).
+        else if (LibretroHotkeyGPReleased(menu.hotkeys[LIBRETRO_HOTKEY_QUIT].gamepad)) {
+            menu.shouldQuit = true;
         }
     }
 
@@ -479,8 +602,13 @@ void Close(void* userData) {
 App Main() {
     return (App){
         .title = "raylib-libretro",
-        .width = 1280,
-        .height = 720,
+#if defined(__ANDROID__)
+        .width = 0,   // use full display resolution on Android
+        .height = 0,
+#else
+        .width = 1024,
+        .height = 768,
+#endif
         .init = Init,
         .update = Update,
         .draw = Draw,
@@ -488,3 +616,48 @@ App Main() {
         .configFlags = FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT,
     };
 }
+
+#if defined(__EMSCRIPTEN__)
+// Web entry point. Mirrors raylib-app's main() setup but drives the emscripten
+// main loop with our own per-frame callback that does NOT call WindowShouldClose()
+// (see the RAYLIB_APP_NO_ENTRY note at the top of this file). The browser hands
+// control back between frames on its own, so no emscripten_sleep yield is needed.
+// webApp is file-static rather than a main() stack variable because
+// emscripten_set_main_loop(..., simulateInfiniteLoop=1) unwinds main()'s frame.
+static App webApp;
+
+static void WebMainLoop(void) {
+    if (webApp.update != NULL) {
+        if (!webApp.update(webApp.userData)) {
+            if (webApp.close != NULL) webApp.close(webApp.userData);
+            CloseWindow();
+            emscripten_cancel_main_loop();
+            return;
+        }
+    }
+    if (webApp.draw != NULL) {
+        BeginDrawing();
+        webApp.draw(webApp.userData);
+        EndDrawing();
+    }
+}
+
+int main(int argc, char* argv[]) {
+    webApp = Main();
+    if (webApp.configFlags != 0) SetConfigFlags(webApp.configFlags);
+    InitWindow(webApp.width, webApp.height, webApp.title);
+    if (!IsWindowReady()) return 1;
+    if (webApp.fps <= 0) webApp.fps = 0;
+    if (webApp.init != NULL) {
+        if (!webApp.init(&webApp.userData, argc, argv)) {
+            if (webApp.close != NULL) webApp.close(webApp.userData);
+            CloseWindow();
+            return 1;
+        }
+    }
+    // simulateInfiniteLoop=1: this call does not return; it unwinds the stack and
+    // schedules WebMainLoop via requestAnimationFrame (fps<=0) or setTimeout (fps>0).
+    emscripten_set_main_loop(WebMainLoop, webApp.fps, 1);
+    return 0;
+}
+#endif

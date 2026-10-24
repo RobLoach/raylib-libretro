@@ -1,3 +1,6 @@
+/**
+ * https://github.com/raysan5/raylib/blob/master/examples/shaders/resources/shaders/glsl120/scanlines.fs
+ */
 "#version 120\n"
 "varying vec2 fragTexCoord;\n"
 "varying vec4 fragColor;\n"
