@@ -37,7 +37,7 @@
 #include "../vendor/c-vector/cvector.h"
 
 #ifndef RAYLIB_LIBRETRO_GAMES_MAX_PATH
-#define RAYLIB_LIBRETRO_GAMES_MAX_PATH 1024
+#define RAYLIB_LIBRETRO_GAMES_MAX_PATH RAYLIB_LIBRETRO_VFS_MAX_PATH
 #endif
 
 #ifndef RAYLIB_LIBRETRO_GAMES_SCAN_BATCH
@@ -100,7 +100,7 @@ const char* LibretroGamesSystemFamily(const char* systemId);       // family id 
  *    no available associated core are NOT indexed (e.g. GameCube games with no GameCube core).
  *    When NULL, nothing is indexed (the layer has no other way to know what is playable).
  *  - zipInnerExt: writes the lower-case extension (no dot) of an archive's primary inner file
- *    into @p outExt (>= 16 bytes); false if it cannot be determined.
+ *    into @p outExt (>= 32 bytes); false if it cannot be determined.
  */
 typedef bool (*LibretroGamesCoreAvailableFn)(const char* extLower, const char* systemId);
 typedef bool (*LibretroGamesZipInnerExtFn)(const char* zipPath, char* outExt);
@@ -155,7 +155,7 @@ typedef struct LibretroGames {
     int scanIndex;
     int scanTotal;
     int oldCount;                           // entries present at scan start (the sorted bsearch range)
-    bool dirty;                             // an entry was added or pruned this scan -> rewrite the DB
+    bool dirty;                             // index changed since the last successful DB write
     bool justFinished;
     Font font;
 } LibretroGames;
@@ -272,15 +272,6 @@ static void LibretroGamesNormalize(const char* src, char* dst, int dstSize) {
     dst[n] = '\0';
 }
 
-/** True when @p s begins with @p prefix. */
-static bool LibretroGamesHasPrefix(const char* s, const char* prefix) {
-    while (*prefix) {
-        if (*s != *prefix) return false;
-        s++; prefix++;
-    }
-    return true;
-}
-
 /** Case-sensitive ordering (for sorting/binary-searching relpaths). */
 static int LibretroGamesPathCmp(const char* a, const char* b) {
     while (*a && *a == *b) { a++; b++; }
@@ -309,15 +300,6 @@ static char* LibretroGamesDup(const char* s) {
 // System detection / naming
 // ---------------------------------------------------------------------------------------------
 
-/** True when an alias of length @p len is contained in @p normFolder per the match rule. */
-static bool LibretroGamesAliasMatches(const char* normFolder, const char* alias, int len) {
-    if (len <= 3) return TextIsEqual(normFolder, alias);     // short token: exact-only
-    for (const char* h = normFolder; *h; h++) {
-        if (LibretroGamesHasPrefix(h, alias)) return true;
-    }
-    return false;
-}
-
 const char* LibretroGamesDetectSystem(const char* folderName) {
     if (!folderName || !folderName[0]) return "";
     char norm[128];
@@ -327,46 +309,42 @@ const char* LibretroGamesDetectSystem(const char* folderName) {
     const char* bestId = "";
     int bestLen = 0;
     for (int i = 0; i < LIBRETRO_GAMES_SYSTEM_ALIAS_COUNT; i++) {
-        const char* aliases = LIBRETRO_GAMES_SYSTEMS[i].aliases;
-        int start = 0;
-        int total = (int)TextLength(aliases);
-        for (int j = 0; j <= total; j++) {
-            if (aliases[j] == '|' || aliases[j] == '\0') {
-                int len = j - start;
-                if (len > 0 && len > bestLen) {
-                    char alias[64];
-                    if (len < (int)sizeof(alias)) {
-                        for (int k = 0; k < len; k++) alias[k] = aliases[start + k];
-                        alias[len] = '\0';
-                        if (LibretroGamesAliasMatches(norm, alias, len)) {
-                            bestLen = len;
-                            bestId = LIBRETRO_GAMES_SYSTEMS[i].id;
-                        }
-                    }
-                }
-                start = j + 1;
+        int count = 0;
+        char** aliases = TextSplit(LIBRETRO_GAMES_SYSTEMS[i].aliases, '|', &count);
+        for (int j = 0; j < count; j++) {
+            int len = (int)TextLength(aliases[j]);
+            if (len <= bestLen) continue;
+            // Short tokens (<= 3 chars) must match the whole name; longer ones may be contained.
+            bool match = (len <= 3) ? TextIsEqual(norm, aliases[j]) : (TextFindIndex(norm, aliases[j]) >= 0);
+            if (match) {
+                bestLen = len;
+                bestId = LIBRETRO_GAMES_SYSTEMS[i].id;
             }
         }
     }
     return bestId;
 }
 
+/** The static table row for @p systemId, or NULL when unknown. */
+static const LibretroGamesSystemAlias* LibretroGamesFindSystem(const char* systemId) {
+    if (!systemId || !systemId[0]) return NULL;
+    for (int i = 0; i < LIBRETRO_GAMES_SYSTEM_ALIAS_COUNT; i++) {
+        if (TextIsEqual(systemId, LIBRETRO_GAMES_SYSTEMS[i].id)) return &LIBRETRO_GAMES_SYSTEMS[i];
+    }
+    return NULL;
+}
+
 const char* LibretroGamesSystemDisplayName(const char* systemId) {
     if (!systemId || !systemId[0]) return "Other";
-    for (int i = 0; i < LIBRETRO_GAMES_SYSTEM_ALIAS_COUNT; i++) {
-        if (TextIsEqual(systemId, LIBRETRO_GAMES_SYSTEMS[i].id)) return LIBRETRO_GAMES_SYSTEMS[i].display;
-    }
-    return systemId;
+    const LibretroGamesSystemAlias* sys = LibretroGamesFindSystem(systemId);
+    return sys ? sys->display : systemId;
 }
 
 const char* LibretroGamesSystemFamily(const char* systemId) {
     if (!systemId || !systemId[0]) return "";
-    for (int i = 0; i < LIBRETRO_GAMES_SYSTEM_ALIAS_COUNT; i++) {
-        if (TextIsEqual(systemId, LIBRETRO_GAMES_SYSTEMS[i].id)) {
-            return LIBRETRO_GAMES_SYSTEMS[i].family[0] ? LIBRETRO_GAMES_SYSTEMS[i].family : LIBRETRO_GAMES_SYSTEMS[i].id;
-        }
-    }
-    return systemId;   // unknown id is its own family
+    const LibretroGamesSystemAlias* sys = LibretroGamesFindSystem(systemId);
+    if (!sys) return systemId;   // unknown id is its own family
+    return sys->family[0] ? sys->family : sys->id;
 }
 
 const char* LibretroGamesSystemForExtension(const char* extLower) {
@@ -380,25 +358,13 @@ const char* LibretroGamesSystemForExtension(const char* extLower) {
 /** Resolve a system id to its stable pointer in the static table ("" when unknown), so entries
  *  store an interned id instead of a per-entry copy. */
 static const char* LibretroGamesInternSystemId(const char* id) {
-    if (!id || !id[0]) return "";
-    for (int i = 0; i < LIBRETRO_GAMES_SYSTEM_ALIAS_COUNT; i++) {
-        if (TextIsEqual(id, LIBRETRO_GAMES_SYSTEMS[i].id)) return LIBRETRO_GAMES_SYSTEMS[i].id;
-    }
-    return "";
+    const LibretroGamesSystemAlias* sys = LibretroGamesFindSystem(id);
+    return sys ? sys->id : "";
 }
 
 // ---------------------------------------------------------------------------------------------
 // Entry helpers
 // ---------------------------------------------------------------------------------------------
-
-/** Display title: the file name with its extension removed (no directory, no ".ext"). */
-static void LibretroGamesTitle(const char* relpath, char* out, int outSize) {
-    const char* name = GetFileName(relpath);
-    int n = 0, dot = -1;
-    for (; name[n] && n < outSize - 1; n++) { out[n] = name[n]; if (name[n] == '.') dot = n; }
-    out[n] = '\0';
-    if (dot > 0) out[dot] = '\0';   // strip extension (keep leading-dot names intact)
-}
 
 /** True when a file is a BIOS image (No-Intro "[BIOS]" filename prefix) -- never indexed. */
 static bool LibretroGamesIsBios(const char* relpath) {
@@ -435,19 +401,21 @@ static void LibretroGamesFreeSystems(void) {
 static LibretroGameEntry* LibretroGamesPushEntry(const char* relpath, const char* system, const char* title) {
     LibretroGameEntry* e = (LibretroGameEntry*)MemAlloc(sizeof(LibretroGameEntry));
     e->relpath = LibretroGamesDup(relpath);
-    if (title && title[0]) {
-        e->title = LibretroGamesDup(title);
-    } else {
-        char t[256];
-        LibretroGamesTitle(relpath, t, sizeof(t));
-        e->title = LibretroGamesDup(t);
-    }
+    // Derived title: the file name without its extension.
+    e->title = LibretroGamesDup((title && title[0]) ? title : GetFileNameWithoutExt(relpath));
     e->systemId = LibretroGamesInternSystemId(system);
     e->seen = true;
     cvector_push_back(GAMES.entries, e);
     return e;
 }
 
+static int LibretroGamesSystemSort(const void* a, const void* b) {
+    const LibretroGameSystem* sa = *(const LibretroGameSystem* const*)a;
+    const LibretroGameSystem* sb = *(const LibretroGameSystem* const*)b;
+    return LibretroGamesStrCaseCmp(sa->display, sb->display);
+}
+
+/** Rebuild the distinct-system list (with counts) from the entries, sorted by display name. */
 static void LibretroGamesRebuildSystems(void) {
     LibretroGamesFreeSystems();
     for (size_t i = 0; i < cvector_size(GAMES.entries); i++) {
@@ -463,12 +431,7 @@ static void LibretroGamesRebuildSystems(void) {
         sys->count = 1;
         cvector_push_back(GAMES.systems, sys);
     }
-}
-
-static int LibretroGamesSystemSort(const void* a, const void* b) {
-    const LibretroGameSystem* sa = *(const LibretroGameSystem* const*)a;
-    const LibretroGameSystem* sb = *(const LibretroGameSystem* const*)b;
-    return LibretroGamesStrCaseCmp(sa->display, sb->display);
+    if (cvector_size(GAMES.systems) > 1) qsort(GAMES.systems, cvector_size(GAMES.systems), sizeof(LibretroGameSystem*), LibretroGamesSystemSort);
 }
 
 static int LibretroGamesFilteredSort(const void* a, const void* b) {
@@ -524,8 +487,8 @@ static const char* LIBRETRO_GAMES_SCHEMA =
     " title   TEXT NOT NULL DEFAULT '');"
     "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);";
 
-static void LibretroGamesExec(const char* sql) {
-    if (GAMES.db) sqlite3_exec(GAMES.db, sql, NULL, NULL, NULL);
+static bool LibretroGamesExec(const char* sql) {
+    return GAMES.db && sqlite3_exec(GAMES.db, sql, NULL, NULL, NULL) == SQLITE_OK;
 }
 
 /** Read a meta value into @p out (size @p outSize); out[0]='\0' when absent. */
@@ -570,9 +533,12 @@ static void LibretroGamesLoadFromDB(void) {
 /** Replace the whole games table with the current in-memory list, in one transaction. */
 static void LibretroGamesSaveToDB(void) {
     if (!GAMES.db) return;
-    LibretroGamesExec("BEGIN; DELETE FROM games;");
+    if (!LibretroGamesExec("BEGIN;")) {
+        TraceLog(LOG_ERROR, "GAMES: Failed to begin index write (%s)", sqlite3_errmsg(GAMES.db));
+        return;
+    }
     sqlite3_stmt* ins = NULL;
-    bool ok = (sqlite3_prepare_v2(GAMES.db, "INSERT INTO games(relpath,system,title) VALUES(?,?,?);", -1, &ins, NULL) == SQLITE_OK);
+    bool ok = LibretroGamesExec("DELETE FROM games;") && (sqlite3_prepare_v2(GAMES.db, "INSERT INTO games(relpath,system,title) VALUES(?,?,?);", -1, &ins, NULL) == SQLITE_OK);
     if (ok) {
         for (size_t i = 0; i < cvector_size(GAMES.entries); i++) {
             LibretroGameEntry* e = GAMES.entries[i];
@@ -585,13 +551,12 @@ static void LibretroGamesSaveToDB(void) {
         sqlite3_finalize(ins);
     }
     // Never COMMIT a failed rewrite: committing the bare DELETE would wipe the whole library.
-    if (ok) {
-        LibretroGamesExec("COMMIT;");
+    if (ok && LibretroGamesExec("COMMIT;")) {
+        GAMES.dirty = false;
         LibretroGamesFlushWeb();
     } else {
-        LibretroGamesExec("ROLLBACK;");
-        GAMES.dirty = true;   // leave the index dirty so a later scan retries the write
         TraceLog(LOG_ERROR, "GAMES: Failed to persist index (%s)", sqlite3_errmsg(GAMES.db));
+        LibretroGamesExec("ROLLBACK;");   // dirty stays set, so the next scan retries the write
     }
 }
 
@@ -683,7 +648,6 @@ bool InitLibretroGames(const char* dbDir) {
 
     LibretroGamesLoadFromDB();
     LibretroGamesRebuildSystems();
-    if (cvector_size(GAMES.systems) > 1) qsort(GAMES.systems, cvector_size(GAMES.systems), sizeof(LibretroGameSystem*), LibretroGamesSystemSort);
     LibretroGamesRebuildFiltered();
     GAMES.justFinished = true;   // prompt the menu to build its Games page from the cached index
     return true;
@@ -695,8 +659,13 @@ static void LibretroGamesFreeM3uRefs(void) {
     GAMES.m3uRefs = NULL;
 }
 
+static void LibretroGamesUnloadScanFiles(void) {
+    if (GAMES.scanFilesLoaded) UnloadDirectoryFiles(GAMES.scanFiles);
+    GAMES.scanFilesLoaded = false;
+}
+
 void CloseLibretroGames(void) {
-    if (GAMES.scanFilesLoaded) { UnloadDirectoryFiles(GAMES.scanFiles); GAMES.scanFilesLoaded = false; }
+    LibretroGamesUnloadScanFiles();
     LibretroGamesFreeEntries();
     LibretroGamesFreeSystems();
     LibretroGamesFreeM3uRefs();
@@ -733,7 +702,7 @@ static bool LibretroGamesExtLower(const char* path, char* out, int outSize) {
 static void LibretroGamesRelPath(const char* fullPath, char* out, int outSize) {
     int baseLen = (int)TextLength(GAMES.contentDir);
     const char* rel;
-    if (baseLen > 0 && (int)TextLength(fullPath) > baseLen && LibretroGamesHasPrefix(fullPath, GAMES.contentDir)) {
+    if (baseLen > 0 && (int)TextLength(fullPath) > baseLen && TextFindIndex(fullPath, GAMES.contentDir) == 0) {
         rel = fullPath + baseLen;
         while (*rel == '/' || *rel == '\\') rel++;
     } else {
@@ -757,7 +726,7 @@ static void LibretroGamesCollectM3uRefs(void) {
         char dir[RAYLIB_LIBRETRO_GAMES_MAX_PATH];
         LibretroGamesRelPath(path, dir, sizeof(dir));
         int slash = -1;
-        for (int k = 0; dir[k]; k++) { if (dir[k] == '/' || dir[k] == '\\') slash = k; }
+        for (int k = 0; dir[k]; k++) { if (dir[k] == '/') slash = k; }
         if (slash >= 0) dir[slash] = '\0'; else dir[0] = '\0';
 
         char* text = LoadFileText(path);
@@ -794,9 +763,9 @@ static bool LibretroGamesIsM3uReferenced(const char* relpath) {
 }
 
 void LibretroGamesStartScan(const char* contentDir) {
-    if (GAMES.scanFilesLoaded) { UnloadDirectoryFiles(GAMES.scanFiles); GAMES.scanFilesLoaded = false; }
+    LibretroGamesUnloadScanFiles();
 
-    if (!contentDir || !contentDir[0] || !DirectoryExists(contentDir)) {
+    if (!contentDir || !contentDir[0] || TextLength(contentDir) >= sizeof(GAMES.contentDir) || !DirectoryExists(contentDir)) {
         GAMES.contentDir[0] = '\0';
         LibretroGamesFreeEntries();
         GAMES.state = LIBRETRO_GAMES_IDLE;
@@ -813,7 +782,6 @@ void LibretroGamesStartScan(const char* contentDir) {
 
     GAMES.scanFiles = LoadDirectoryFilesEx(GAMES.contentDir, NULL, true);
     GAMES.scanFilesLoaded = true;
-    GAMES.dirty = false;
 
     // If the content root changed, drop the whole index and rebuild; otherwise keep the loaded
     // entries as the cache (a matching relpath skips re-indexing).
@@ -843,25 +811,21 @@ void LibretroGamesStartScan(const char* contentDir) {
 
 static void LibretroGamesFinishScan(void) {
     // Prune cached entries whose files are gone (not seen this scan); keep survivors + new finds.
-    if (GAMES.oldCount > 0) {
-        cvector(LibretroGameEntry*) kept = NULL;
-        for (size_t i = 0; i < cvector_size(GAMES.entries); i++) {
-            LibretroGameEntry* e = GAMES.entries[i];
-            if (e->seen) cvector_push_back(kept, e);
-            else { LibretroGamesFreeEntry(e); GAMES.dirty = true; }
-        }
-        cvector_free(GAMES.entries);
-        GAMES.entries = kept;
+    size_t kept = 0;
+    for (size_t i = 0; i < cvector_size(GAMES.entries); i++) {
+        LibretroGameEntry* e = GAMES.entries[i];
+        if (e->seen) GAMES.entries[kept++] = e;
+        else { LibretroGamesFreeEntry(e); GAMES.dirty = true; }
     }
+    cvector_set_size(GAMES.entries, kept);
 
     if (GAMES.dirty) LibretroGamesSaveToDB();   // only touch the disk when the index actually changed
 
     LibretroGamesRebuildSystems();
-    if (cvector_size(GAMES.systems) > 1) qsort(GAMES.systems, cvector_size(GAMES.systems), sizeof(LibretroGameSystem*), LibretroGamesSystemSort);
     GAMES.systemFilter[0] = '\0';
     LibretroGamesRebuildFiltered();
 
-    if (GAMES.scanFilesLoaded) { UnloadDirectoryFiles(GAMES.scanFiles); GAMES.scanFilesLoaded = false; }
+    LibretroGamesUnloadScanFiles();
     LibretroGamesFreeM3uRefs();
     GAMES.scanTotal = 0;
     GAMES.scanIndex = 0;
@@ -894,28 +858,15 @@ bool UpdateLibretroGamesScan(void) {
         if (cached) { cached->seen = true; continue; }
 
         // New file: resolve the effective (inner, for archives) extension.
-        char effExt[16];
+        char effExt[32];
         TextCopy(effExt, ext);
-        if (TextIsEqual(ext, "zip")) {
-            if (GAMES.zipInnerExt == NULL) continue;
-            char inner[32];
-            if (!GAMES.zipInnerExt(path, inner)) continue;
-            TextCopy(effExt, inner);
-        }
+        if (TextIsEqual(ext, "zip") && (GAMES.zipInnerExt == NULL || !GAMES.zipInnerExt(path, effExt))) continue;
 
         // System: from the first path component (folder) when nested, else from the extension.
-        const char* system;
-        bool hasSubdir = false;
-        for (const char* p = relpath; *p; p++) { if (*p == '/' || *p == '\\') { hasSubdir = true; break; } }
-        if (hasSubdir) {
-            char folder[128];
-            int fn = 0;
-            for (const char* p = relpath; *p && *p != '/' && *p != '\\' && fn < (int)sizeof(folder) - 1; p++) folder[fn++] = *p;
-            folder[fn] = '\0';
-            system = LibretroGamesDetectSystem(folder);
-        } else {
-            system = LibretroGamesSystemForExtension(effExt);
-        }
+        int slash = TextFindIndex(relpath, "/");
+        const char* system = (slash >= 0)
+            ? LibretroGamesDetectSystem(TextSubtext(relpath, 0, slash))
+            : LibretroGamesSystemForExtension(effExt);
 
         // Only index content an installed core can actually run (skips e.g. GameCube games when
         // no GameCube core is present). With no hook there is nothing to gate against -> skip.
@@ -936,9 +887,7 @@ bool UpdateLibretroGamesScan(void) {
 bool IsLibretroGamesScanning(void) { return GAMES.state == LIBRETRO_GAMES_SCANNING; }
 
 float GetLibretroGamesScanProgress(void) {
-    if (GAMES.scanTotal <= 0) return 0.0f;
-    float p = (float)GAMES.scanIndex / (float)GAMES.scanTotal;
-    return (p < 0.0f) ? 0.0f : (p > 1.0f ? 1.0f : p);
+    return (GAMES.scanTotal > 0) ? (float)GAMES.scanIndex / (float)GAMES.scanTotal : 0.0f;
 }
 
 bool LibretroGamesScanJustFinished(void) {
