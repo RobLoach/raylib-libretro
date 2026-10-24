@@ -19,6 +19,7 @@
 #include <android_native_app_glue.h>
 
 extern struct android_app *GetAndroidApp(void);
+static bool AndroidGetExternalStorageDir(struct android_app* app, char* out);
 
 #ifndef RAYLIB_LIBRETRO_ANDROID_ABI
     #if defined(__aarch64__)
