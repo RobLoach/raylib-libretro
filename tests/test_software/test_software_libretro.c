@@ -17,15 +17,16 @@
 #define CORE_FPS    60.0
 #define FRAMES_PER_FORMAT 120
 
-static retro_video_refresh_t       s_video_refresh = NULL;
-static retro_audio_sample_t        s_audio_sample  = NULL;
-static retro_audio_sample_batch_t  s_audio_batch   = NULL;
-static retro_input_poll_t          s_input_poll     = NULL;
-static retro_input_state_t         s_input_state    = NULL;
-static retro_environment_t         s_environ        = NULL;
+static retro_video_refresh_t s_video_refresh = NULL;
+static retro_input_poll_t    s_input_poll    = NULL;
+static retro_environment_t   s_environ       = NULL;
 
-static uint32_t s_fb32[CORE_WIDTH * CORE_HEIGHT];
-static uint16_t s_fb16[CORE_WIDTH * CORE_HEIGHT];
+/* One buffer large enough for any format; filled once per format change. */
+static union {
+    uint16_t p16[CORE_WIDTH * CORE_HEIGHT];
+    uint32_t p32[CORE_WIDTH * CORE_HEIGHT];
+} s_fb;
+static size_t s_pitch = 0;
 
 static unsigned s_frame_count = 0;
 static unsigned s_format_index = 0;
@@ -37,73 +38,46 @@ static const enum retro_pixel_format s_formats[] = {
 };
 #define NUM_FORMATS (sizeof(s_formats) / sizeof(s_formats[0]))
 
+/* Switch to s_formats[index] and redraw the red/green/blue gradient in it. */
 static void set_pixel_format(unsigned index) {
     enum retro_pixel_format fmt = s_formats[index];
+    const unsigned third = CORE_HEIGHT / 3;
+
+    s_format_index = index;
     s_environ(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
-}
+    s_pitch = CORE_WIDTH * (fmt == RETRO_PIXEL_FORMAT_XRGB8888 ? sizeof(uint32_t) : sizeof(uint16_t));
 
-static void fill_gradient_rgb565(void) {
     for (unsigned y = 0; y < CORE_HEIGHT; y++) {
-        unsigned third = CORE_HEIGHT / 3;
-        uint8_t r = 0, g = 0, b = 0;
+        unsigned r = 0, g = 0, b = 0;
+        if (y < third)
+            r = (y * 255) / third;
+        else if (y < third * 2)
+            g = ((y - third) * 255) / third;
+        else
+            b = ((y - third * 2) * 255) / (CORE_HEIGHT - third * 2);
 
-        if (y < third) {
-            r = (uint8_t)((y * 31) / third);
-        } else if (y < third * 2) {
-            g = (uint8_t)(((y - third) * 63) / third);
-        } else {
-            b = (uint8_t)(((y - third * 2) * 31) / (CORE_HEIGHT - third * 2));
+        uint32_t pixel;
+        if (fmt == RETRO_PIXEL_FORMAT_RGB565)
+            pixel = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+        else if (fmt == RETRO_PIXEL_FORMAT_0RGB1555)
+            pixel = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+        else
+            pixel = (r << 16) | (g << 8) | b;
+
+        for (unsigned x = 0; x < CORE_WIDTH; x++) {
+            if (fmt == RETRO_PIXEL_FORMAT_XRGB8888)
+                s_fb.p32[y * CORE_WIDTH + x] = pixel;
+            else
+                s_fb.p16[y * CORE_WIDTH + x] = (uint16_t)pixel;
         }
-
-        uint16_t pixel = (uint16_t)(((r & 0x1F) << 11) | ((g & 0x3F) << 5) | (b & 0x1F));
-        for (unsigned x = 0; x < CORE_WIDTH; x++)
-            s_fb16[y * CORE_WIDTH + x] = pixel;
-    }
-}
-
-static void fill_gradient_0rgb1555(void) {
-    for (unsigned y = 0; y < CORE_HEIGHT; y++) {
-        unsigned third = CORE_HEIGHT / 3;
-        uint8_t r = 0, g = 0, b = 0;
-
-        if (y < third) {
-            r = (uint8_t)((y * 31) / third);
-        } else if (y < third * 2) {
-            g = (uint8_t)(((y - third) * 31) / third);
-        } else {
-            b = (uint8_t)(((y - third * 2) * 31) / (CORE_HEIGHT - third * 2));
-        }
-
-        uint16_t pixel = (uint16_t)(((r & 0x1F) << 10) | ((g & 0x1F) << 5) | (b & 0x1F));
-        for (unsigned x = 0; x < CORE_WIDTH; x++)
-            s_fb16[y * CORE_WIDTH + x] = pixel;
-    }
-}
-
-static void fill_gradient_xrgb8888(void) {
-    for (unsigned y = 0; y < CORE_HEIGHT; y++) {
-        unsigned third = CORE_HEIGHT / 3;
-        uint8_t r = 0, g = 0, b = 0;
-
-        if (y < third) {
-            r = (uint8_t)((y * 255) / third);
-        } else if (y < third * 2) {
-            g = (uint8_t)(((y - third) * 255) / third);
-        } else {
-            b = (uint8_t)(((y - third * 2) * 255) / (CORE_HEIGHT - third * 2));
-        }
-
-        uint32_t pixel = ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
-        for (unsigned x = 0; x < CORE_WIDTH; x++)
-            s_fb32[y * CORE_WIDTH + x] = pixel;
     }
 }
 
 void retro_set_video_refresh(retro_video_refresh_t cb)           { s_video_refresh = cb; }
-void retro_set_audio_sample(retro_audio_sample_t cb)             { s_audio_sample  = cb; }
-void retro_set_audio_sample_batch(retro_audio_sample_batch_t cb) { s_audio_batch   = cb; }
-void retro_set_input_poll(retro_input_poll_t cb)                 { s_input_poll    = cb; }
-void retro_set_input_state(retro_input_state_t cb)               { s_input_state   = cb; }
+void retro_set_audio_sample(retro_audio_sample_t cb)             { (void)cb; }
+void retro_set_audio_sample_batch(retro_audio_sample_batch_t cb) { (void)cb; }
+void retro_set_input_poll(retro_input_poll_t cb)                 { s_input_poll = cb; }
+void retro_set_input_state(retro_input_state_t cb)               { (void)cb; }
 
 void retro_set_environment(retro_environment_t cb) {
     s_environ = cb;
@@ -143,39 +117,18 @@ void retro_set_controller_port_device(unsigned port, unsigned device) { (void)po
 
 void retro_reset(void) {
     s_frame_count = 0;
-    s_format_index = 0;
     set_pixel_format(0);
 }
 
 void retro_run(void) {
     s_input_poll();
 
-    if (s_frame_count > 0 && (s_frame_count % FRAMES_PER_FORMAT) == 0) {
-        s_format_index = (s_format_index + 1) % NUM_FORMATS;
-        set_pixel_format(s_format_index);
+    if (++s_frame_count == FRAMES_PER_FORMAT) {
+        s_frame_count = 0;
+        set_pixel_format((s_format_index + 1) % NUM_FORMATS);
     }
 
-    switch (s_formats[s_format_index]) {
-    case RETRO_PIXEL_FORMAT_RGB565:
-        fill_gradient_rgb565();
-        s_video_refresh(s_fb16, CORE_WIDTH, CORE_HEIGHT,
-                        CORE_WIDTH * sizeof(uint16_t));
-        break;
-    case RETRO_PIXEL_FORMAT_0RGB1555:
-        fill_gradient_0rgb1555();
-        s_video_refresh(s_fb16, CORE_WIDTH, CORE_HEIGHT,
-                        CORE_WIDTH * sizeof(uint16_t));
-        break;
-    case RETRO_PIXEL_FORMAT_XRGB8888:
-        fill_gradient_xrgb8888();
-        s_video_refresh(s_fb32, CORE_WIDTH, CORE_HEIGHT,
-                        CORE_WIDTH * sizeof(uint32_t));
-        break;
-    default:
-        break;
-    }
-
-    s_frame_count++;
+    s_video_refresh(&s_fb, CORE_WIDTH, CORE_HEIGHT, s_pitch);
 }
 
 bool retro_load_game(const struct retro_game_info *game) {
