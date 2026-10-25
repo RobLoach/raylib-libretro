@@ -80,6 +80,7 @@ endif()
 option(BUILD_RAYLIB_LIBRETRO_TEST_CORES "Build test cores" ON)
 if (BUILD_RAYLIB_LIBRETRO_TEST_CORES AND NOT "${PLATFORM}" STREQUAL "Web")
     add_subdirectory(tests/test_opengl)
+    add_subdirectory(tests/test_software)
 endif()
 
 # raylib-libretro
