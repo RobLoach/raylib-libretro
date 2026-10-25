@@ -1,9 +1,37 @@
+/**********************************************************************************************
+*
+*   raylib-libretro-vfs - Virtual File System for libretro, built for raylib.
+*
+*   LICENSE: zlib/libpng
+*
+*   raylib-libretro-vfs is licensed under an unmodified zlib/libpng license, which is an OSI-certified,
+*   BSD-like license that allows static linking with closed source software:
+*
+*   Copyright (c) 2026 Rob Loach (@RobLoach)
+*
+*   This software is provided "as-is", without any express or implied warranty. In no event
+*   will the authors be held liable for any damages arising from the use of this software.
+*
+*   Permission is granted to anyone to use this software for any purpose, including commercial
+*   applications, and to alter it and redistribute it freely, subject to the following restrictions:
+*
+*     1. The origin of this software must not be misrepresented; you must not claim that you
+*     wrote the original software. If you use this software in a product, an acknowledgment
+*     in the product documentation would be appreciated but is not required.
+*
+*     2. Altered source versions must be plainly marked as such, and must not be misrepresented
+*     as being the original software.
+*
+*     3. This notice may not be removed or altered from any source distribution.
+*
+**********************************************************************************************/
+
 #ifndef RAYLIB_LIBRETRO_VFS_H__
 #define RAYLIB_LIBRETRO_VFS_H__
 
 #include "libretro.h"
 #include "raylib.h"
-
+#include <string.h>  // memcpy
 #ifndef RAYLIB_LIBRETRO_VFS_MAX_PATH
 #define RAYLIB_LIBRETRO_VFS_MAX_PATH 4096
 #endif
@@ -74,6 +102,45 @@ extern "C" {
 #endif
 
 /**
+ * Optional hook to read a file from an alternate read-only filesystem (e.g. PhysFS).
+ *
+ * When non-NULL, VFS read operations try this before the real filesystem. The
+ * signature matches raylib's \c LoadFileData contract.
+ *
+ * @param fileName The path to load.
+ * @param dataSize Out parameter set to the number of bytes read.
+ * @return A \c MemAlloc'd buffer holding the file contents, or \c NULL if the
+ * file was not found in the alternate filesystem.
+ * @see raylib_libretro_vfs_alt_stat
+ * @see raylib_libretro_vfs_alt_load_dir_files
+ */
+static unsigned char* (*raylib_libretro_vfs_alt_load_file_data)(const char* fileName, int* dataSize) = NULL;
+
+/**
+ * Optional hook to stat a path on an alternate read-only filesystem (e.g. PhysFS).
+ *
+ * When non-NULL, VFS stat operations try this before the real filesystem.
+ *
+ * @param path The path to stat.
+ * @param size Optional out parameter set to the file size in bytes when non-NULL.
+ * @return A bitmask of \c RETRO_VFS_STAT_* flags, or 0 if the path was not found
+ * in the alternate filesystem.
+ * @see raylib_libretro_vfs_alt_load_file_data
+ */
+static int (*raylib_libretro_vfs_alt_stat)(const char* path, int32_t* size) = NULL;
+
+/**
+ * Optional hook to list a directory on an alternate read-only filesystem (e.g. PhysFS).
+ *
+ * When non-NULL, VFS directory listings try this before the real filesystem.
+ *
+ * @param dirPath The directory to enumerate.
+ * @return A \c FilePathList of the directory's entries, which may be empty.
+ * @see raylib_libretro_vfs_alt_load_file_data
+ */
+static FilePathList (*raylib_libretro_vfs_alt_load_dir_files)(const char* dirPath) = NULL;
+
+/**
  * Gets the path associated with the given file handle.
  *
  * @param stream The file handle to query.
@@ -123,7 +190,12 @@ static struct retro_vfs_file_handle* raylib_libretro_vfs_open(const char* path, 
     handle->data = NULL;
 
     if (mode & RETRO_VFS_FILE_ACCESS_READ) {
-        handle->data = LoadFileData(path, &handle->dataSize);
+        if (raylib_libretro_vfs_alt_load_file_data != NULL) {
+            handle->data = raylib_libretro_vfs_alt_load_file_data(path, &handle->dataSize);
+        }
+        if (handle->data == NULL) {
+            handle->data = LoadFileData(path, &handle->dataSize);
+        }
         if (handle->data == NULL) {
             MemFree(handle);
             TraceLog(LOG_ERROR, "LIBRETRO: File not found: %s", path);
@@ -247,8 +319,13 @@ static int64_t raylib_libretro_vfs_tell(struct retro_vfs_file_handle* stream) {
  * @param stream The file to set the position of.
  * @param offset The new position, in bytes.
  * @param seek_position The position to seek from.
- * @return The new position,
- * or -1 if there was an error.
+ * @return 0 on success, or -1 if there was an error.
+ *
+ * @note The libretro.h docs describe this as returning the new position, but
+ * RetroArch's reference VFS returns fseek-style status (0 on success) for normal
+ * buffered files, and libretro-common's filestream consumers rely on that: e.g.
+ * libchdr checks `core_fseek(...) != 0` and treats a non-zero (positional) return
+ * as a seek error — which made CHD loads fail over this VFS. Match RetroArch.
  * @since VFS API v1
  * @see File Seek Positions
  * @see filestream_seek
@@ -258,28 +335,31 @@ static int64_t raylib_libretro_vfs_seek(struct retro_vfs_file_handle* stream, in
         return -1;
     }
 
+    int64_t newPosition;
     switch (seek_position) {
         case RAYLIB_LIBRETRO_VFS_SEEK_SET:
-            stream->position = offset;
+            newPosition = offset;
             break;
         case RAYLIB_LIBRETRO_VFS_SEEK_CUR:
-            stream->position += offset;
+            newPosition = stream->position + offset;
             break;
         case RAYLIB_LIBRETRO_VFS_SEEK_END:
-            stream->position = stream->dataSize + offset;
+            newPosition = stream->dataSize + offset;
             break;
         default:
             return -1;
     }
 
-    if (stream->position < 0) {
-        stream->position = 0;
-    }
-    else if (stream->position > stream->dataSize) {
-        stream->position = stream->dataSize;
+    // Seeking before the start of the file is an error, matching fseek(). Seeking
+    // past the end is allowed and not clamped: reads there return 0 (EOF) and
+    // writes grow the buffer, zero-filling any gap. Clamping here would corrupt
+    // write offsets and make tell() report the wrong position.
+    if (newPosition < 0) {
+        return -1;
     }
 
-    return stream->position;
+    stream->position = newPosition;
+    return 0;
 }
 
 /**
@@ -299,19 +379,16 @@ static int64_t raylib_libretro_vfs_read(struct retro_vfs_file_handle* stream, vo
         return -1;
     }
 
-    unsigned char* data = stream->data + stream->position;
-    unsigned char* output = (unsigned char*)s;
-    int64_t bytesRead = 0;
-    for (uint64_t i = 0; i < len; i++) {
-        if (stream->position + i >= stream->dataSize) {
-            break;
-        }
-        output[i] = data[i];
-        bytesRead++;
+    // Clamp the request to the bytes remaining from the current position.
+    if (stream->position < 0 || stream->position >= stream->dataSize) {
+        return 0;
     }
+    uint64_t remaining = (uint64_t)(stream->dataSize - stream->position);
+    uint64_t bytesRead = (len < remaining) ? len : remaining;
 
-    stream->position += bytesRead;
-    return bytesRead;
+    memcpy(s, stream->data + stream->position, (size_t)bytesRead);
+    stream->position += (int64_t)bytesRead;
+    return (int64_t)bytesRead;
 }
 
 /**
@@ -342,14 +419,16 @@ static int64_t raylib_libretro_vfs_write(struct retro_vfs_file_handle* stream, c
             return -1;
         }
         stream->data = resized;
+        // Zero-fill any gap left by a seek past the previous end of file,
+        // matching standard fwrite() semantics. Uses the old dataSize, so this
+        // must run before dataSize is updated.
+        if (stream->position > stream->dataSize) {
+            memset(stream->data + stream->dataSize, 0, (size_t)(stream->position - stream->dataSize));
+        }
         stream->dataSize = (int)end;
     }
 
-    unsigned char* dest = stream->data + stream->position;
-    const unsigned char* src = (const unsigned char*)s;
-    for (uint64_t i = 0; i < len; i++) {
-        dest[i] = src[i];
-    }
+    memcpy(stream->data + stream->position, s, (size_t)len);
 
     stream->position = end;
     return (int64_t)len;
@@ -418,6 +497,11 @@ static int raylib_libretro_vfs_rename(const char* old_path, const char* new_path
  * @since VFS API v3
  */
 static int raylib_libretro_vfs_stat(const char* path, int32_t *size) {
+    if (raylib_libretro_vfs_alt_stat != NULL) {
+        int result = raylib_libretro_vfs_alt_stat(path, size);
+        if (result != 0) return result;
+    }
+
     // DirectoryExists must be checked first, because FileExists uses
     // access() which returns true for directories.
     if (DirectoryExists(path)) {
@@ -503,7 +587,12 @@ static struct retro_vfs_dir_handle* raylib_libretro_vfs_opendir(const char* dir,
         return NULL;
     }
 
-    if (!DirectoryExists(dir)) {
+    bool dirFound = false;
+    if (raylib_libretro_vfs_alt_stat != NULL) {
+        int result = raylib_libretro_vfs_alt_stat(dir, NULL);
+        if (result & RETRO_VFS_STAT_IS_DIRECTORY) dirFound = true;
+    }
+    if (!dirFound && !DirectoryExists(dir)) {
         return NULL;
     }
 
@@ -515,7 +604,13 @@ static struct retro_vfs_dir_handle* raylib_libretro_vfs_opendir(const char* dir,
     TextCopy(handle->path, dir);
     handle->include_hidden = include_hidden;
 
-    handle->directoryFiles = LoadDirectoryFiles(handle->path);
+    handle->directoryFiles.count = 0;
+    if (raylib_libretro_vfs_alt_load_dir_files != NULL) {
+        handle->directoryFiles = raylib_libretro_vfs_alt_load_dir_files(handle->path);
+    }
+    if (handle->directoryFiles.count == 0) {
+        handle->directoryFiles = LoadDirectoryFiles(handle->path);
+    }
     handle->directoryFilesIndex = -1;
 
     return handle;
@@ -608,7 +703,12 @@ static bool raylib_libretro_vfs_dirent_is_dir(struct retro_vfs_dir_handle* dirst
         return false;
     }
 
-    return DirectoryExists(dirstream->directoryFiles.paths[dirstream->directoryFilesIndex]);
+    const char* entryPath = dirstream->directoryFiles.paths[dirstream->directoryFilesIndex];
+    if (raylib_libretro_vfs_alt_stat != NULL) {
+        int result = raylib_libretro_vfs_alt_stat(entryPath, NULL);
+        if (result & RETRO_VFS_STAT_IS_DIRECTORY) return true;
+    }
+    return DirectoryExists(entryPath);
 }
 
 /**

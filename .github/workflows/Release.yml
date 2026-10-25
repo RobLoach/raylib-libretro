@@ -4,11 +4,15 @@ on:
   release:
     types: [published]
 
+# Allow the default GITHUB_TOKEN to attach assets to the release.
+permissions:
+  contents: write
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Install Dependencies
@@ -22,21 +26,41 @@ jobs:
       - name: Package
         run: |
           cd install
-          zip -r ../raylib-libretro-linux-amd64.zip .
+          zip -r ../raylib-libretro-${{ github.ref_name }}-linux-amd64.zip .
       - name: Upload
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v3
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: raylib-libretro-linux-amd64.zip
-          asset_name: raylib-libretro-linux-amd64.zip
-          asset_content_type: application/zip
+          files: raylib-libretro-${{ github.ref_name }}-linux-amd64.zip
+          fail_on_unmatched_files: true
+
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y xorg-dev libglu1-mesa-dev
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Install
+        run: cmake --install build
+      - name: Package
+        run: |
+          cd install
+          zip -r ../raylib-libretro-${{ github.ref_name }}-linux-arm64.zip .
+      - name: Upload
+        uses: softprops/action-gh-release@v3
+        with:
+          files: raylib-libretro-${{ github.ref_name }}-linux-arm64.zip
+          fail_on_unmatched_files: true
 
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Configure
@@ -46,21 +70,101 @@ jobs:
       - name: Install
         run: cmake --install build --config Release
       - name: Package
-        run: Compress-Archive -Path install\* -DestinationPath raylib-libretro-windows-amd64.zip
+        run: Compress-Archive -Path install\* -DestinationPath raylib-libretro-${{ github.ref_name }}-windows-amd64.zip
       - name: Upload
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v3
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: raylib-libretro-windows-amd64.zip
-          asset_name: raylib-libretro-windows-amd64.zip
-          asset_content_type: application/zip
+          files: raylib-libretro-${{ github.ref_name }}-windows-amd64.zip
+          fail_on_unmatched_files: true
+
+  build-windows-arm64:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Install
+        run: cmake --install build --config Release
+      - name: Package
+        run: Compress-Archive -Path install\* -DestinationPath raylib-libretro-${{ github.ref_name }}-windows-arm64.zip
+      - name: Upload
+        uses: softprops/action-gh-release@v3
+        with:
+          files: raylib-libretro-${{ github.ref_name }}-windows-arm64.zip
+          fail_on_unmatched_files: true
+
+  build-linux-armv7:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Multiarch and Repositories
+        run: |
+          sudo dpkg --add-architecture armhf
+          
+          # Add ubuntu-ports repositories so apt can find :armhf development packages
+          sudo tee /etc/apt/sources.list.d/armhf.list <<EOF
+          deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports/ noble main restricted universe multiverse
+          deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports/ noble-updates main restricted universe multiverse
+          deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports/ noble-security main restricted universe multiverse
+          EOF
+          
+          # Prevent native packages from breaking by explicitly limiting them to the main sources
+          sudo sed -i 's/deb http/deb [arch=arm64] http/g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-arm-linux-gnueabihf \
+            g++-arm-linux-gnueabihf \
+            libgles2-mesa-dev:armhf \
+            libdrm-dev:armhf \
+            libgbm-dev:armhf \
+            zip
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=armv7 \
+            -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
+            -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
+            -DCMAKE_LIBRARY_ARCHITECTURE=arm-linux-gnueabihf \
+            -DCMAKE_FIND_ROOT_PATH=/usr/arm-linux-gnueabihf \
+            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
+            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
+            -DPLATFORM=DRM
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Install
+        run: cmake --install build
+
+      - name: Package
+        run: |
+          cd install
+          zip -r ../raylib-libretro-${{ github.ref_name }}-linux-armv7.zip .
+
+      - name: Upload
+        uses: softprops/action-gh-release@v2
+        with:
+          files: raylib-libretro-${{ github.ref_name }}-linux-armv7.zip
+          fail_on_unmatched_files: true
 
   build-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Configure
@@ -72,21 +176,39 @@ jobs:
       - name: Package
         run: |
           cd install
-          zip -r ../raylib-libretro-macos-arm64.zip .
+          zip -r ../raylib-libretro-${{ github.ref_name }}-macos-arm64.zip .
       - name: Upload
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v3
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: raylib-libretro-macos-arm64.zip
-          asset_name: raylib-libretro-macos-arm64.zip
-          asset_content_type: application/zip
+          files: raylib-libretro-${{ github.ref_name }}-macos-arm64.zip
+          fail_on_unmatched_files: true
+
+  build-macos-x86_64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Install
+        run: cmake --install build
+      - name: Package
+        run: |
+          cd install
+          zip -r ../raylib-libretro-${{ github.ref_name }}-macos-x86_64.zip .
+      - name: Upload
+        uses: softprops/action-gh-release@v3
+        with:
+          files: raylib-libretro-${{ github.ref_name }}-macos-x86_64.zip
+          fail_on_unmatched_files: true
 
   build-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Setup Java
@@ -94,10 +216,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install CMake
+      - name: Install SDK components
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" "ndk;27.3.13750724"
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "cmake;3.22.1" "ndk;27.3.13750724"
           echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
           echo "cmake.dir=$ANDROID_HOME/cmake/3.22.1" >> android/local.properties
       - name: Generate Gradle wrapper
@@ -105,16 +227,20 @@ jobs:
         run: gradle wrapper --gradle-version 8.6 --distribution-type bin
       - name: Build APK
         working-directory: android
-        run: ./gradlew assembleRelease
-      - name: Upload
-        uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: ./gradlew assembleRelease -PappVersionName="${TAG#v}" -PappVersionCode="$RUN_NUMBER"
+      # The action names the asset after the file, so rename to the release name.
+      # One APK carries all ABIs (arm64-v8a, armeabi-v7a, x86_64), so it is no
+      # longer arch-specific.
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk raylib-libretro-${{ github.ref_name }}-android.apk
+      - name: Upload
+        uses: softprops/action-gh-release@v3
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: android/app/build/outputs/apk/release/app-release.apk
-          asset_name: raylib-libretro-android-arm64.apk
-          asset_content_type: application/vnd.android.package-archive
+          files: raylib-libretro-${{ github.ref_name }}-android.apk
+          fail_on_unmatched_files: true
 
   build-web:
     runs-on: ubuntu-latest
@@ -123,7 +249,7 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Install Emscripten
@@ -134,19 +260,17 @@ jobs:
         run: cmake --build build --parallel
       - name: Install
         run: cmake --install build
+      - name: Stamp service worker version
+        run: sed -i "s/__VERSION__/${{ github.ref_name }}/g" install/sw.js
       - name: Package
         run: |
           cd install
-          zip -r ../raylib-libretro-web-wasm32.zip .
+          zip -r ../raylib-libretro-${{ github.ref_name }}-web-wasm32.zip .
       - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v3
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: raylib-libretro-web-wasm32.zip
-          asset_name: raylib-libretro-web-wasm32.zip
-          asset_content_type: application/zip
+          files: raylib-libretro-${{ github.ref_name }}-web-wasm32.zip
+          fail_on_unmatched_files: true
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:

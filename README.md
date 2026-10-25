@@ -1,23 +1,37 @@
 # raylib-libretro :space_invader: [![Tests](https://github.com/RobLoach/raylib-libretro/workflows/Tests/badge.svg)](https://github.com/RobLoach/raylib-libretro/actions)
 
-[libretro](https://www.libretro.com/) frontend to play emulators, game engines and media players, for Windows, Mac, Linux, and Web with [raylib](https://www.raylib.com). The [raylib-libretro.h](include/raylib-libretro.h) allows integrating any raylib application with the libretro API. *Still in early development.*
+[libretro](https://www.libretro.com/) frontend to play emulators for Windows, Mac, Linux, and the Web with [raylib](https://www.raylib.com). The [raylib-libretro.h](include/raylib-libretro.h) allows integrating any raylib application with the libretro API. *Still in early development.*
 
 ![Screenshot of raylib-libretro](docs/screenshot.png)
 
 ## Features
 
-- Multi-Emulator for NES, SNES, GBA, Genesis, etc
-- Shipped Cores: fceumm, snes9x, gambatte, mgba, picodrive
+- Multi-System Emulator for NES, SNES, GB, GBA, SMS/GG, PlayStation
+- Shipped Cores: fceumm, snes9x, mgba, genesis_plus_gx, prboom, pcsx_rearmed, mednafen_psx_hw
+- Hardware-accelerated OpenGL rendering for GPU-rendered cores
 - Gamepad, Keyboard, On-Screen Controls
+- Audio
+- Fast Forward, Slow Motion, Rewind
+- Save Slots and SRAM
 - Shaders
 - Menu Themes
-- Audio
-- Fast Forward
-- Slow Motion
-- Rewind
-- Save Slots and SRAM
 - Core Options
-- Zip Files
+- Zip File Support
+
+## Cores
+
+| System | Core | Extensions |
+| --- | --- | --- |
+| Nintendo Entertainment System (NES)** | `fceumm` | `.fds`, `.nes`, `.unf`, `.unif` |
+| Super Nintendo (SNES) | `snes9x` | `.smc`, `.sfc`, `.swc`, `.fig`, `.bs`, `.st` |
+| Game Boy / Color / Advance | `mgba` | `.gba`, `.gb`, `.gbc`, `.sgb` |
+| Sega Genesis / Mega Drive / Master System / Game Gear | `genesis_plus_gx` | `.bin`, `.gen`, `.smd`, `.md`, `.cue`, `.iso`, `.chd`, `.m3u`, `.sms`, `.gg`, `.sg` |
+| PC Engine / TurboGrafx-16 | `mednafen_pce_fast` | `.pce`, `.cue`, `.ccd`, `.chd`, `.toc`, `.m3u` |
+| WonderSwan / WonderSwan Color | `mednafen_wswan` | `.ws`, `.wsc`, `.pc2` |
+| Doom (PrBoom Engine) | `prboom` | `.wad`, `.iwad`, `.pwad`, `.lmp`, `.m3u` |
+| PlayStation | `pcsx_rearmed` | `.bin`, `.cue`, `.img`, `.mdf`, `.pbp`, `.toc`, `.cbn`, `.m3u`, `.ccd`, `.chd`, `.iso` |
+| PlayStation (HW) | `mednafen_psx_hw` | `.cue`, `.toc`, `.m3u`, `.ccd`, `.exe`, `.pbp`, `.chd` |
+| PlayStation | `mednafen_psx` | `.cue`, `.toc`, `.m3u`, `.ccd`, `.exe`, `.pbp`, `.chd` |
 
 ## Usage
 
@@ -59,6 +73,8 @@ make
     ```
 
 ## API Usage
+
+See [raylib-libretro-basic.c](example/raylib-libretro-basic.c) for an example of using the API:
 
 ```c
 InitLibretro("fceumm.so");
@@ -140,6 +156,10 @@ To build the Doxygen documentation...
 doxygen .Doxyfile
 ```
 
+### Cores
+
+Cores are downlownloaded straight from libretro's build bot, or [libretro-wasm-cores](https://github.com/konsumer/libretro-wasm-cores).
+
 ## Contributors
 
 - [Konsumer](https://github.com/konsumer)
@@ -147,4 +167,8 @@ doxygen .Doxyfile
 
 ## License
 
-[zlib/libpng](LICENSE)
+See the individual files to see which license applies.
+
+- `raylib-libretro` the application is licensed under [GPL-3.0-or-later](LICENSE)
+- [`raylib-libretro-basic`](example/raylib-libretro-basic.c) the sample application is licensed under zlib/libpng
+- [`raylib-libretro.h`](include/raylib-libretro.h) the API is licensed under zlib/libpng

@@ -3,17 +3,42 @@ project(raylib-libretro-android C)
 
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
-# Download libretro cores into jniLibs so AGP packages them into lib/<abi>/ in the APK.
-set(CORES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/main/jniLibs/${CMAKE_ANDROID_ARCH_ABI}")
+# Read the project version from the root CMakeLists.txt so the Android build
+# stays in sync without duplicating the version string.
+file(STRINGS "${ROOT}/CMakeLists.txt" _ver_line REGEX "VERSION [0-9]")
+string(REGEX MATCH "VERSION ([0-9]+\\.[0-9]+\\.[0-9]+)" _ "${_ver_line}")
+set(RAYLIB_LIBRETRO_VER "${CMAKE_MATCH_1}")
+
+# Download libretro cores into assets/cores/<abi> so AGP bundles them inside the
+# APK. Android can only dlopen() a core from a real filesystem path, so at first
+# launch the app copies these out of the read-only assets into its writable
+# data directory and loads them from there (see SetupAndroidEnvironment() in
+# bin/raylib-libretro.c). cores.list records the bundled cores for the app.
+#
+# Cores are architecture-specific, but APK assets are shared across every ABI in
+# a single APK, so each ABI's cores live under their own assets/cores/<abi>/
+# subdirectory. This CMakeLists is configured once per ABI; the matching
+# libmain.so reads only its own subdirectory at runtime.
+set(CORES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/main/assets/cores/${CMAKE_ANDROID_ARCH_ABI}")
 file(MAKE_DIRECTORY "${CORES_DIR}")
+set(CORE_NAMES "")
+
+# The menu scan is .info-driven: each core needs its sibling <core>.info to show
+# up with proper metadata (display name, system, license, supports_no_game) and
+# to skip the slow dlopen probe. Cores are named *_libretro_android.so but their
+# .info is named *_libretro.info, which ScanLibretroCoreDirectory() matches.
+set(CORE_INFO_DIR "${ROOT}/vendor/libretro-core-info")
 foreach(URL IN ITEMS
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/fceumm_libretro_android.so.zip"
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/snes9x_libretro_android.so.zip"
-    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/gambatte_libretro_android.so.zip"
     "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mgba_libretro_android.so.zip"
-    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/picodrive_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/genesis_plus_gx_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/prboom_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_pce_fast_libretro_android.so.zip"
+    "https://buildbot.libretro.com/nightly/android/latest/${CMAKE_ANDROID_ARCH_ABI}/mednafen_wswan_libretro_android.so.zip"
 )
     get_filename_component(ARCHIVE_NAME "${URL}" NAME)
+    get_filename_component(CORE_SO "${ARCHIVE_NAME}" NAME_WLE)  # strip .zip -> *.so
     set(ARCHIVE_PATH "${CMAKE_BINARY_DIR}/${ARCHIVE_NAME}")
     if (NOT EXISTS "${ARCHIVE_PATH}")
         message(STATUS "Downloading ${URL}")
@@ -32,8 +57,32 @@ foreach(URL IN ITEMS
     )
     if (NOT EXTRACT_RESULT EQUAL 0)
         message(WARNING "Failed to extract ${ARCHIVE_NAME}")
+        continue()
+    endif()
+    list(APPEND CORE_NAMES "${CORE_SO}")
+
+    # Bundle the matching .info next to the core. A missing .info means the core
+    # would fall back to the slow dlopen probe with no metadata, so fail loudly
+    # for bundled cores rather than discovering it at runtime (mirrors the
+    # copy_core_info() guard in bin/CMakeLists.txt).
+    string(REGEX REPLACE "_android\\.so$" "" CORE_BASE "${CORE_SO}")
+    if (EXISTS "${CORE_INFO_DIR}/${CORE_BASE}.info")
+        file(COPY_FILE "${CORE_INFO_DIR}/${CORE_BASE}.info"
+                       "${CORES_DIR}/${CORE_BASE}.info" ONLY_IF_DIFFERENT)
+        list(APPEND CORE_NAMES "${CORE_BASE}.info")
+    else()
+        message(FATAL_ERROR "${CORE_BASE}.info not found in ${CORE_INFO_DIR}. "
+            "Run: git submodule update --init -- vendor/libretro-core-info")
     endif()
 endforeach()
+
+# Write the manifest of bundled cores the app reads on first launch, alongside
+# this ABI's cores so the runtime reads cores/<abi>/cores.list.
+string(REPLACE ";" "\n" CORE_LIST "${CORE_NAMES}")
+file(WRITE "${CORES_DIR}/cores.list" "${CORE_LIST}\n")
+
+# Build raylib for Android (uses EGL/native window instead of GLFW+X11)
+set(PLATFORM       Android CACHE STRING "" FORCE)
 
 # Disable raylib extras
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -61,13 +110,26 @@ add_library(main SHARED
     ${ROOT}/vendor/physfs/src/physfs_archiver_zip.c
 )
 target_link_libraries(main PRIVATE raylib-libretro-static)
+# NativeActivity dlsym()s ANativeActivity_onCreate at load time. It lives in
+# android_native_app_glue.c (compiled into static libraylib.a), so the linker
+# must be told to keep it. raylib sets this -u flag in its own subdirectory
+# scope, which does not propagate up to this target. Without it, libmain.so is
+# missing the entry point and the APK crashes instantly with a blank screen.
+target_link_options(main PRIVATE -u ANativeActivity_onCreate)
 target_include_directories(main PRIVATE
     ${ROOT}/vendor/raygui/src
     ${ROOT}/vendor/raylib-app
     ${ROOT}/vendor/raylib-physfs
     ${ROOT}/vendor/physfs/src
+    # raylib sets this include in its own scope; add it here so libmain can
+    # reach <android_native_app_glue.h> for GetAndroidApp().
+    ${ANDROID_NDK}/sources/android/native_app_glue
 )
 target_compile_definitions(main PRIVATE
+    RAYLIB_LIBRETRO_VERSION="${RAYLIB_LIBRETRO_VER}"
+    # Tells the runtime which assets/cores/<abi>/ subdirectory holds the cores
+    # built for this libmain.so. Kept in sync with the per-ABI CORES_DIR above.
+    RAYLIB_LIBRETRO_ANDROID_ABI="${CMAKE_ANDROID_ARCH_ABI}"
     PHYSFS_SUPPORTS_ZIP=1
     PHYSFS_SUPPORTS_7Z=0
     PHYSFS_SUPPORTS_GRP=0

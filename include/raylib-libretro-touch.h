@@ -12,7 +12,7 @@
 *   regardless of aspect ratio or window size.
 *
 *   LICENSE: zlib/libpng
-*   Copyright (c) 2020 Rob Loach (@RobLoach)
+*   Copyright (c) 2026 Rob Loach (@RobLoach)
 *
 **********************************************************************************************/
 
@@ -40,6 +40,8 @@ void DrawLibretroTouchControls(void);
 bool IsTouchControlsMenuPressed(void);
 void SetTouchHapticsEnabled(bool enabled);
 bool GetTouchHapticsEnabled(void);
+void SetTouchControlsScale(float scale);
+float GetTouchControlsScale(void);
 
 #if defined(__cplusplus)
 }
@@ -57,6 +59,8 @@ bool GetTouchHapticsEnabled(void);
 
 #include "raymath.h"
 
+static float LibretroTouchScale = 1.0f;
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -68,16 +72,19 @@ extern "C" {
  */
 static int GetLibretroTouchButtons(TouchControlsButton* btns, int w, int h) {
     float ref  = (float)((w < h) ? w : h);
-    float bs   = ref * 0.12f;   // D-pad / select / start button size
-    float fbs  = ref * 0.15f;   // face button size
-    float edge = ref * 0.02f;   // margin from screen edges
+    float sc   = LibretroTouchScale;
+    float bs   = ref * 0.13f * sc;   // D-pad / select / start button size
+    float fbs  = ref * 0.15f * sc;   // face button size
+    float edge = ref * 0.02f;        // margin from screen edges
 
     // D-pad: bottom-left, cross layout, buttons touching (no gap)
     //   . U .
     //   L . R
     //   . D .
+    float halfW = (float)w * 0.5f;
     float dy = h - 3*bs - edge;
     float dx = w * 0.04f;
+    if (dx + 3*bs > halfW) dx = halfW - 3*bs;
     int n = 0;
     btns[n++] = (TouchControlsButton){{ dx + bs,     dy,        bs, bs }, RETRO_DEVICE_ID_JOYPAD_UP,    "^", DARKGRAY };
     btns[n++] = (TouchControlsButton){{ dx,           dy + bs,   bs, bs }, RETRO_DEVICE_ID_JOYPAD_LEFT,  "<", DARKGRAY };
@@ -91,17 +98,18 @@ static int GetLibretroTouchButtons(TouchControlsButton* btns, int w, int h) {
     float fsp = fbs * 0.82f;  // center-to-center spacing (< fbs = slight overlap)
     float fy = h - (2*fsp + fbs) - edge;
     float fx = w - (2*fsp + fbs) - w * 0.04f;
-    btns[n++] = (TouchControlsButton){{ fx + fsp,     fy,         fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_X, "X", DARKBLUE  };
-    btns[n++] = (TouchControlsButton){{ fx,            fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_Y, "Y", DARKGREEN };
-    btns[n++] = (TouchControlsButton){{ fx + 2*fsp,    fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_A, "A", MAROON    };
-    btns[n++] = (TouchControlsButton){{ fx + fsp,      fy + 2*fsp, fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_B, "B", GOLD      };
+    if (fx < halfW) fx = halfW;
+    btns[n++] = (TouchControlsButton){{ fx + fsp,     fy,         fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_X, "", DARKBLUE  };
+    btns[n++] = (TouchControlsButton){{ fx,            fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_Y, "", DARKGREEN };
+    btns[n++] = (TouchControlsButton){{ fx + 2*fsp,    fy + fsp,   fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_A, "", MAROON    };
+    btns[n++] = (TouchControlsButton){{ fx + fsp,      fy + 2*fsp, fbs, fbs }, RETRO_DEVICE_ID_JOYPAD_B, "", GOLD      };
 
     // Select / Start: bottom center with a small gap between them
     float selGap = ref * 0.01f;
     float cx = (w - (2*bs + selGap)) * 0.5f;
     float cy = h - bs - edge;
-    btns[n++] = (TouchControlsButton){{ cx,               cy, bs, bs }, RETRO_DEVICE_ID_JOYPAD_SELECT, "SEL", GRAY };
-    btns[n++] = (TouchControlsButton){{ cx + bs + selGap, cy, bs, bs }, RETRO_DEVICE_ID_JOYPAD_START,  "STA", GRAY };
+    btns[n++] = (TouchControlsButton){{ cx,               cy, bs, bs }, RETRO_DEVICE_ID_JOYPAD_SELECT, "SEL", DARKGRAY };
+    btns[n++] = (TouchControlsButton){{ cx + bs + selGap, cy, bs, bs }, RETRO_DEVICE_ID_JOYPAD_START,  "STA", DARKGRAY };
 
     // Shoulder buttons: both on the right, side by side above the face buttons
     float shGap = ref * 0.01f;
@@ -177,42 +185,24 @@ static int LibretroTouchJoypadKeyboard(int buttonId) {
 #endif
 }
 
-// Returns the raylib GamepadButton mapped to a joypad button for port 0.
-static int LibretroTouchJoypadGamepad(int buttonId) {
-    switch (buttonId) {
-        case RETRO_DEVICE_ID_JOYPAD_UP:     return GAMEPAD_BUTTON_LEFT_FACE_UP;
-        case RETRO_DEVICE_ID_JOYPAD_DOWN:   return GAMEPAD_BUTTON_LEFT_FACE_DOWN;
-        case RETRO_DEVICE_ID_JOYPAD_LEFT:   return GAMEPAD_BUTTON_LEFT_FACE_LEFT;
-        case RETRO_DEVICE_ID_JOYPAD_RIGHT:  return GAMEPAD_BUTTON_LEFT_FACE_RIGHT;
-        case RETRO_DEVICE_ID_JOYPAD_B:      return GAMEPAD_BUTTON_RIGHT_FACE_DOWN;
-        case RETRO_DEVICE_ID_JOYPAD_A:      return GAMEPAD_BUTTON_RIGHT_FACE_RIGHT;
-        case RETRO_DEVICE_ID_JOYPAD_Y:      return GAMEPAD_BUTTON_RIGHT_FACE_LEFT;
-        case RETRO_DEVICE_ID_JOYPAD_X:      return GAMEPAD_BUTTON_RIGHT_FACE_UP;
-        case RETRO_DEVICE_ID_JOYPAD_SELECT: return GAMEPAD_BUTTON_MIDDLE_LEFT;
-        case RETRO_DEVICE_ID_JOYPAD_START:  return GAMEPAD_BUTTON_MIDDLE_RIGHT;
-        case RETRO_DEVICE_ID_JOYPAD_L:      return GAMEPAD_BUTTON_LEFT_TRIGGER_1;
-        case RETRO_DEVICE_ID_JOYPAD_R:      return GAMEPAD_BUTTON_RIGHT_TRIGGER_1;
-        case RETRO_DEVICE_ID_JOYPAD_L2:     return GAMEPAD_BUTTON_LEFT_TRIGGER_2;
-        case RETRO_DEVICE_ID_JOYPAD_R2:     return GAMEPAD_BUTTON_RIGHT_TRIGGER_2;
-        case RETRO_DEVICE_ID_JOYPAD_L3:     return GAMEPAD_BUTTON_LEFT_THUMB;
-        case RETRO_DEVICE_ID_JOYPAD_R3:     return GAMEPAD_BUTTON_RIGHT_THUMB;
-        default: return GAMEPAD_BUTTON_UNKNOWN;
-    }
-}
-
-// Returns true if the joypad button is currently held via keyboard or gamepad.
+/**
+ * Returns true if the joypad button is currently held via keyboard or gamepad.
+ */
 static bool LibretroTouchIsPhysicalButtonDown(int buttonId) {
     int key = LibretroTouchJoypadKeyboard(buttonId);
     if (key != KEY_NULL && IsKeyDown(key)) return true;
     if (IsGamepadAvailable(0)) {
-        int gbtn = LibretroTouchJoypadGamepad(buttonId);
+        int gbtn = LibretroRetroJoypadButtonToGamepadButton(buttonId);
         if (gbtn != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(0, gbtn)) return true;
     }
     return false;
 }
 
-// Cached layout — rebuilt only when the screen size changes so a single frame
-// pays for layout math once across Update + Draw.
+/**
+ * Cached layout.
+ *
+ * Rebuilt only when the screen size changes so a single frame pays for layout math once across Update Draw.
+ */
 static TouchControlsButton LibretroTouchButtons[RAYLIB_LIBRETRO_TOUCH_BUTTON_COUNT];
 static int LibretroTouchButtonsCount = 0;
 static int LibretroTouchCachedW = -1;
@@ -233,7 +223,9 @@ static int LibretroTouchFindButtonById(int id) {
     return -1;
 }
 
-// Computes the center and radius of the circular D-pad from the 4 cardinal rects.
+/**
+ * Computes the center and radius of the circular D-pad from the 4 cardinal rects.
+ */
 static void LibretroTouchDpadInfo(Vector2 *center, float *radius) {
     int iUp    = LibretroTouchFindButtonById(RETRO_DEVICE_ID_JOYPAD_UP);
     int iDown  = LibretroTouchFindButtonById(RETRO_DEVICE_ID_JOYPAD_DOWN);
@@ -248,21 +240,23 @@ static void LibretroTouchDpadInfo(Vector2 *center, float *radius) {
     *radius   = (right.x + right.width - left.x) * 0.5f;
 }
 
-// Track whether the touch/mouse press that just landed on the MENU button has
-// been released. The menu opens on release, not press — opening on press lets
-// the press leak into Nuklear on the next frame and immediately triggers the
-// first menu item (Resume), closing the menu instantly.
+/**
+ * Track whether the touch/mouse press that just landed on the MENU button has been released. The menu opens on release, not press, opening on press lets the press leak into Nuklear on the next frame and immediately triggers the first menu item (Resume), closing the menu instantly.
+ */
 static bool LibretroTouchMenuArmed = false;
 static bool LibretroTouchMenuTriggered = false;
 static bool LibretroTouchHapticsEnabled = true;
-// D-pad lock: once a press begins inside the circle, the direction is tracked
-// from that input point even after it moves outside the circle.
-// dpadTouchId == -1 means the lock belongs to the mouse; -2 means no lock.
+
+/**
+ * D-pad lock: once a press begins inside the circle, the direction is tracked from that input point even after it moves outside the circle. dpadTouchId == -1 means the lock belongs to the mouse; -2 means no lock.
+ */
 static bool    LibretroTouchDpadLocked   = false;
 static int     LibretroTouchDpadTouchId  = -2;
 static Vector2 LibretroTouchDpadLockedPos = {0};
 
-// Idle fade: alpha trends toward 0.25 after 3 s of no touch activity.
+/**
+ * Idle fade: alpha trends toward 0.25 after 3 s of no touch activity.
+ */
 static double LibretroTouchLastActiveTime = -1.0;  // -1 = never touched
 static float  LibretroTouchAlpha = 1.0f;
 
@@ -290,6 +284,7 @@ void UpdateLibretroTouchControls(void) {
     for (int t = 0; t < touchCount && nPoints < 10; t++) {
         points[nPoints++] = GetTouchPosition(t);
     }
+
     // On the web a touch is also reported as a mouse press at the same
     // position; only sample the mouse when there are no active touches to
     // avoid registering the same point twice.
@@ -418,6 +413,16 @@ bool IsTouchControlsMenuPressed(void) {
 void SetTouchHapticsEnabled(bool enabled) { LibretroTouchHapticsEnabled = enabled; }
 bool GetTouchHapticsEnabled(void) { return LibretroTouchHapticsEnabled; }
 
+void SetTouchControlsScale(float scale) {
+    if (scale < 0.4f) scale = 0.4f;
+    if (scale > 2.0f) scale = 2.0f;
+    if (LibretroTouchScale != scale) {
+        LibretroTouchScale = scale;
+        LibretroTouchCachedW = -1;
+    }
+}
+float GetTouchControlsScale(void) { return LibretroTouchScale; }
+
 void DrawLibretroTouchControls(void) {
     LibretroTouchEnsureLayout();
 
@@ -485,6 +490,7 @@ void DrawLibretroTouchControls(void) {
         }
     }
 
+    // Buttons
     for (int i = 0; i < LibretroTouchButtonsCount; i++) {
         TouchControlsButton* btns = LibretroTouchButtons;
         int id = btns[i].buttonId;
@@ -498,19 +504,38 @@ void DrawLibretroTouchControls(void) {
         c.a = (unsigned char)(((touchHeld || physicalHeld) ? heldA : restA) * alpha);
         float fcx = btns[i].rect.x + btns[i].rect.width  * 0.5f;
         float fcy = btns[i].rect.y + btns[i].rect.height * 0.5f;
-        if (IsLibretroTouchFaceButton(id)) {
-            DrawCircle((int)fcx, (int)fcy, btns[i].rect.width * 0.5f, c);
+        float radius = btns[i].rect.width * 0.5f;
+        if (IsLibretroTouchFaceButton(id) || isMenuLike) {
+            DrawCircle((int)fcx, (int)fcy, radius, c);
         } else {
             DrawRectangleRounded(btns[i].rect, 0.5f, 6, c);
         }
         Color textColor = fadeTint;
         if (isMenuLike) textColor.a = (unsigned char)(180 * alpha);
-        Font font = GetLibretroTouchFont();
-        float fs = btns[i].rect.height * 0.4f;
-        Vector2 ts = MeasureTextEx(font, btns[i].label, fs, 1.0f);
-        DrawTextEx(font, btns[i].label,
-            (Vector2){ fcx - ts.x * 0.5f, fcy - ts.y * 0.5f },
-            fs, 1.0f, textColor);
+        if (id == RETRO_DEVICE_ID_JOYPAD_START) {
+            // Plus Sign
+            float armLen = radius * 0.55f;
+            float armW   = radius * 0.18f;
+            Rectangle rect = (Rectangle){ fcx - armLen * 0.5f, fcy - armW * 0.5f, armLen, armW };
+            DrawRectangleRec(rect, textColor);
+            rect = (Rectangle){ fcx - armW * 0.5f, fcy - armW * 0.5f - armW, armW, armW };
+            DrawRectangleRec(rect, textColor);
+            rect.y = fcy - armW * 0.5f + armW;
+            DrawRectangleRec(rect, textColor);
+        } else if (id == RETRO_DEVICE_ID_JOYPAD_SELECT) {
+            // Minus Sign
+            float armLen = radius * 0.55f;
+            float armW   = radius * 0.18f;
+            DrawRectangle((int)(fcx - armLen * 0.5f), (int)(fcy - armW * 0.5f), (int)armLen, (int)armW, textColor);
+        } else if (btns[i].label[0] != '\0') {
+            // Text label
+            Font font = GetLibretroTouchFont();
+            float fs = btns[i].rect.height * 0.4f;
+            Vector2 ts = MeasureTextEx(font, btns[i].label, fs, 1.0f);
+            DrawTextEx(font, btns[i].label,
+                (Vector2){ fcx - ts.x * 0.5f, fcy - ts.y * 0.5f },
+                fs, 1.0f, textColor);
+        }
     }
 
     // Menu button

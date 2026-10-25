@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pixel-art Space Invader, centred within the 108dp adaptive safe zone.
+     Generated from bin/icon-512.png (11x8 grid). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF39D353"
+        android:pathData="M33,30h6v6h-6zM69,30h6v6h-6zM39,36h6v6h-6zM63,36h6v6h-6zM33,42h6v6h-6zM39,42h6v6h-6zM45,42h6v6h-6zM51,42h6v6h-6zM57,42h6v6h-6zM63,42h6v6h-6zM69,42h6v6h-6zM27,48h6v6h-6zM33,48h6v6h-6zM45,48h6v6h-6zM51,48h6v6h-6zM57,48h6v6h-6zM69,48h6v6h-6zM75,48h6v6h-6zM21,54h6v6h-6zM27,54h6v6h-6zM33,54h6v6h-6zM39,54h6v6h-6zM45,54h6v6h-6zM51,54h6v6h-6zM57,54h6v6h-6zM63,54h6v6h-6zM69,54h6v6h-6zM75,54h6v6h-6zM81,54h6v6h-6zM21,60h6v6h-6zM33,60h6v6h-6zM39,60h6v6h-6zM45,60h6v6h-6zM51,60h6v6h-6zM57,60h6v6h-6zM63,60h6v6h-6zM69,60h6v6h-6zM81,60h6v6h-6zM21,66h6v6h-6zM33,66h6v6h-6zM69,66h6v6h-6zM81,66h6v6h-6zM39,72h6v6h-6zM45,72h6v6h-6zM57,72h6v6h-6zM63,72h6v6h-6z"/>
+</vector>

@@ -15,7 +15,7 @@
 *   raylib-libretro is licensed under an unmodified zlib/libpng license, which is an OSI-certified,
 *   BSD-like license that allows static linking with closed source software:
 *
-*   Copyright (c) 2020 Rob Loach (@RobLoach)
+*   Copyright (c) 2026 Rob Loach (@RobLoach)
 *
 *   This software is provided "as-is", without any express or implied warranty. In no event
 *   will the authors be held liable for any damages arising from the use of this software.
@@ -56,6 +56,7 @@ static bool LoadLibretroGame(const char* gameFile);
 static bool IsLibretroReady(void);
 static bool IsLibretroGameReady(void);
 static void UpdateLibretro(void);
+static void UpdateLibretroEx(bool onlyTick);
 static bool LibretroShouldClose(void);
 static void DrawLibretro(void);
 static void DrawLibretroTint(Color tint);
@@ -70,8 +71,10 @@ static const char* GetLibretroContentName(void);
 static const char* GetLibretroVersion(void);
 static unsigned GetLibretroWidth(void);
 static unsigned GetLibretroHeight(void);
-static unsigned GetLibretroRotation(void);
+static int GetLibretroRotation(void);
 static Texture2D GetLibretroTexture(void);
+static bool ResetLibretroVideo(void);
+static Image LoadImageFromLibretro();
 static bool IsLibretroGameRequired(void);
 static bool ResetLibretro(void);
 static bool SetLibretroCheat(unsigned index, bool enabled, const char* code);
@@ -84,11 +87,15 @@ static void SetLibretroSpeed(float speed);
 static float GetLibretroSpeed(void);
 static bool SetLibretroCoreOption(const char* key, const char* value);
 static const char* GetLibretroCoreOption(const char* key);
+static bool ResetLibretroCoreOption(const char* key);
+static void ResetAllLibretroCoreOptions(void);
 static void* GetLibretroSerializedData(unsigned int* size);
+static unsigned int GetLibretroSerializedSize(void);
 static bool SetLibretroSerializedData(void* data, unsigned int size);
 static void* GetLibretroSRAMData(size_t* size);
 static bool SetLibretroSRAMData(const void* data, size_t size);
-static void SetLibretroMessage(const char* msg, float duration);
+static void SetLibretroMessage(const char* msg, double duration);
+static void SetLibretroMessageEx(const struct retro_message_ext *message);
 static bool DrawLibretroMessage(void);
 static const char* GetLibretroDirectory(int directory);
 static const struct retro_input_descriptor* GetLibretroInputDescriptors(unsigned *count);
@@ -105,6 +112,16 @@ static bool LoadLibretroGameFromMemoryEx(unsigned char* fileData, int dataSize,
     const char* contentPath, bool persistent);
 static void SetLibretroDynamicRateControl(bool enabled);
 static bool IsLibretroDynamicRateControlEnabled(void);
+static bool SetLibretroPortDevice(unsigned port, unsigned device);
+static unsigned GetLibretroPortDevice(unsigned port);
+static bool IsLibretroDiskControlActive(void);
+static unsigned GetLibretroDiskImageCount(void);
+static unsigned GetLibretroDiskImageIndex(void);
+static bool GetLibretroDiskEjectState(void);
+static bool SetLibretroDiskEjectState(bool ejected);
+static bool SetLibretroDiskImageIndex(unsigned index);
+static bool GetLibretroDiskImageLabel(unsigned index, char* label, size_t len);
+static bool SwapLibretroDisk(unsigned index);
 
 static void LibretroPixelFormatARGB1555ToRGB565(void *output_, const void *input_,
         int width, int height,
@@ -116,6 +133,7 @@ static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *
 static int LibretroRetroPixelFormatToPixelFormat(int pixelFormat);
 static int LibretroRetroJoypadButtonToGamepadButton(int button);
 static int LibretroRetroJoypadButtontoRetroKey(int button);
+static bool LibretroAnalogToDpadPressed(int port, int btn);
 static int LibretroRetroKeyToKeyboardKey(int key);
 static int LibretroMapRetroLogLevelToTraceLogType(int level);
 
@@ -134,6 +152,8 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
+
+#include "rlgl.h"
 
 // libretro-common
 #include <dynamic/dylib.h>
@@ -157,13 +177,23 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
 #define LIBRETRO_CORE_VARIABLE_LABEL_LEN 512
 #define LIBRETRO_CORE_VARIABLE_VALUES_LEN 512
 #define LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN 256
+#define LIBRETRO_MAX_CORE_CATEGORIES     64
+#define LIBRETRO_MAX_PERF_COUNTERS       1024
+#define LIBRETRO_CORE_CATEGORY_KEY_LEN   64
 
 /**
  * The amount of controller ports with rumble support.
  */
 #define RAYLIB_LIBRETRO_RUMBLE_PORTS 4
 
-// Dynamic loading methods.
+// Four joypads multiplexed through one port; index (0-3) selects the sub-controller.
+#ifndef RETRO_DEVICE_JOYPAD_MULTITAP
+#define RETRO_DEVICE_JOYPAD_MULTITAP RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_JOYPAD, 1)
+#endif
+
+/**
+ * Load a symbol from the libretro handle.
+ */
 #define LoadLibretroMethodHandle(V, S) do {\
     function_t func = dylib_proc(LIBRETRO.core.symbols.handle, #S); \
     memcpy(&V, &func, sizeof(func)); \
@@ -172,6 +202,10 @@ static int LibretroMapRetroLogLevelToTraceLogType(int level);
         return false; \
     }\
 } while (0)
+
+/**
+ * Loads a method from the libretro core handle.
+ */
 #define LoadLibretroMethod(S) LoadLibretroMethodHandle(LIBRETRO.core.symbols.S, S)
 
 /**
@@ -214,7 +248,8 @@ typedef struct LibretroCoreData {
 
     // System Information.
     bool shutdown; /** Indicates whether or not the core requested to shutdown. */
-    unsigned width, height, fps;
+    unsigned width, height;
+    double fps; /** Core's target frame rate from retro_system_timing (e.g. 59.94), kept fractional for accurate pacing. */
     double sampleRate;
     float aspectRatio;
     char corePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -228,9 +263,10 @@ typedef struct LibretroCoreData {
     enum retro_pixel_format pixelFormat;
     unsigned performanceLevel;
     bool loaded;
+    uint64_t serializationQuirks; /** Bitmask from RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS. */
 
-    // The last performance counter registered. TODO: Make it a linked list.
-    struct retro_perf_counter* perf_counter_last;
+    struct retro_perf_counter** perf_counters;
+    unsigned perf_counter_count;
     struct retro_frame_time_callback runloop_frame_time;
     retro_usec_t runloop_frame_time_last;
     struct retro_audio_callback audio_callback;
@@ -279,22 +315,23 @@ typedef struct LibretroCoreData {
     // TODO: Switch these to MemAlloc'ed strings.
     char variableKeys[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_KEY_LEN];
     char variableValues[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUE_LEN];
+    char variableDefaults[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUE_LEN];
     char variableLabels[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_LABEL_LEN];
     char variableValuesList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
     char variableDisplayList[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_VALUES_LEN];
     char variableTooltips[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_VARIABLE_TOOLTIP_LEN];
+    char variableCategoryKeys[LIBRETRO_MAX_CORE_VARIABLES][LIBRETRO_CORE_CATEGORY_KEY_LEN];
     bool variableVisible[LIBRETRO_MAX_CORE_VARIABLES];
     unsigned variableCount;
+    char categoryKeys[LIBRETRO_MAX_CORE_CATEGORIES][LIBRETRO_CORE_CATEGORY_KEY_LEN];
+    char categoryLabels[LIBRETRO_MAX_CORE_CATEGORIES][LIBRETRO_CORE_VARIABLE_LABEL_LEN];
+    unsigned categoryCount;
     unsigned variableOptionsVersion; // 0=legacy SET_VARIABLES, 1=SET_CORE_OPTIONS, 2=SET_CORE_OPTIONS_V2
     bool variablesDirty; // Whether or not the variables have been changed since last RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE call.
     bool variablesVisibilityDirty; // Whether option visibility changed and the menu should rebuild.
 
     // Screen rotation: 0=0°, 1=90°, 2=180°, 3=270°
-    unsigned rotation;
-
-    // OSD message (RETRO_ENVIRONMENT_SET_MESSAGE / SET_MESSAGE_EXT)
-    char osdMessage[256];
-    double osdEndTime;
+    int rotation;
 
     // Single-sample audio accumulation buffer (avoids static locals).
     int16_t singleSampleBuffer[LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
@@ -306,6 +343,9 @@ typedef struct LibretroCoreData {
 
     // Loaded content path (empty if no content loaded).
     char contentPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+
+    // Temp file written for needFullpath cores when loading from memory (empty if none).
+    char tempGamePath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
 
     // Backing storage and struct for RETRO_ENVIRONMENT_GET_GAME_INFO_EXT.
     // Pointers in gameInfoExt reference these buffers (or are NULL).
@@ -332,17 +372,42 @@ typedef struct LibretroCoreData {
     // Virtual joypad state injected by touch controls (port 0 only).
     bool virtualJoypadState[16];
 
+    // Per-port device type; default RETRO_DEVICE_JOYPAD. Set via SetLibretroPortDevice().
+    unsigned portDeviceMap[16];
+
     // Memory map from RETRO_ENVIRONMENT_SET_MEMORY_MAPS (owned copy).
     struct retro_memory_descriptor *memoryMapDescriptors;
     unsigned memoryMapDescriptorCount;
+
+    // Disk control interface (RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE / _EXT).
+    // Multi-disc cores (PlayStation, SegaCD, etc.) register this so the frontend can
+    // eject and swap disk images at runtime. The ext callback is a superset of the
+    // basic one, so it serves as the canonical store: the legacy interface fills the
+    // shared fields and leaves the ext-only function pointers NULL.
+    struct retro_disk_control_ext_callback disk_control;
+    bool diskControlActive;      // A core has registered a disk control interface.
+    unsigned diskControlVersion; // 0 = basic interface, 1 = extended interface.
+
+    struct {
+        bool enabled;                          // SET_HW_RENDER accepted
+        bool active;                           // context_reset fired; FBO + core GL resources live
+        bool fboUsedThisFrame;                 // get_current_framebuffer was called; core rendered to our FBO
+        struct retro_hw_render_callback cb;    // verbatim copy from the core
+        RenderTexture2D target;                // FBO + color attachment
+        unsigned fboWidth, fboHeight;          // allocated FBO size (max geometry)
+        unsigned frameWidth, frameHeight;      // last valid sub-region from RETRO_HW_FRAME_BUFFER_VALID
+    } hwRender;
 } LibretroCoreData;
 
 typedef struct LibretroData {
     // Persistent settings that survive core loads.
     float volume;
     float speed;
+    double speedAccumulator;
     int textureFilter; // TextureFilter
-    int keyboardPlayer1[16];
+    bool integerScaling;
+    int analogToDpadIndex; // 0=None, 1=Left Analog, 2=Right Analog
+    int keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
     char coreDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char saveDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
     char coreAssetsDirectory[RAYLIB_LIBRETRO_VFS_MAX_PATH];
@@ -356,6 +421,16 @@ typedef struct LibretroData {
      * @see RETRO_ENVIRONMENT_GET_USERNAME
      */
     char username[128];
+
+    // OSD message (RETRO_ENVIRONMENT_SET_MESSAGE / SET_MESSAGE_EXT).
+    // Lives here rather than in `core` so a core-exit error message survives the
+    // core/content unload, as the libretro spec requires. osd holds the active
+    // message's metadata (type/priority/progress/level/target); osd.msg always
+    // points at our owned osdMessage buffer rather than the core's transient
+    // string. osdEndTime is the absolute GetTime() expiry.
+    char osdMessage[256];
+    double osdEndTime;
+    struct retro_message_ext osd;
 
     // Per-core state (reset with memset(0) on core unload).
     LibretroCoreData core;
@@ -374,11 +449,30 @@ extern "C" {
 static LibretroData LIBRETRO = {
     .volume = 1.0f,
     .speed = 1.0f,
-    .username = "raylib"
+    .username = "raylib",
+    .keyboardPlayer1 = {
+        [RETRO_DEVICE_ID_JOYPAD_B]      = KEY_Z,
+        [RETRO_DEVICE_ID_JOYPAD_Y]      = KEY_A,
+        [RETRO_DEVICE_ID_JOYPAD_SELECT] = KEY_RIGHT_SHIFT,
+        [RETRO_DEVICE_ID_JOYPAD_START]  = KEY_ENTER,
+        [RETRO_DEVICE_ID_JOYPAD_UP]     = KEY_UP,
+        [RETRO_DEVICE_ID_JOYPAD_DOWN]   = KEY_DOWN,
+        [RETRO_DEVICE_ID_JOYPAD_LEFT]   = KEY_LEFT,
+        [RETRO_DEVICE_ID_JOYPAD_RIGHT]  = KEY_RIGHT,
+        [RETRO_DEVICE_ID_JOYPAD_A]      = KEY_X,
+        [RETRO_DEVICE_ID_JOYPAD_X]      = KEY_S,
+        [RETRO_DEVICE_ID_JOYPAD_L]      = KEY_Q,
+        [RETRO_DEVICE_ID_JOYPAD_R]      = KEY_W,
+        [RETRO_DEVICE_ID_JOYPAD_L2]     = KEY_E,
+        [RETRO_DEVICE_ID_JOYPAD_R2]     = KEY_R,
+        [RETRO_DEVICE_ID_JOYPAD_L3]     = KEY_D,
+        [RETRO_DEVICE_ID_JOYPAD_R3]     = KEY_F,
+    }
 };
 
 static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
-    const char *label, const char *valuesList, const char *displayList, const char *tooltip) {
+    const char *label, const char *valuesList, const char *displayList,
+    const char *tooltip, const char *categoryKey) {
     for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
         if (TextIsEqual(LIBRETRO.core.variableKeys[i], key)) {
             return; // Already registered; don't overwrite user-set value.
@@ -389,12 +483,14 @@ static void LibretroInitCoreVariable(const char *key, const char *defaultValue,
         return;
     }
     unsigned n = LIBRETRO.core.variableCount;
-    TextCopy(LIBRETRO.core.variableKeys[n],        key);
-    TextCopy(LIBRETRO.core.variableValues[n],      defaultValue  ? defaultValue  : "");
-    TextCopy(LIBRETRO.core.variableLabels[n],      label         ? label         : "");
-    TextCopy(LIBRETRO.core.variableValuesList[n],  valuesList    ? valuesList    : "");
-    TextCopy(LIBRETRO.core.variableDisplayList[n], displayList   ? displayList   : "");
-    TextCopy(LIBRETRO.core.variableTooltips[n],    tooltip       ? tooltip       : "");
+    TextCopy(LIBRETRO.core.variableKeys[n],         key);
+    TextCopy(LIBRETRO.core.variableValues[n],       defaultValue  ? defaultValue  : "");
+    TextCopy(LIBRETRO.core.variableDefaults[n],     defaultValue  ? defaultValue  : "");
+    TextCopy(LIBRETRO.core.variableLabels[n],       label         ? label         : "");
+    TextCopy(LIBRETRO.core.variableValuesList[n],   valuesList    ? valuesList    : "");
+    TextCopy(LIBRETRO.core.variableDisplayList[n],  displayList   ? displayList   : "");
+    TextCopy(LIBRETRO.core.variableTooltips[n],     tooltip       ? tooltip       : "");
+    TextCopy(LIBRETRO.core.variableCategoryKeys[n], categoryKey   ? categoryKey   : "");
     LIBRETRO.core.variableVisible[n] = true;
     LIBRETRO.core.variableCount++;
     // A new option appeared: cores that register variables after the menu has
@@ -434,6 +530,32 @@ static bool SetLibretroCoreOption(const char *key, const char *value) {
  * @return Current value string, or NULL if the key is not found. */
 static const char *GetLibretroCoreOption(const char *key) {
     return LibretroGetCoreVariable(key);
+}
+
+/**
+ * Reset a single core option to its default value.
+ * @param key Option key to reset.
+ * @return true if the key was found and reset; false if unknown. */
+static bool ResetLibretroCoreOption(const char *key) {
+    for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
+        if (TextIsEqual(LIBRETRO.core.variableKeys[i], key)) {
+            snprintf(LIBRETRO.core.variableValues[i], LIBRETRO_CORE_VARIABLE_VALUE_LEN,
+                "%s", LIBRETRO.core.variableDefaults[i]);
+            LIBRETRO.core.variablesDirty = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Reset all core options to their default values. */
+static void ResetAllLibretroCoreOptions(void) {
+    for (unsigned i = 0; i < LIBRETRO.core.variableCount; i++) {
+        snprintf(LIBRETRO.core.variableValues[i], LIBRETRO_CORE_VARIABLE_VALUE_LEN,
+            "%s", LIBRETRO.core.variableDefaults[i]);
+    }
+    LIBRETRO.core.variablesDirty = true;
 }
 
 /**
@@ -595,38 +717,168 @@ static void LibretroLogger(enum retro_log_level level, const char *fmt, ...) {
 }
 
 static void InitLibretroAudio(void);  // Forward declaration.
+static bool InitLibretroVideo(void);  // Forward declaration.
 static size_t UpdateLibretroAudioSampleBatch(const int16_t *data, size_t frames);  // Forward declaration.
 
+static uintptr_t LibretroHwGetCurrentFramebuffer(void) {
+    LIBRETRO.core.hwRender.fboUsedThisFrame = true;
+    return (uintptr_t)LIBRETRO.core.hwRender.target.id;
+}
+
+static retro_proc_address_t LibretroHwGetProcAddress(const char *sym) {
+    return (retro_proc_address_t)rlGetProcAddress(sym);
+}
+
 static void CloseLibretroVideo(void) {
-    // Unload the existing texture if it exists already.
-    if (IsTextureValid(LIBRETRO.core.texture)) {
-        UnloadTexture(LIBRETRO.core.texture);
+    if (LIBRETRO.core.hwRender.enabled) {
+        if (IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
+            UnloadRenderTexture(LIBRETRO.core.hwRender.target);
+            memset(&LIBRETRO.core.hwRender.target, 0, sizeof(LIBRETRO.core.hwRender.target));
+        }
         memset(&LIBRETRO.core.texture, 0, sizeof(LIBRETRO.core.texture));
+    } else {
+        if (IsTextureValid(LIBRETRO.core.texture)) {
+            UnloadTexture(LIBRETRO.core.texture);
+            memset(&LIBRETRO.core.texture, 0, sizeof(LIBRETRO.core.texture));
+        }
+        if (LIBRETRO.core.frameBuffer != NULL) {
+            MemFree(LIBRETRO.core.frameBuffer);
+        }
+        LIBRETRO.core.frameBuffer = NULL;
+        LIBRETRO.core.frameBufferSize = 0;
+    }
+    LIBRETRO.core.textureRebuild = false;
+}
+
+
+static bool hw_InitLibretroVideo(void) {
+    struct retro_system_av_info av;
+    LIBRETRO.core.symbols.retro_get_system_av_info(&av);
+    unsigned fboW = av.geometry.max_width  > 0 ? av.geometry.max_width  : LIBRETRO.core.width;
+    unsigned fboH = av.geometry.max_height > 0 ? av.geometry.max_height : LIBRETRO.core.height;
+    LIBRETRO.core.hwRender.fboWidth  = fboW;
+    LIBRETRO.core.hwRender.fboHeight = fboH;
+    LIBRETRO.core.hwRender.frameWidth  = LIBRETRO.core.width;
+    LIBRETRO.core.hwRender.frameHeight = LIBRETRO.core.height;
+
+    // Build the FBO with raylib's render texture (color + depth). raylib/rlgl owns the
+    // GL objects, so teardown is a plain UnloadRenderTexture and the depth attachment is
+    // chosen to fit whichever GRAPHICS_API_* config raylib was compiled against. A stencil
+    // buffer is not provided; cores that request one fall back to depth-only, which keeps
+    // the FBO complete across every supported GL/GLES configuration.
+    LIBRETRO.core.hwRender.target = LoadRenderTexture((int)fboW, (int)fboH);
+    if (!IsRenderTextureValid(LIBRETRO.core.hwRender.target)) {
+        TraceLog(LOG_ERROR, "LIBRETRO HW: Failed to load render texture");
+        return false;
+    }
+    if (LIBRETRO.core.hwRender.cb.stencil) {
+        TraceLog(LOG_WARNING, "LIBRETRO HW: core requested a stencil buffer; providing depth only");
     }
 
-    if (LIBRETRO.core.frameBuffer != NULL) {
-        MemFree(LIBRETRO.core.frameBuffer);
-    }
-    LIBRETRO.core.frameBuffer = NULL;
-    LIBRETRO.core.frameBufferSize = 0;
+    LIBRETRO.core.texture = LIBRETRO.core.hwRender.target.texture;
+    SetTextureFilter(LIBRETRO.core.texture, LIBRETRO.textureFilter);
     LIBRETRO.core.textureRebuild = false;
+    TraceLog(LOG_INFO, "LIBRETRO HW: FBO %ux%u created (id=%u)", fboW, fboH, LIBRETRO.core.hwRender.target.id);
+    return true;
+}
+
+// Fire the core's context_reset with our FBO bound, then restore the previously-bound
+// target. Cores commonly query get_current_framebuffer and build GL objects against the
+// FBO here, so it must be current. No-op (and leaves active=false) when the core supplied
+// no context_reset, matching the contract that such a core never enters the HW path.
+static void hw_FireContextReset(void) {
+    if (!LIBRETRO.core.hwRender.enabled || LIBRETRO.core.hwRender.cb.context_reset == NULL) {
+        return;
+    }
+    rlDrawRenderBatchActive();
+    unsigned savedFbo = rlGetActiveFramebuffer();
+    rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
+    LIBRETRO.core.hwRender.cb.context_reset();
+    if (savedFbo != 0)
+        rlEnableFramebuffer(savedFbo);
+    else
+        rlDisableFramebuffer();
+    LIBRETRO.core.hwRender.active = true;
+    TraceLog(LOG_INFO, "LIBRETRO HW: context_reset fired");
+}
+
+// Fire the core's context_destroy with our FBO bound so it can release the GL resources
+// it created in context_reset. No-op when the HW context is not currently live.
+static void hw_FireContextDestroy(void) {
+    if (!LIBRETRO.core.hwRender.active) {
+        return;
+    }
+    if (LIBRETRO.core.hwRender.cb.context_destroy != NULL) {
+        rlDrawRenderBatchActive();
+        rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
+        LIBRETRO.core.hwRender.cb.context_destroy();
+        rlDisableFramebuffer();
+    }
+    LIBRETRO.core.hwRender.active = false;
+}
+
+// Recreate the HW render FBO while the GL context itself is unchanged (e.g. the core's
+// max geometry grew, or the platform recreated the context). The core's GL resources are
+// torn down (context_destroy) and re-established (context_reset) around the rebuild so it
+// rebinds to the new framebuffer instead of the destroyed one. Returns false on failure,
+// leaving the HW context inactive.
+static bool hw_RebuildLibretroVideo(void) {
+    if (!LIBRETRO.core.hwRender.enabled) {
+        return false;
+    }
+    bool wasActive = LIBRETRO.core.hwRender.active;
+    hw_FireContextDestroy();   // no-op when not active
+    CloseLibretroVideo();      // unload the old FBO + color attachment
+    if (!hw_InitLibretroVideo()) {
+        TraceLog(LOG_ERROR, "LIBRETRO HW: FBO rebuild failed");
+        return false;
+    }
+    if (wasActive) {
+        hw_FireContextReset(); // re-create the core's GL resources on the new FBO
+    }
+    return true;
+}
+
+/**
+ * Rebuild the video pipeline after the platform recreated the GL context.
+ *
+ * For HW-rendered cores this tears down and re-establishes the core's GL resources
+ * (context_destroy -> new FBO -> context_reset); for software cores it rebuilds the
+ * upload texture. Call this ONLY when the GL context was genuinely recreated.
+ *
+ * Note: raylib preserves the GL context across a normal Android pause/resume (the EGL
+ * context is detached and re-attached, not destroyed), so this is not needed there and
+ * calling it would force the core to needlessly reinitialize. There is currently no
+ * portable raylib signal for a true context re-creation, so this is exposed for platform
+ * glue that can detect one (e.g. a confirmed GL context loss).
+ *
+ * @return true on success.
+ */
+static bool ResetLibretroVideo(void) {
+    if (LIBRETRO.core.hwRender.enabled) {
+        return hw_RebuildLibretroVideo();
+    }
+    return InitLibretroVideo();
 }
 
 static bool InitLibretroVideo(void) {
     CloseLibretroVideo();
 
-    // Build the rendering image.
     if (LIBRETRO.core.width == 0 || LIBRETRO.core.height == 0) {
         return false;
     }
 
+    if (LIBRETRO.core.hwRender.enabled) {
+        return hw_InitLibretroVideo();
+    }
+
+    // Software path: build an upload texture + conversion buffer.
     Image image = GenImageColor(LIBRETRO.core.width, LIBRETRO.core.height, BLACK);
     if (!IsImageValid(image)) {
         return false;
     }
     ImageFormat(&image, LibretroRetroPixelFormatToPixelFormat(LIBRETRO.core.pixelFormat));
 
-    // Create the texture.
     LIBRETRO.core.texture = LoadTextureFromImage(image);
     UnloadImage(image);
     if (!IsTextureValid(LIBRETRO.core.texture)) {
@@ -654,7 +906,7 @@ static bool InitLibretroVideo(void) {
  * @return retro_time_t The current in-game time in microseconds.
  */
 static retro_time_t GetLibretroTimeUSEC(void) {
-    return (retro_time_t)(LIBRETRO.core.gameTimeNSEC / 1000);
+    return (retro_time_t)(LIBRETRO.core.gameTimeNSEC / (retro_perf_tick_t)1000);
 }
 
 /**
@@ -683,7 +935,19 @@ static retro_perf_tick_t GetLibretroPerfCounter(void) {
  * @see retro_perf_register_t
  */
 static void SetLibretroPerformanceCounter(struct retro_perf_counter* counter) {
-    LIBRETRO.core.perf_counter_last = counter;
+    // Ignore counters already in the array, otherwise a core that registers the
+    // same counter twice would get two slots pointing at it.
+    if (counter == NULL || counter->registered) {
+        return;
+    }
+    if (LIBRETRO.core.perf_counter_count >= LIBRETRO_MAX_PERF_COUNTERS) {
+        TraceLog(LOG_WARNING, "LIBRETRO: Perf counter limit reached (%d)", LIBRETRO_MAX_PERF_COUNTERS);
+        return;
+    }
+    LIBRETRO.core.perf_counters = (struct retro_perf_counter**)MemRealloc(
+        LIBRETRO.core.perf_counters,
+        (LIBRETRO.core.perf_counter_count + 1) * sizeof(struct retro_perf_counter*));
+    LIBRETRO.core.perf_counters[LIBRETRO.core.perf_counter_count++] = counter;
     counter->registered = true;
 }
 
@@ -693,8 +957,12 @@ static void SetLibretroPerformanceCounter(struct retro_perf_counter* counter) {
  * @see retro_perf_start_t
  */
 static void StartLibretroPerformanceCounter(struct retro_perf_counter* counter) {
+    if (counter == NULL) {
+        return;
+    }
     if (counter->registered) {
         counter->start = GetLibretroPerfCounter();
+        counter->call_cnt++;
     }
 }
 
@@ -704,7 +972,12 @@ static void StartLibretroPerformanceCounter(struct retro_perf_counter* counter) 
  * @see retro_perf_stop_t
  */
 static void StopLibretroPerformanceCounter(struct retro_perf_counter* counter) {
-    counter->total = GetLibretroPerfCounter() - counter->start;
+    if (counter == NULL) {
+        return;
+    }
+    // Accumulate across every start/stop pair; total is the sum of all measured
+    // intervals, not just the most recent one.
+    counter->total += GetLibretroPerfCounter() - counter->start;
 }
 
 /**
@@ -713,11 +986,14 @@ static void StopLibretroPerformanceCounter(struct retro_perf_counter* counter) {
  * @see retro_perf_log_t
  */
 static void LogLibretroPerformanceCounter(void) {
-    // TODO: Use a linked list of counters, and loop through them all.
-    if (LIBRETRO.core.perf_counter_last == NULL) {
-        return;
+    for (unsigned i = 0; i < LIBRETRO.core.perf_counter_count; i++) {
+        struct retro_perf_counter* c = LIBRETRO.core.perf_counters[i];
+        TraceLog(LOG_INFO, "LIBRETRO: Timer #%d %s: %llu ticks across %llu calls",
+            i + 1,
+            c->ident != NULL ? c->ident : "",
+            (unsigned long long)c->total,
+            (unsigned long long)c->call_cnt);
     }
-    TraceLog(LOG_INFO, "LIBRETRO: Timer %s: %i - %i", LIBRETRO.core.perf_counter_last->ident, LIBRETRO.core.perf_counter_last->start, LIBRETRO.core.perf_counter_last->total);
 }
 
 static bool SetLibretroRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
@@ -725,11 +1001,18 @@ static bool SetLibretroRumbleState(unsigned port, enum retro_rumble_effect effec
         return false;
     }
     float normalized = (float)strength / 65535.0f;
-    if (effect == RETRO_RUMBLE_STRONG) {
-        LIBRETRO.core.rumbleStrong[port] = normalized;
-    } else {
-        LIBRETRO.core.rumbleWeak[port] = normalized;
+    float* slot = (effect == RETRO_RUMBLE_STRONG)
+        ? &LIBRETRO.core.rumbleStrong[port]
+        : &LIBRETRO.core.rumbleWeak[port];
+
+    // Cores call this every frame, almost always with the value unchanged
+    // (commonly 0). Skip the hardware update when nothing changed so we don't
+    // spam SetGamepadVibration(). The compare is exact: normalized is derived
+    // deterministically from the same integer strength each frame.
+    if (*slot == normalized) {
+        return true;
     }
+    *slot = normalized;
     SetGamepadVibration((int)port, LIBRETRO.core.rumbleStrong[port], LIBRETRO.core.rumbleWeak[port], 3600.0f);
     return true;
 }
@@ -740,8 +1023,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             if (data == NULL) {
                 return false;
             }
-            LIBRETRO.core.rotation = *(const unsigned *)data;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_ROTATION: %u (%u°)", LIBRETRO.core.rotation, LIBRETRO.core.rotation * 90);
+            LIBRETRO.core.rotation = (int)*(const unsigned *)data;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_ROTATION: %d (%d°)", LIBRETRO.core.rotation, LIBRETRO.core.rotation * 90);
             return true;
         }
 
@@ -766,13 +1049,16 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE no data provided");
                 return false;
             }
-            if (message->msg == NULL) {
-                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE: No message");
-                return false;
+            if (message->msg == NULL || message->msg[0] == '\0') {
+                return true;
             }
+
             TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_MESSAGE: %s (%i frames)", message->msg, message->frames);
-            TextCopy(LIBRETRO.core.osdMessage, message->msg);
-            LIBRETRO.core.osdEndTime = GetTime() + message->frames / (LIBRETRO.core.fps > 0 ? (double)LIBRETRO.core.fps : 60.0);
+
+            // Route through SetLibretroMessage so osd metadata (msg pointer, type,
+            // progress, priority) gets its defaults; this legacy call carries none.
+            double seconds = message->frames / (LIBRETRO.core.fps > 0 ? LIBRETRO.core.fps : 60.0);
+            SetLibretroMessage(message->msg, seconds);
             return true;
         }
 
@@ -868,13 +1154,81 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE not implemented");
-            return false;
+            const struct retro_disk_control_callback* cb = (const struct retro_disk_control_callback *)data;
+            if (cb == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE no data provided");
+                return false;
+            }
+
+            // Store into the ext callback (a superset): copy the shared fields and
+            // clear the ext-only ones so probing them stays NULL-safe.
+            memset(&LIBRETRO.core.disk_control, 0, sizeof(LIBRETRO.core.disk_control));
+            LIBRETRO.core.disk_control.set_eject_state = cb->set_eject_state;
+            LIBRETRO.core.disk_control.get_eject_state = cb->get_eject_state;
+            LIBRETRO.core.disk_control.get_image_index = cb->get_image_index;
+            LIBRETRO.core.disk_control.set_image_index = cb->set_image_index;
+            LIBRETRO.core.disk_control.get_num_images = cb->get_num_images;
+            LIBRETRO.core.disk_control.replace_image_index = cb->replace_image_index;
+            LIBRETRO.core.disk_control.add_image_index = cb->add_image_index;
+            LIBRETRO.core.diskControlActive = true;
+            LIBRETRO.core.diskControlVersion = 0;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE configured");
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_HW_RENDER: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER not implemented");
-            return false;
+            if (data == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER no data");
+                return false;
+            }
+            struct retro_hw_render_callback *cb = (struct retro_hw_render_callback *)data;
+            // Accept only context types the GL context raylib created can actually serve.
+            // We share raylib's single GL context with the core (no second/shared context),
+            // so the requested API must match the GRAPHICS_API_* config raylib was built with.
+            bool accept = false;
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43)
+            // Desktop GL build: the legacy compatibility context (OPENGL) always works, and
+            // modern core contexts (OPENGL_CORE) up to the version raylib compiled against.
+            unsigned ceil_major = 3, ceil_minor = 3;
+#if defined(GRAPHICS_API_OPENGL_43)
+            ceil_major = 4; ceil_minor = 3;
+#endif
+            if (cb->context_type == RETRO_HW_CONTEXT_OPENGL) {
+                accept = true;
+            } else if (cb->context_type == RETRO_HW_CONTEXT_OPENGL_CORE) {
+                accept = (cb->version_major < ceil_major) ||
+                         (cb->version_major == ceil_major && cb->version_minor <= ceil_minor);
+            }
+#elif defined(GRAPHICS_API_OPENGL_ES2) || defined(GRAPHICS_API_OPENGL_ES3)
+            // GLES build: ES2 is always serviceable. ES3 (and ES3.x requested via
+            // OPENGLES_VERSION) is only honored when raylib itself is an ES3 build, since the
+            // capture-blit + state-restore below rely on ES3 entry points. That ES3 build maps
+            // to WebGL2 == GLES 3.0, so cap the OPENGLES_VERSION request at 3.0.
+            if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES2) {
+                accept = true;
+            }
+#if defined(GRAPHICS_API_OPENGL_ES3)
+            else if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES3) {
+                accept = true;
+            } else if (cb->context_type == RETRO_HW_CONTEXT_OPENGLES_VERSION) {
+                accept = (cb->version_major < 3) ||
+                         (cb->version_major == 3 && cb->version_minor == 0);
+            }
+#endif
+#endif
+            // Vulkan / Direct3D context types fall through and are rejected cleanly.
+            if (!accept) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER unsupported context_type %d (version %u.%u)",
+                    cb->context_type, cb->version_major, cb->version_minor);
+                return false;
+            }
+            // Patch the core's callback struct, then keep a copy with the patched pointers.
+            cb->get_current_framebuffer = LibretroHwGetCurrentFramebuffer;
+            cb->get_proc_address        = LibretroHwGetProcAddress;
+            LIBRETRO.core.hwRender.cb = *cb;
+            LIBRETRO.core.hwRender.enabled = true;
+            TraceLog(LOG_INFO, "LIBRETRO: HW render accepted (context_type=%d depth=%d stencil=%d)", cb->context_type, cb->depth, cb->stencil);
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
@@ -928,7 +1282,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                         memcpy(defaultVal, opts, len);
                     }
                 }
-                LibretroInitCoreVariable(var->key, defaultVal, label, valuesList, valuesList, "");
+                LibretroInitCoreVariable(var->key, defaultVal, label, valuesList, valuesList, "", "");
             }
             return true;
         }
@@ -1079,21 +1433,32 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             bool dimsChanged = (av.geometry.base_width != LIBRETRO.core.width || av.geometry.base_height != LIBRETRO.core.height);
             LIBRETRO.core.width = av.geometry.base_width;
             LIBRETRO.core.height = av.geometry.base_height;
-            LIBRETRO.core.fps = (unsigned int)av.timing.fps;
+            LIBRETRO.core.fps = av.timing.fps;
             LIBRETRO.core.sampleRate = av.timing.sample_rate;
             LIBRETRO.core.aspectRatio = av.geometry.aspect_ratio;
-            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO %i x %i @ %i FPS",
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO %i x %i @ %.3f FPS",
                 LIBRETRO.core.width,
                 LIBRETRO.core.height,
                 LIBRETRO.core.fps
             );
-            if (dimsChanged) {
+            if (LIBRETRO.core.hwRender.active) {
+                // HW cores render into an FBO sized to max geometry; a base-dimension
+                // change is only a smaller visible crop (tracked per-frame via
+                // RETRO_HW_FRAME_BUFFER_VALID), so the FBO is left alone. Only a *grow* in
+                // max geometry (e.g. an internal-resolution option) needs a new FBO, and
+                // hw_RebuildLibretroVideo re-fires context_destroy/context_reset so the core
+                // rebinds to it rather than the destroyed one.
+                unsigned newMaxW = av.geometry.max_width  > 0 ? av.geometry.max_width  : LIBRETRO.core.width;
+                unsigned newMaxH = av.geometry.max_height > 0 ? av.geometry.max_height : LIBRETRO.core.height;
+                if (newMaxW > LIBRETRO.core.hwRender.fboWidth || newMaxH > LIBRETRO.core.hwRender.fboHeight) {
+                    hw_RebuildLibretroVideo();
+                }
+            } else if (!LIBRETRO.core.hwRender.enabled && dimsChanged) {
                 InitLibretroVideo();
             }
             if (sampleRateChanged) {
                 InitLibretroAudio();
             }
-            SetTargetFPS((int)(LIBRETRO.core.fps * LIBRETRO.speed));
             return true;
         }
 
@@ -1217,8 +1582,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE not implemented");
-            return false;
+            return false; // Vulkan/D3D only
         }
 
         case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS: {
@@ -1227,18 +1591,22 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE not implemented");
-            return false;
+            return false; // Vulkan only
         }
 
         case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS not implemented");
-            return false;
+            const uint64_t* quirks = (const uint64_t*)data;
+            if (quirks == NULL) {
+                return false;
+            }
+            LIBRETRO.core.serializationQuirks = *quirks;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: 0x%llx", (unsigned long long)*quirks);
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT not implemented");
-            return false;
+            // We share raylib's single main-thread context — the only mode we offer.
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
@@ -1248,50 +1616,49 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
             }
 
             struct retro_vfs_interface_info * vfs_interface = (struct retro_vfs_interface_info *)data;
-            vfs_interface->iface = &LIBRETRO.core.vfs_interface;
 
-            // VFS 1
-            if (vfs_interface->required_interface_version >= 1) {
-                vfs_interface->iface->get_path = &raylib_libretro_vfs_get_path;
-                vfs_interface->iface->open = &raylib_libretro_vfs_open;
-                vfs_interface->iface->close = &raylib_libretro_vfs_close;
-                vfs_interface->iface->size = &raylib_libretro_vfs_size;
-                vfs_interface->iface->tell = &raylib_libretro_vfs_tell;
-                vfs_interface->iface->seek = &raylib_libretro_vfs_seek;
-                vfs_interface->iface->read = &raylib_libretro_vfs_read;
-                vfs_interface->iface->write = &raylib_libretro_vfs_write;
-                vfs_interface->iface->flush = &raylib_libretro_vfs_flush;
-                vfs_interface->iface->remove = &raylib_libretro_vfs_remove;
-                vfs_interface->iface->rename = &raylib_libretro_vfs_rename;
-            }
-
-            // VFS 2
-            if (vfs_interface->required_interface_version >= 2) {
-                vfs_interface->iface->truncate = &raylib_libretro_vfs_truncate;
-            }
-
-            // VFS 3
-            if (vfs_interface->required_interface_version >= 3) {
-                vfs_interface->iface->stat = &raylib_libretro_vfs_stat;
-                vfs_interface->iface->mkdir = &raylib_libretro_vfs_mkdir;
-                vfs_interface->iface->opendir = &raylib_libretro_vfs_opendir;
-                vfs_interface->iface->readdir = &raylib_libretro_vfs_readdir;
-                vfs_interface->iface->dirent_get_name = &raylib_libretro_vfs_dirent_get_name;
-                vfs_interface->iface->dirent_is_dir = &raylib_libretro_vfs_dirent_is_dir;
-                vfs_interface->iface->closedir = &raylib_libretro_vfs_closedir;
-            }
-
-            // VFS 4
-            if (vfs_interface->required_interface_version >= 4) {
-                vfs_interface->iface->stat_64 = &raylib_libretro_vfs_stat_64;
-            }
-
-            // VFS 5+
-            if (vfs_interface->required_interface_version >= 5) {
-                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_GET_VFS_INTERFACE version 5+ not supported");
+            // Highest VFS API version we implement (v4 adds stat_64).
+            const uint32_t supportedVfsVersion = 4;
+            if (vfs_interface->required_interface_version > supportedVfsVersion) {
+                TraceLog(LOG_ERROR, "LIBRETRO: RETRO_ENVIRONMENT_GET_VFS_INTERFACE version %u not supported (max %u)",
+                    vfs_interface->required_interface_version, supportedVfsVersion);
                 return false;
             }
 
+            // Populate the full interface up to the version we support, regardless of
+            // the requested version.
+            vfs_interface->iface = &LIBRETRO.core.vfs_interface;
+
+            // VFS 1
+            vfs_interface->iface->get_path = &raylib_libretro_vfs_get_path;
+            vfs_interface->iface->open = &raylib_libretro_vfs_open;
+            vfs_interface->iface->close = &raylib_libretro_vfs_close;
+            vfs_interface->iface->size = &raylib_libretro_vfs_size;
+            vfs_interface->iface->tell = &raylib_libretro_vfs_tell;
+            vfs_interface->iface->seek = &raylib_libretro_vfs_seek;
+            vfs_interface->iface->read = &raylib_libretro_vfs_read;
+            vfs_interface->iface->write = &raylib_libretro_vfs_write;
+            vfs_interface->iface->flush = &raylib_libretro_vfs_flush;
+            vfs_interface->iface->remove = &raylib_libretro_vfs_remove;
+            vfs_interface->iface->rename = &raylib_libretro_vfs_rename;
+
+            // VFS 2
+            vfs_interface->iface->truncate = &raylib_libretro_vfs_truncate;
+
+            // VFS 3
+            vfs_interface->iface->stat = &raylib_libretro_vfs_stat;
+            vfs_interface->iface->mkdir = &raylib_libretro_vfs_mkdir;
+            vfs_interface->iface->opendir = &raylib_libretro_vfs_opendir;
+            vfs_interface->iface->readdir = &raylib_libretro_vfs_readdir;
+            vfs_interface->iface->dirent_get_name = &raylib_libretro_vfs_dirent_get_name;
+            vfs_interface->iface->dirent_is_dir = &raylib_libretro_vfs_dirent_is_dir;
+            vfs_interface->iface->closedir = &raylib_libretro_vfs_closedir;
+
+            // VFS 4
+            vfs_interface->iface->stat_64 = &raylib_libretro_vfs_stat_64;
+
+            // Report the version we actually provide.
+            vfs_interface->required_interface_version = supportedVfsVersion;
             return true;
         }
 
@@ -1386,7 +1753,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
 
                 LibretroInitCoreVariable(opts->key, def ? def : "",
                     opts->desc, valuesList, displayList,
-                    opts->info ? opts->info : "");
+                    opts->info ? opts->info : "", "");
             }
             return true;
         }
@@ -1417,18 +1784,48 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER not implemented");
-            return false;
+            if (data == NULL) return false;
+            unsigned *contextType = (unsigned *)data;
+#if defined(GRAPHICS_API_OPENGL_43)
+            *contextType = RETRO_HW_CONTEXT_OPENGL_CORE;
+#elif defined(GRAPHICS_API_OPENGL_33)
+            *contextType = RETRO_HW_CONTEXT_OPENGL_CORE;
+#elif defined(GRAPHICS_API_OPENGL_ES3) || defined(GRAPHICS_API_OPENGL_ES2)
+            *contextType = RETRO_HW_CONTEXT_OPENGLES2;
+#else
+            *contextType = RETRO_HW_CONTEXT_NONE;
+#endif
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION not implemented");
-            return false;
+            unsigned* version = (unsigned *)data;
+            if (version == NULL) {
+                TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION no data provided");
+                return false;
+            }
+            // We handle the extended interface, so cores may use either version.
+            *version = 1;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE not implemented");
-            return false;
+            // The ext call may pass NULL to deregister the existing interface.
+            const struct retro_disk_control_ext_callback* cb = (const struct retro_disk_control_ext_callback *)data;
+            if (cb == NULL) {
+                memset(&LIBRETRO.core.disk_control, 0, sizeof(LIBRETRO.core.disk_control));
+                LIBRETRO.core.diskControlActive = false;
+                LIBRETRO.core.diskControlVersion = 0;
+                TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE deregistered");
+                return true;
+            }
+
+            LIBRETRO.core.disk_control = *cb;
+            LIBRETRO.core.diskControlActive = true;
+            LIBRETRO.core.diskControlVersion = 1;
+            TraceLog(LOG_INFO, "LIBRETRO: RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE has been set");
+
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION: {
@@ -1451,8 +1848,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 TraceLog(LibretroMapRetroLogLevelToTraceLogType(message->level), "LIBRETRO: %s", message->msg);
             }
             if (message->target == RETRO_MESSAGE_TARGET_OSD || message->target == RETRO_MESSAGE_TARGET_ALL) {
-                TextCopy(LIBRETRO.core.osdMessage, message->msg);
-                LIBRETRO.core.osdEndTime = GetTime() + message->duration / 1000.0;
+                SetLibretroMessageEx(message);
             }
             return true;
         }
@@ -1558,6 +1954,18 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 return false;
             }
             LIBRETRO.core.variableOptionsVersion = 2;
+
+            // Store category metadata for BuildLibretroMenuOptions to use
+            LIBRETRO.core.categoryCount = 0;
+            if (opts->categories) {
+                const struct retro_core_option_v2_category *cat = opts->categories;
+                for (; cat->key != NULL && LIBRETRO.core.categoryCount < LIBRETRO_MAX_CORE_CATEGORIES; cat++) {
+                    TextCopy(LIBRETRO.core.categoryKeys[LIBRETRO.core.categoryCount],   cat->key);
+                    TextCopy(LIBRETRO.core.categoryLabels[LIBRETRO.core.categoryCount], cat->desc ? cat->desc : cat->key);
+                    LIBRETRO.core.categoryCount++;
+                }
+            }
+
             const struct retro_core_option_v2_definition *def = opts->definitions;
             for (; def->key != NULL; def++) {
                 const char *defaultVal = def->default_value;
@@ -1592,7 +2000,8 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
                 }
 
                 LibretroInitCoreVariable(def->key, defaultVal ? defaultVal : "",
-                    label, valuesList, displayList, tooltip);
+                    label, valuesList, displayList, tooltip,
+                    (def->category_key && def->category_key[0]) ? def->category_key : "");
             }
             return true;
         }
@@ -1647,8 +2056,7 @@ static bool CallLibretroEnvironment(unsigned cmd, void * data) {
         }
 
         case RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT: {
-            TraceLog(LOG_WARNING, "LIBRETRO: RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT not implemented");
-            return false;
+            return false; // Vulkan only
         }
 
         case RETRO_ENVIRONMENT_GET_JIT_CAPABLE: {
@@ -1727,14 +2135,227 @@ static bool LibretroGetAudioVideo(void) {
     LIBRETRO.core.symbols.retro_get_system_av_info(&av);
     LIBRETRO.core.width = av.geometry.base_width;
     LIBRETRO.core.height = av.geometry.base_height;
-    LIBRETRO.core.fps = (unsigned int)av.timing.fps;
+    LIBRETRO.core.fps = av.timing.fps;
     LIBRETRO.core.sampleRate = av.timing.sample_rate;
     LIBRETRO.core.aspectRatio = av.geometry.aspect_ratio;
     TraceLog(LOG_INFO, "LIBRETRO: Video and Audio information");
     TraceLog(LOG_INFO, "    > Display size: %i x %i", LIBRETRO.core.width, LIBRETRO.core.height);
-    TraceLog(LOG_INFO, "    > Target FPS:   %i", LIBRETRO.core.fps);
+    TraceLog(LOG_INFO, "    > Target FPS:   %.3f", LIBRETRO.core.fps);
     TraceLog(LOG_INFO, "    > Sample rate:  %.2f Hz", LIBRETRO.core.sampleRate);
     return true;
+}
+
+/**
+ * Discard any pending time-accumulator backlog so the next UpdateLibretro()
+ * starts timing from a clean slate. Call this after any wall-clock discontinuity
+ * that is not real emulation time — game load, save-state load, rewind — so the
+ * accumulator doesn't spend the gap as a burst of catch-up frames.
+ */
+static void ResetLibretroTiming(void) {
+    LIBRETRO.speedAccumulator = 0.0;
+    LIBRETRO.core.runloop_frame_time_last = 0;
+}
+
+/**
+ * Run a single emulation tick: report audio buffer occupancy to the core, call
+ * retro_run(), then flush any single-sample audio left over from the frame.
+ */
+static void LibretroTick(void) {
+    // Report audio buffer occupancy to the core just before retro_run, so
+    // it can decide whether to frameskip to avoid under-runs.
+    if (LIBRETRO.core.audio_buffer_status_callback.callback && LIBRETRO.core.audioRingBufferSize > 0) {
+        unsigned occupancy = (unsigned)((LIBRETRO.core.audioRingAvailable * 100) / LIBRETRO.core.audioRingBufferSize);
+        if (occupancy > 100) occupancy = 100;
+        bool underrun_likely = occupancy < 25;
+        LIBRETRO.core.audio_buffer_status_callback.callback(true, occupancy, underrun_likely);
+    }
+
+    if (LIBRETRO.core.hwRender.active) {
+        rlDrawRenderBatchActive();
+        // Reset per-frame flag; LibretroHwGetCurrentFramebuffer sets it when called.
+        LIBRETRO.core.hwRender.fboUsedThisFrame = false;
+        // Clear FBO 0 before retro_run. Cores that ignore get_current_framebuffer
+        // and render directly to the screen back buffer (FBO 0) get a clean canvas;
+        // this also prevents stale overlay content from leaking via the post-run blit.
+        rlClearColor(0, 0, 0, 255);
+        rlClearScreenBuffers();
+        rlEnableFramebuffer(LIBRETRO.core.hwRender.target.id);
+    }
+
+    LIBRETRO.core.symbols.retro_run();
+
+    if (LIBRETRO.core.hwRender.active) {
+        // Load all GL procs needed for post-run fixup (loaded once, reused every frame)
+        #ifndef LIBRETRO_GL_HWRUN_DEFS
+        #define LIBRETRO_GL_HWRUN_DEFS
+        #define LIBRETRO_GL_FRAMEBUFFER          0x8D40U
+        #define LIBRETRO_GL_READ_FRAMEBUFFER     0x8CA8U
+        #define LIBRETRO_GL_DRAW_FRAMEBUFFER     0x8CA9U
+        #define LIBRETRO_GL_FRAMEBUFFER_BINDING  0x8CA6U
+        #define LIBRETRO_GL_COLOR_BUFFER_BIT     0x00004000U
+        #define LIBRETRO_GL_NEAREST_FILTER       0x2600U
+        #define LIBRETRO_GL_BLEND_CAP            0x0BE2U
+        #define LIBRETRO_GL_STENCIL_TEST         0x0B90U
+        #define LIBRETRO_GL_ARRAY_BUFFER         0x8892U
+        #define LIBRETRO_GL_ELEMENT_ARRAY_BUFFER 0x8893U
+        #define LIBRETRO_GL_UNPACK_SWAP_BYTES    0x0CF0U
+        #define LIBRETRO_GL_UNPACK_ROW_LENGTH    0x0CF2U
+        #define LIBRETRO_GL_UNPACK_SKIP_ROWS     0x0CF3U
+        #define LIBRETRO_GL_UNPACK_SKIP_PIXELS   0x0CF4U
+        #define LIBRETRO_GL_UNPACK_ALIGNMENT     0x0CF5U
+        #define LIBRETRO_GL_PACK_ALIGNMENT       0x0D05U
+        typedef unsigned int (*lrgl_GetErr)    (void);
+        typedef void         (*lrgl_GIV)       (unsigned int, int *);
+        typedef void         (*lrgl_BindFb)    (unsigned int, unsigned int);
+        typedef void         (*lrgl_Blit)      (int,int,int,int,int,int,int,int,unsigned int,unsigned int);
+        typedef void         (*lrgl_Enable)    (unsigned int);
+        typedef void         (*lrgl_Disable)   (unsigned int);
+        typedef void         (*lrgl_UseProgram)(unsigned int);
+        typedef void         (*lrgl_BindVao)   (unsigned int);
+        typedef void         (*lrgl_BindBuf)   (unsigned int, unsigned int);
+        typedef void         (*lrgl_BindSampler)(unsigned int, unsigned int);
+        typedef void         (*lrgl_PixelStore)(unsigned int, int);
+        typedef void         (*lrgl_FrontFace) (unsigned int);
+        #endif
+        static lrgl_GetErr    _gerr = NULL;
+        static lrgl_GIV       _giv  = NULL;
+        static lrgl_BindFb    _bfb  = NULL;
+        static lrgl_Blit      _blt  = NULL;
+        static lrgl_Enable    _gen  = NULL;
+        static lrgl_Disable   _gdis = NULL;
+        static lrgl_UseProgram _gup = NULL;
+        static lrgl_BindVao   _gvao = NULL;
+        static lrgl_BindBuf   _gbuf = NULL;
+        static lrgl_BindSampler _gsmp = NULL;
+        static lrgl_PixelStore _gpx = NULL;
+        static lrgl_FrontFace _gff  = NULL;
+        if (!_gerr) _gerr = (lrgl_GetErr)     rlGetProcAddress("glGetError");
+        if (!_giv)  _giv  = (lrgl_GIV)        rlGetProcAddress("glGetIntegerv");
+        if (!_bfb)  _bfb  = (lrgl_BindFb)     rlGetProcAddress("glBindFramebuffer");
+        if (!_blt)  _blt  = (lrgl_Blit)       rlGetProcAddress("glBlitFramebuffer");
+        if (!_gen)  _gen  = (lrgl_Enable)      rlGetProcAddress("glEnable");
+        if (!_gdis) _gdis = (lrgl_Disable)     rlGetProcAddress("glDisable");
+        if (!_gup)  _gup  = (lrgl_UseProgram)  rlGetProcAddress("glUseProgram");
+        if (!_gvao) _gvao = (lrgl_BindVao)     rlGetProcAddress("glBindVertexArray");
+        if (!_gbuf) _gbuf = (lrgl_BindBuf)     rlGetProcAddress("glBindBuffer");
+        if (!_gsmp) _gsmp = (lrgl_BindSampler) rlGetProcAddress("glBindSampler");
+        if (!_gpx)  _gpx  = (lrgl_PixelStore)  rlGetProcAddress("glPixelStorei");
+        if (!_gff)  _gff  = (lrgl_FrontFace)   rlGetProcAddress("glFrontFace");
+
+        // Drain any GL errors the core left (Beetle consumes its own errors,
+        // so these are usually 0, but drain anyway to keep the queue clean).
+        if (_gerr) { unsigned int e; int ec=0; while ((e=_gerr())!=0 && ec++<8)
+            TraceLog(LOG_WARNING, "LIBRETRO HW: GL error after retro_run: 0x%04X", e); }
+
+        // Capture game output: Beetle renders its final frame to FBO 0 (the screen back
+        // buffer) because its internal blit to our FBO fails silently (MSAA mismatch).
+        // Only blit FBO 0 → our FBO when the core did NOT call get_current_framebuffer.
+        // When the core did call it (fboUsedThisFrame), it rendered directly into our
+        // FBO and we must not overwrite that content. When it did not call it, the core
+        // rendered to the screen back buffer (FBO 0) and we need to capture it.
+        if (!LIBRETRO.core.hwRender.fboUsedThisFrame && _giv && _bfb && _blt) {
+            int drawFbo = -1;
+            _giv(LIBRETRO_GL_FRAMEBUFFER_BINDING, &drawFbo);
+            if (drawFbo == 0) {
+                unsigned int ourFbo = LIBRETRO.core.hwRender.target.id;
+                int srcW = GetRenderWidth();
+                int srcH = GetRenderHeight();
+                int dstW = (int)LIBRETRO.core.hwRender.target.texture.width;
+                int dstH = (int)LIBRETRO.core.hwRender.target.texture.height;
+                _bfb(LIBRETRO_GL_READ_FRAMEBUFFER, 0);
+                _bfb(LIBRETRO_GL_DRAW_FRAMEBUFFER, ourFbo);
+                _blt(0, 0, srcW, srcH, 0, 0, dstW, dstH,
+                     LIBRETRO_GL_COLOR_BUFFER_BIT, LIBRETRO_GL_NEAREST_FILTER);
+                _bfb(LIBRETRO_GL_FRAMEBUFFER, 0);
+            }
+        }
+
+        // Restore to the default screen FBO. rlGetActiveFramebuffer() tracks
+        // rlgl's internal state which rlDisableFramebuffer() does not update, so
+        // using it for save/restore produces a stale target.id — which then causes
+        // ClearBackground() in draw() to wipe the game texture. Always return to
+        // FBO 0; retro_run is always called from update() which runs on FBO 0.
+        rlEnableFramebuffer(0);
+        rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());
+
+        // Restore GL state the core may have left dirty.
+        // rlSetBlendMode restores blend func + equation; we must also re-enable
+        // blending itself since Beetle calls glDisable(GL_BLEND) in some passes,
+        // which causes raylib's font/UI to render as solid white blocks.
+        rlSetBlendMode(RL_BLEND_ALPHA);
+        rlDisableScissorTest();
+        rlDisableDepthTest();
+        rlEnableDepthMask();
+        rlDisableBackfaceCulling();
+        rlColorMask(true, true, true, true);
+        // VAOs, sampler objects and the UNPACK_ROW_LENGTH/SKIP_* pixel-store params
+        // are all core in desktop GL 3.3+ and GLES3 (WebGL2). Each entry point is
+        // still resolved through rlGetProcAddress and NULL-checked, so a backend
+        // that lacks one simply no-ops. UNPACK_SWAP_BYTES is desktop-only (it does
+        // not exist in GLES), so it stays under the desktop guard.
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43) || defined(GRAPHICS_API_OPENGL_ES3)
+        if (_gen)  _gen(LIBRETRO_GL_BLEND_CAP);     // re-enable alpha blending
+        if (_gdis) _gdis(LIBRETRO_GL_STENCIL_TEST); // disable stencil
+        if (_gup)  _gup(0);                         // unbind shader program
+        if (_gvao) _gvao(0);                        // unbind VAO
+        if (_gbuf) {
+            _gbuf(LIBRETRO_GL_ARRAY_BUFFER, 0);
+            _gbuf(LIBRETRO_GL_ELEMENT_ARRAY_BUFFER, 0);
+        }
+        // Unbind sampler objects — a bound sampler overrides texture filter/wrap
+        // params and can corrupt raylib's font atlas sampling
+        if (_gsmp) { for (int i = 0; i < 8; i++) _gsmp(i, 0); }
+        rlActiveTextureSlot(0);
+        // Restore all pixel store parameters — some cores set ROW_LENGTH / SWAP_BYTES
+        // which garbles subsequent texture uploads (e.g. Nuklear font atlas)
+        if (_gpx) {
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_43)
+            _gpx(LIBRETRO_GL_UNPACK_SWAP_BYTES, 0); // desktop-only enum
+#endif
+            _gpx(LIBRETRO_GL_UNPACK_ROW_LENGTH,  0);
+            _gpx(LIBRETRO_GL_UNPACK_SKIP_ROWS,   0);
+            _gpx(LIBRETRO_GL_UNPACK_SKIP_PIXELS, 0);
+            _gpx(LIBRETRO_GL_UNPACK_ALIGNMENT,   4);
+            _gpx(LIBRETRO_GL_PACK_ALIGNMENT,     4);
+        }
+        if (_gff) _gff(0x0901U); // GL_CCW — restore default winding
+#endif
+    }
+
+    // Flush any single-sample accumulator left over from retro_run so
+    // samples arrive in the ring buffer within the same frame.
+    if (LIBRETRO.core.singleSampleCount > 0) {
+        UpdateLibretroAudioSampleBatch(LIBRETRO.core.singleSampleBuffer, LIBRETRO.core.singleSampleCount);
+        LIBRETRO.core.singleSampleCount = 0;
+    }
+}
+
+/**
+ * Extended function for UpdateLibretro().
+ *
+ * @param onlyTick When enabled, will only step the audio and game, without updating any of the inputs.
+ *
+ * @see UpdateLibretro()
+ */
+static void UpdateLibretroEx(bool onlyTick) {
+    if (!IsLibretroGameReady()) {
+        return;
+    }
+
+    if (!onlyTick) {
+        UpdateLibretro();
+        return;
+    }
+
+    // Ensure the texture is updated.
+    if (LIBRETRO.core.textureRebuild) {
+        if (!LIBRETRO.core.hwRender.active)
+            InitLibretroVideo();
+        else
+            LIBRETRO.core.textureRebuild = false;
+    }
+
+    LibretroTick();
 }
 
 /**
@@ -1742,10 +2363,20 @@ static bool LibretroGetAudioVideo(void) {
  */
 static void UpdateLibretro(void) {
     if (LIBRETRO.core.textureRebuild) {
-        InitLibretroVideo();
+        // HW render cores use an FBO sized to max_width×max_height which doesn't
+        // change when RETRO_ENVIRONMENT_SET_GEOMETRY fires — only the visible crop
+        // within that FBO changes. Recreating the FBO destroys Beetle/etc.'s cached
+        // attachment state (color texture ID, completeness), so skip it.
+        if (!LIBRETRO.core.hwRender.active)
+            InitLibretroVideo();
+        else
+            LIBRETRO.core.textureRebuild = false;
     }
 
     if (IsLibretroGameReady()) {
+        // Real wall-clock time for RETRO_ENVIRONMENT_GET_PERF_INTERFACE. This is
+        // intentionally NOT scaled by LIBRETRO.speed: the perf counter reports
+        // actual elapsed time, independent of fast-forward / slow-motion.
         LIBRETRO.core.gameTimeNSEC += (retro_perf_tick_t)((double)GetFrameTime() * 1000000000.0);
     }
 
@@ -1818,34 +2449,60 @@ static void UpdateLibretro(void) {
     }
 
     if (IsLibretroGameReady()) {
-        // Report audio buffer occupancy to the core just before retro_run, so
-        // it can decide whether to frameskip to avoid under-runs.
-        if (LIBRETRO.core.audio_buffer_status_callback.callback && LIBRETRO.core.audioRingBufferSize > 0) {
-            unsigned occupancy = (unsigned)((LIBRETRO.core.audioRingAvailable * 100) / LIBRETRO.core.audioRingBufferSize);
-            if (occupancy > 100) occupancy = 100;
-            bool underrun_likely = occupancy < 25;
-            LIBRETRO.core.audio_buffer_status_callback.callback(true, occupancy, underrun_likely);
+        double framePeriod = (LIBRETRO.core.fps > 0.0) ? (1.0 / LIBRETRO.core.fps) : (1.0 / 60.0);
+        double frameTime = (double)GetFrameTime();
+
+        // When at normal speed and the loop is already being presented at very
+        // close to the core's frame rate (e.g. a vsync'd 60 Hz display with a
+        // ~60 fps core), lock to exactly one tick per displayed frame. This
+        // avoids the beat-frequency judder you get when the accumulator
+        // occasionally emits 0 or 2 ticks in a frame; Dynamic Rate Control below
+        // resamples the small audio-rate difference. Gating on the *measured*
+        // frame time (not the monitor refresh) keeps this from running the core
+        // unbounded when vsync is off / FPS is uncapped.
+        double cadence = (framePeriod > 0.0) ? (frameTime / framePeriod) : 0.0;
+        bool lockToFrame = (LIBRETRO.speed == 1.0f && cadence > 0.9 && cadence < 1.1);
+
+        if (lockToFrame) {
+            LIBRETRO.speedAccumulator = 0.0;
+            LibretroTick();
+        } else {
+            LIBRETRO.speedAccumulator += frameTime * (double)LIBRETRO.speed;
+
+            // Cap iterations to avoid spiral of death on slow hardware.
+            int maxTicks = (int)(LIBRETRO.speed + 1.0f);
+            if (maxTicks < 1) maxTicks = 1;
+
+            // Clamp the accumulator so a GetFrameTime() spike (game load, window
+            // drag, menu pause) can't leave a backlog that runs the core fast for
+            // the following frames.
+            double maxAccumulator = framePeriod * (double)maxTicks;
+            if (LIBRETRO.speedAccumulator > maxAccumulator) {
+                LIBRETRO.speedAccumulator = maxAccumulator;
+            }
+
+            while (LIBRETRO.speedAccumulator >= framePeriod && maxTicks-- > 0) {
+                LIBRETRO.speedAccumulator -= framePeriod;
+                LibretroTick();
+            }
         }
 
-        LIBRETRO.core.symbols.retro_run();
-
-        // Flush any single-sample accumulator left over from retro_run so
-        // samples arrive in the ring buffer within the same frame.
-        if (LIBRETRO.core.singleSampleCount > 0) {
-            UpdateLibretroAudioSampleBatch(LIBRETRO.core.singleSampleBuffer, LIBRETRO.core.singleSampleCount);
-            LIBRETRO.core.singleSampleCount = 0;
-        }
-
-        // Dynamic Rate Control: nudge audio pitch to steer ring-buffer occupancy
-        // toward 50% so the audio stays in sync.
-        if (LIBRETRO.core.drcEnabled && LIBRETRO.core.audioRingBufferSize > 0 && IsAudioStreamValid(LIBRETRO.core.audioStream)) {
-            // Positive drift when buffer is full (consume faster).
-            // Negative drift when buffer is empty (consume slower).
-            float drift = ((float)LIBRETRO.core.audioRingAvailable / (float)LIBRETRO.core.audioRingBufferSize) - 0.5f;
-            LIBRETRO.core.drcAdjustment += drift * 0.001f;
-            if (LIBRETRO.core.drcAdjustment < 0.995f) LIBRETRO.core.drcAdjustment = 0.995f;
-            if (LIBRETRO.core.drcAdjustment > 1.005f) LIBRETRO.core.drcAdjustment = 1.005f;
-            SetAudioStreamPitch(LIBRETRO.core.audioStream, LIBRETRO.core.drcAdjustment);
+        // Audio playback rate. The stream pitch tracks LIBRETRO.speed so the
+        // device consumes the ring buffer at the same rate the core fills it:
+        // at slow-motion the audio stretches out (lower pitch) instead of
+        // underrunning into choppy gaps, and at fast-forward it consumes faster
+        // instead of overrunning. Dynamic Rate Control rides on top as a small
+        // multiplier that nudges ring-buffer occupancy toward 50% to stay in sync.
+        if (LIBRETRO.core.audioRingBufferSize > 0 && IsAudioStreamValid(LIBRETRO.core.audioStream)) {
+            if (LIBRETRO.core.drcEnabled) {
+                // Positive drift when buffer is full (consume faster).
+                // Negative drift when buffer is empty (consume slower).
+                float drift = ((float)LIBRETRO.core.audioRingAvailable / (float)LIBRETRO.core.audioRingBufferSize) - 0.5f;
+                LIBRETRO.core.drcAdjustment += drift * 0.001f;
+                if (LIBRETRO.core.drcAdjustment < 0.995f) LIBRETRO.core.drcAdjustment = 0.995f;
+                if (LIBRETRO.core.drcAdjustment > 1.005f) LIBRETRO.core.drcAdjustment = 1.005f;
+            }
+            SetAudioStreamPitch(LIBRETRO.core.audioStream, LIBRETRO.speed * LIBRETRO.core.drcAdjustment);
         }
 
         // Some cores (notably mgba GB/GBC) defer the actual core reset until
@@ -1910,7 +2567,15 @@ static void LibretroMapPixelFormatARGB8888ToRGBA8888(void *output_, const void *
  * Called when the core is updating the video.
  */
 static void LibretroVideoRefresh(const void *data, unsigned width, unsigned height, size_t pitch) {
-    // Only act when there is usable pixel data.
+    if (data == RETRO_HW_FRAME_BUFFER_VALID) {
+        LIBRETRO.core.hwRender.frameWidth  = width;
+        LIBRETRO.core.hwRender.frameHeight = height;
+        if (width != LIBRETRO.core.width || height != LIBRETRO.core.height) {
+            LIBRETRO.core.width  = width;
+            LIBRETRO.core.height = height;
+        }
+        return;
+    }
     if (!data) {
         return;
     }
@@ -1920,11 +2585,17 @@ static void LibretroVideoRefresh(const void *data, unsigned width, unsigned heig
         LIBRETRO.core.width = width;
         LIBRETRO.core.height = height;
         if (!InitLibretroVideo()) {
+            TraceLog(LOG_ERROR, "LIBRETRO: Failed to reinitialize video at %ux%u", width, height);
             return;
         }
     }
 
     if (!IsTextureValid(LIBRETRO.core.texture)) {
+        return;
+    }
+
+    if (LIBRETRO.core.frameBuffer == NULL) {
+        TraceLog(LOG_WARNING, "LIBRETRO: Frame buffer not allocated, skipping video refresh");
         return;
     }
 
@@ -1984,14 +2655,20 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
             }
             return 0;
         }
+        case RETRO_DEVICE_JOYPAD_MULTITAP:
         case RETRO_DEVICE_JOYPAD: {
+            // Multitap maps index (0-3) to a sub-controller: physical pad = port*4 + index.
+            bool isMultitap = (device == RETRO_DEVICE_JOYPAD_MULTITAP)
+                              || (LIBRETRO.core.portDeviceMap[port] == RETRO_DEVICE_JOYPAD_MULTITAP);
+            unsigned physicalPad = isMultitap ? (port * 4 + index) : port;
+
             // Return a bitmask of all buttons when requested.
             if (id == RETRO_DEVICE_ID_JOYPAD_MASK) {
                 int16_t mask = 0;
-                bool gpAvail = IsGamepadAvailable((int)port);
+                bool gpAvail = IsGamepadAvailable((int)physicalPad);
                 for (int btn = 0; btn < 16; btn++) {
                     bool pressed = false;
-                    if (port == 0) {
+                    if (physicalPad == 0) {
                         if (btn < 16 && LIBRETRO.core.virtualJoypadState[btn]) {
                             pressed = true;
                         } else if (gpAvail) {
@@ -2011,15 +2688,16 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                             }
                         }
                     } else if (gpAvail) {
-                        pressed = IsGamepadButtonDown((int)port, LibretroRetroJoypadButtonToGamepadButton(btn));
+                        pressed = IsGamepadButtonDown((int)physicalPad, LibretroRetroJoypadButtonToGamepadButton(btn));
                     }
+                    if (!pressed) pressed = LibretroAnalogToDpadPressed((int)physicalPad, btn);
                     if (pressed) mask |= (1 << btn);
                 }
                 return mask;
             }
 
-            // Port 0: gamepad if available, otherwise keyboard.
-            if (port == 0) {
+            // Physical pad 0: virtual joypad (touch) then gamepad then keyboard.
+            if (physicalPad == 0) {
                 if (id < 16 && LIBRETRO.core.virtualJoypadState[id]) {
                     return 1;
                 }
@@ -2035,18 +2713,20 @@ static int16_t LibretroInputState(unsigned port, unsigned device, unsigned index
                 }
                 int retroKey = LibretroRetroJoypadButtontoRetroKey(id);
                 if (retroKey == RETROK_UNKNOWN) {
-                    return 0;
+                    return LibretroAnalogToDpadPressed(0, id) ? 1 : 0;
                 }
                 int raylibKey = LibretroRetroKeyToKeyboardKey(retroKey);
-                return (raylibKey > 0) ? (int)IsKeyDown(raylibKey) : 0;
+                if (raylibKey > 0 && IsKeyDown(raylibKey)) return 1;
+                return LibretroAnalogToDpadPressed(0, id) ? 1 : 0;
             }
 
-            // Port 1+: map to gamepad (port 1 → gamepad 1, port 2 → gamepad 2, ...).
-            if (!IsGamepadAvailable(port)) {
-                return 0;
+            // Physical pad 1+: map directly to that gamepad index.
+            if (!IsGamepadAvailable((int)physicalPad)) {
+                return LibretroAnalogToDpadPressed((int)physicalPad, id) ? 1 : 0;
             }
             int gamepadButton = LibretroRetroJoypadButtonToGamepadButton(id);
-            return (int)IsGamepadButtonDown(port, gamepadButton);
+            if (IsGamepadButtonDown((int)physicalPad, gamepadButton)) return 1;
+            return LibretroAnalogToDpadPressed((int)physicalPad, id) ? 1 : 0;
         }
 
         case RETRO_DEVICE_MOUSE: {
@@ -2304,7 +2984,11 @@ static bool InitLibretroAudioVideo(void) {
     InitLibretroVideo();
     InitLibretroAudio();
 
-    SetTargetFPS((int)(LIBRETRO.core.fps * LIBRETRO.speed));
+    hw_FireContextReset();
+
+    // A fresh game load is a wall-clock discontinuity (disk I/O, core init);
+    // start the time accumulator clean so the first frame doesn't burst.
+    ResetLibretroTiming();
 
     return true;
 }
@@ -2359,11 +3043,23 @@ static bool LoadLibretroGameFromMemory(const unsigned char *fileData, int dataSi
         return LoadLibretroGame(NULL);
     }
 
-    // Check if it needs the full path
+    // When the core requires a full path, write to a temp file and load from disk.
     if (LIBRETRO.core.needFullpath) {
-        TraceLog(LOG_ERROR, "LIBRETRO: The core requires the full path, can't load from memory");
-        // TODO: Allow saving to a temporary location and then use LoadLibretroGame()?
-        return false;
+        char tempPath[RAYLIB_LIBRETRO_VFS_MAX_PATH];
+        TextCopy(tempPath,
+            TextFormat("%s/.raylib-libretro-%d.tmp", GetApplicationDirectory(), GetRandomValue(1, 999999)));
+        if (!SaveFileData(tempPath, fileData, dataSize)) {
+            TraceLog(LOG_ERROR, "LIBRETRO: Failed to write temp file for needFullPath core");
+            return false;
+        }
+        TraceLog(LOG_INFO, "LIBRETRO: Loading from temp file %s", tempPath);
+        bool ok = LoadLibretroGame(tempPath);
+        if (ok) {
+            TextCopy(LIBRETRO.core.tempGamePath, tempPath);
+        } else {
+            FileRemove(tempPath);
+        }
+        return ok;
     }
 
     // Load the game.
@@ -2512,6 +3208,68 @@ static bool IsLibretroBlockExtract(void) {
 }
 
 /**
+ * Resolve the directory used for temporary content extraction.
+ *
+ * Prefers the configured save directory when it is set and present on disk;
+ * otherwise falls back to the current working directory. The returned pointer is
+ * owned by global/raylib state and must be used immediately, not stored. */
+static const char* LibretroGetTempDirectory(void) {
+    if (LIBRETRO.saveDirectory[0] != '\0' && DirectoryExists(LIBRETRO.saveDirectory)) {
+        return LIBRETRO.saveDirectory;
+    }
+    return GetWorkingDirectory();
+}
+
+/**
+ * Delete leftover temporary content files from previous sessions.
+ *
+ * LibretroExtractContentToTempFile() writes ".raylib-libretro-*" files that are
+ * removed on unload, but a crash can orphan them (including large CD images). Sweep
+ * the temp directory and remove any that aren't backing the current game. */
+static void LibretroCleanupTempFiles(void) {
+    FilePathList files = LoadDirectoryFiles(LibretroGetTempDirectory());
+    for (unsigned int i = 0; i < files.count; i++) {
+        if (TextFindIndex(GetFileName(files.paths[i]), ".raylib-libretro-") != 0) {
+            continue; // Not one of ours.
+        }
+        if (TextIsEqual(files.paths[i], LIBRETRO.core.tempGamePath)) {
+            continue; // Leave the file backing the currently loaded game.
+        }
+        FileRemove(files.paths[i]);
+    }
+    UnloadDirectoryFiles(files);
+}
+
+/**
+ * Materialize content that lives only in an alternate filesystem (e.g. inside a
+ * mounted .zip) to a real temporary file on disk.
+ *
+ * need_fullpath cores receive a file path rather than a data buffer, and some of
+ * them (notably PlayStation cores opening a CD image) read it with raw stdio rather
+ * than the libretro VFS. Such cores cannot see the virtual "/game/..." path served
+ * by the PhysFS bridge, so the bytes must be written to a real path first — in the
+ * save directory when one is set, otherwise the current working directory. The
+ * original extension is preserved so the core's content-format detection still
+ * works. The path is stored in LIBRETRO.core.tempGamePath and removed on unload.
+ *
+ * @param originalName Virtual path of the content (used only for its extension).
+ * @param data         File contents to write.
+ * @param size         Number of bytes in \c data.
+ * @return true if the temp file was written, false otherwise. */
+static bool LibretroExtractContentToTempFile(const char* originalName, const unsigned char* data, int size) {
+    const char* ext = GetFileExtension(originalName);
+    if (ext == NULL) ext = "";
+    TextCopy(LIBRETRO.core.tempGamePath,
+        TextFormat("%s/.raylib-libretro-%d%s", LibretroGetTempDirectory(), GetRandomValue(1, 999999), ext));
+    if (!SaveFileData(LIBRETRO.core.tempGamePath, (void*)data, size)) {
+        TraceLog(LOG_ERROR, "LIBRETRO: Failed to write temp file for full-path core: %s", LIBRETRO.core.tempGamePath);
+        LIBRETRO.core.tempGamePath[0] = '\0';
+        return false;
+    }
+    return true;
+}
+
+/**
  * Load content (ROM/game) into the initialized core.
  * @param gameFile Path to the content file, or NULL for content-less cores.
  * @return true on success, false if loading failed.
@@ -2545,7 +3303,12 @@ static bool LoadLibretroGame(const char* gameFile) {
         return false;
     }
 
-    if (!FileExists(gameFile)) {
+    bool existsOnDisk = FileExists(gameFile);
+    bool fileFound = existsOnDisk;
+    if (!fileFound && raylib_libretro_vfs_alt_stat != NULL) {
+        fileFound = (raylib_libretro_vfs_alt_stat(gameFile, NULL) & RETRO_VFS_STAT_IS_VALID) != 0;
+    }
+    if (!fileFound) {
         TraceLog(LOG_ERROR, "LIBRETRO: Given content does not exist: %s", gameFile);
         LIBRETRO.core.loaded = false;
         return false;
@@ -2561,11 +3324,43 @@ static bool LoadLibretroGame(const char* gameFile) {
         info.meta = "";
         TextCopy(LIBRETRO.core.contentPath, gameFile);
         SetLibretroGameInfoExt(NULL, 0);
+
+        // Hand the core the path as-is first. VFS-aware cores read it through our VFS,
+        // so content inside a mounted .zip is served by the PhysFS bridge — including
+        // multi-file images (e.g. .cue referencing .bin) whose sidecars resolve via
+        // the same bridge.
         if (LIBRETRO.core.symbols.retro_load_game(&info)) {
             TraceLog(LOG_INFO, "LIBRETRO: Loaded content with full path: %s", gameFile);
             LIBRETRO.core.loaded = true;
             return InitLibretroAudioVideo();
         }
+
+        // The as-is load failed. When the content lives only in an alternate
+        // filesystem (e.g. a .chd inside a .zip), cores that open it with raw stdio
+        // rather than the VFS (such as PlayStation CD handling) can't see the virtual
+        // path. Extract the file to a real temp path and retry with that. contentPath
+        // keeps the logical name so save states and SRAM get a stable filename.
+        if (!existsOnDisk && raylib_libretro_vfs_alt_load_file_data != NULL) {
+            int extractedSize = 0;
+            unsigned char* extracted = raylib_libretro_vfs_alt_load_file_data(gameFile, &extractedSize);
+            bool wrote = (extracted != NULL && extractedSize > 0)
+                && LibretroExtractContentToTempFile(gameFile, extracted, extractedSize);
+            UnloadFileData(extracted);
+            if (wrote) {
+                info.path = LIBRETRO.core.tempGamePath;
+                // A core that reads RETRO_ENVIRONMENT_GET_GAME_INFO_EXT must also get
+                // the real path; tempGamePath is persistent so the pointer stays valid.
+                LIBRETRO.core.gameInfoExt.full_path = LIBRETRO.core.tempGamePath;
+                if (LIBRETRO.core.symbols.retro_load_game(&info)) {
+                    TraceLog(LOG_INFO, "LIBRETRO: Loaded archived content via temp file: %s", LIBRETRO.core.tempGamePath);
+                    LIBRETRO.core.loaded = true;
+                    return InitLibretroAudioVideo();
+                }
+                FileRemove(LIBRETRO.core.tempGamePath);
+                LIBRETRO.core.tempGamePath[0] = '\0';
+            }
+        }
+
         TraceLog(LOG_ERROR, "LIBRETRO: Failed to load full path: %s", gameFile);
         LIBRETRO.core.loaded = false;
         LIBRETRO.core.contentPath[0] = '\0';
@@ -2693,6 +3488,9 @@ static bool InitLibretro(const char* core) {
         return false;
     }
 
+    // Remove any temp content files orphaned by a previous session's crash.
+    LibretroCleanupTempFiles();
+
     // Load all other libretro methods.
     LoadLibretroMethod(retro_init);
     LoadLibretroMethod(retro_deinit);
@@ -2738,12 +3536,12 @@ static bool InitLibretro(const char* core) {
  * @param posX Horizontal screen position.
  * @param posY Vertical screen position.
  * @param tint Color tint applied to the framebuffer texture.
+ *
+ * @see DrawTexture()
  */
 static void DrawLibretroTexture(int posX, int posY, Color tint) {
-    if (LIBRETRO.core.loaded == false) {
-        return;
-    }
-    DrawTexture(LIBRETRO.core.texture, posX, posY, tint);
+    Rectangle destRec = {(float)posX, (float)posY, (float)GetLibretroWidth(), (float)GetLibretroHeight()};
+    DrawLibretroPro(destRec, tint);
 }
 
 /**
@@ -2752,10 +3550,7 @@ static void DrawLibretroTexture(int posX, int posY, Color tint) {
  * @param tint Color tint applied to the framebuffer texture.
  */
 static void DrawLibretroV(Vector2 position, Color tint) {
-    if (LIBRETRO.core.loaded == false) {
-        return;
-    }
-    DrawTextureV(LIBRETRO.core.texture, position, tint);
+    DrawLibretroTexture((int)position.x, (int)position.y, tint);
 }
 
 /**
@@ -2765,11 +3560,39 @@ static void DrawLibretroV(Vector2 position, Color tint) {
  * @param scale Uniform scale factor.
  * @param tint Color tint applied to the framebuffer texture.
  */
+static Rectangle LibretroSourceRect(void) {
+    float w = (float)LIBRETRO.core.width;
+    float h = (float)LIBRETRO.core.height;
+    // HW FBO color attachments are bottom-left origin; flip via negative source height when needed.
+    if (LIBRETRO.core.hwRender.active) {
+        // Beetle renders at native resolution (e.g. 256x240) via glViewport into
+        // the bottom-left corner of the full FBO (e.g. 700x576). frameWidth/Height
+        // from video_refresh tell us exactly which sub-region was drawn.
+        //
+        // The content lives at GL texture t in [0, frameH/fboH] (bottom of the FBO).
+        // DrawTexturePro samples GL t from y/H (screen bottom) to (y-height)/H
+        // (screen top) when height<0. With y=0, height=-frameH that is t in
+        // [0, frameH/H], oriented upright — exactly the rendered region. Using
+        // y=frameH instead would sample the empty middle band of the FBO (black
+        // with a 1px content sliver at the seam).
+        float fw = LIBRETRO.core.hwRender.frameWidth  > 0
+                   ? (float)LIBRETRO.core.hwRender.frameWidth  : w;
+        float fh = LIBRETRO.core.hwRender.frameHeight > 0
+                   ? (float)LIBRETRO.core.hwRender.frameHeight : h;
+        return (Rectangle){0, 0, fw, -fh};
+    }
+    if (LIBRETRO.core.hwRender.cb.bottom_left_origin)
+        return (Rectangle){0, h, w, -h};
+    return (Rectangle){0, 0, w, h};
+}
+
 static void DrawLibretroEx(Vector2 position, float rotation, float scale, Color tint) {
     if (LIBRETRO.core.loaded == false) {
         return;
     }
-    DrawTextureEx(LIBRETRO.core.texture, position, rotation, scale, tint);
+    Rectangle source = LibretroSourceRect();
+    Rectangle dest = {position.x, position.y, (float)LIBRETRO.core.width * scale, (float)LIBRETRO.core.height * scale};
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, (Vector2){0, 0}, rotation + (float)(LIBRETRO.core.rotation * 90), tint);
 }
 
 /**
@@ -2781,9 +3604,14 @@ static void DrawLibretroPro(Rectangle destRec, Color tint) {
     if (LIBRETRO.core.loaded == false) {
         return;
     }
-    Rectangle source = {0, 0, LIBRETRO.core.width, LIBRETRO.core.height};
-    Vector2 origin = {0, 0};
-    DrawTexturePro(LIBRETRO.core.texture, source, destRec, origin, 0, tint);
+    float rotDeg = (float)(LIBRETRO.core.rotation * 90);
+    bool swap = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
+    float destW = swap ? destRec.height : destRec.width;
+    float destH = swap ? destRec.width : destRec.height;
+    Rectangle source = LibretroSourceRect();
+    Rectangle dest = {destRec.x + destRec.width / 2.0f, destRec.y + destRec.height / 2.0f, destW, destH};
+    Vector2 origin = {destW / 2.0f, destH / 2.0f};
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotDeg, tint);
 }
 
 /**
@@ -2791,17 +3619,75 @@ static void DrawLibretroPro(Rectangle destRec, Color tint) {
  * @return true if a message was drawn; false if there was nothing to display.
  */
 static bool DrawLibretroMessage(void) {
-    if (GetTime() > LIBRETRO.core.osdEndTime) {
+    if (GetTime() > LIBRETRO.osdEndTime) {
         return false;
     }
 
-    int fontSize = 20;
+    const struct retro_message_ext *osd = &LIBRETRO.osd;
+    // Nothing to render for an empty string; skip drawing an empty box.
+    if (osd->msg[0] == '\0') {
+        return false;
+    }
+    float fontSize = 20.0f;
     int padding = 8;
-    int textWidth = MeasureText(LIBRETRO.core.osdMessage, fontSize);
-    int x = (GetScreenWidth() - textWidth) / 2;
-    int y = GetScreenHeight() - fontSize - padding * 2;
-    DrawRectangle(x - padding, y - padding, textWidth + padding * 2, fontSize + padding * 2, (Color){0, 0, 0, 180});
-    DrawText(LIBRETRO.core.osdMessage, x, y, fontSize, WHITE);
+    // MeasureTextEx honors embedded newlines (multi-line OSD messages), unlike
+    // the single-line MeasureText, so the background box wraps the whole block.
+    Font font = GetFontDefault();
+    float spacing = fontSize / 10.0f;
+    Vector2 textSize = MeasureTextEx(font, osd->msg, fontSize, spacing);
+
+    bool hasProgress = (osd->type == RETRO_MESSAGE_TYPE_PROGRESS);
+    int barHeight = hasProgress ? 6 : 0;
+    int barGap = hasProgress ? padding / 2 : 0;
+
+    int textH = (int)textSize.y;
+    int boxW = (int)textSize.x + padding * 2;
+    int boxH = textH + padding * 2 + barHeight + barGap;
+    int boxX = (GetScreenWidth() - boxW) / 2;
+    // Status messages are persistent readouts, so pin them to the top, out of
+    // the way of transient notifications anchored to the bottom.
+    int boxY = (osd->type == RETRO_MESSAGE_TYPE_STATUS)
+        ? padding
+        : GetScreenHeight() - boxH - padding;
+
+    // NOTIFICATION_ALT should read as visually distinct from a plain notice.
+    Color bg = (osd->type == RETRO_MESSAGE_TYPE_NOTIFICATION_ALT)
+        ? (Color){0, 40, 80, 200}
+        : (Color){0, 0, 0, 180};
+    DrawRectangle(boxX, boxY, boxW, boxH, bg);
+
+    // Tint the text by severity so errors and warnings stand out.
+    Color textColor = WHITE;
+    if (osd->level == RETRO_LOG_ERROR) {
+        textColor = (Color){255, 80, 80, 255};
+    } else if (osd->level == RETRO_LOG_WARN) {
+        textColor = (Color){255, 220, 90, 255};
+    }
+    Vector2 textPos = {(float)(boxX + padding), (float)(boxY + padding)};
+    DrawTextEx(font, osd->msg, textPos, fontSize, spacing, textColor);
+
+    if (hasProgress) {
+        int barX = boxX + padding;
+        int barY = boxY + padding + textH + barGap;
+        int barW = boxW - padding * 2;
+        DrawRectangle(barX, barY, barW, barHeight, (Color){80, 80, 80, 200});
+        if (osd->progress >= 0) {
+            // Determinate task: fill proportionally to 0-100. Clamp in case a
+            // core reports past 100 (progress is an int8_t, range -128..127).
+            int pct = osd->progress > 100 ? 100 : osd->progress;
+            int fill = barW * pct / 100;
+            DrawRectangle(barX, barY, fill, barHeight, WHITE);
+        } else {
+            // Indefinite task: a sweep that bounces left-right via a triangle
+            // wave, so it eases at the edges instead of snapping back.
+            int sweepW = barW / 4;
+            int travel = barW - sweepW;
+            float t = (float)(GetTime() - (double)(long)GetTime());  // 0..1
+            float ping = t < 0.5f ? t * 2.0f : (1.0f - t) * 2.0f;    // 0->1->0
+            int offset = travel > 0 ? (int)(ping * travel) : 0;
+            DrawRectangle(barX + offset, barY, sweepW, barHeight, WHITE);
+        }
+    }
     return true;
 }
 
@@ -2814,7 +3700,6 @@ static void DrawLibretroTint(Color tint) {
         return;
     }
 
-    float rotationDeg = (float)LIBRETRO.core.rotation * 90.0f;
     bool swapDims = (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3);
 
     // Find the aspect ratio.
@@ -2827,11 +3712,23 @@ static void DrawLibretroTint(Color tint) {
     float visAspect = swapDims ? (1.0f / aspect) : aspect;
 
     // Calculate the optimal visual width/height to fit the screen.
-    int visH = GetScreenHeight();
-    int visW = (int)(visH * visAspect);
-    if (visW > GetScreenWidth()) {
-        visW = GetScreenWidth();
-        visH = (int)(visW / visAspect);
+    int visH, visW;
+    if (LIBRETRO.integerScaling && GetLibretroHeight() > 0 && visAspect > 0) {
+        // Calculate the best integer scaling size.
+        int maxScaleH = GetScreenHeight() / GetLibretroHeight();
+        int maxScaleW = (int)(GetScreenWidth() / (GetLibretroHeight() * visAspect));
+        int scaleFactor = (maxScaleH < maxScaleW) ? maxScaleH : maxScaleW;
+        if (scaleFactor < 1) scaleFactor = 1;
+        visH = GetLibretroHeight() * scaleFactor;
+        visW = (int)(visH * visAspect);
+    }
+    else {
+        visH = GetScreenHeight();
+        visW = (int)(visH * visAspect);
+        if (visW > GetScreenWidth()) {
+            visW = GetScreenWidth();
+            visH = (int)(visW / visAspect);
+        }
     }
 
     // For 90/270 rotations the dest rect dimensions are swapped relative to visual size
@@ -2842,10 +3739,20 @@ static void DrawLibretroTint(Color tint) {
     // Draw centered with rotation around the dest rect's center.
     float cx = GetScreenWidth() / 2.0f;
     float cy = GetScreenHeight() / 2.0f;
-    Rectangle source = {0, 0, LIBRETRO.core.width, LIBRETRO.core.height};
+    Rectangle source = LibretroSourceRect();
     Rectangle dest = {cx, cy, (float)destW, (float)destH};
     Vector2 origin = {destW / 2.0f, destH / 2.0f};
-    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, rotationDeg, tint);
+    // HW FBO: use GL_ONE/GL_ZERO so the display isn't masked by alpha=0 pixels
+    // in the FBO's color attachment (which can happen when the core leaves background
+    // pixels at alpha=0). Restore BLEND_ALPHA afterward for the rest of the frame.
+    if (LIBRETRO.core.hwRender.active) {
+        rlSetBlendFactors(1, 0, 0x8006);  // GL_ONE, GL_ZERO, GL_FUNC_ADD
+        rlSetBlendMode(RL_BLEND_CUSTOM);
+    }
+    DrawTexturePro(LIBRETRO.core.texture, source, dest, origin, (float)(LIBRETRO.core.rotation * 90), tint);
+    if (LIBRETRO.core.hwRender.active) {
+        rlSetBlendMode(RL_BLEND_ALPHA);
+    }
 }
 
 /**
@@ -2856,18 +3763,76 @@ static void DrawLibretro(void) {
 }
 
 /**
+ * Displays an on-screen display (OSD) message with full control over its
+ * appearance, mirroring the fields of RETRO_ENVIRONMENT_SET_MESSAGE_EXT.
+ *
+ * Honors type (notification/status/progress placement), priority (a lower-
+ * priority message won't replace a higher-priority one that's still visible),
+ * level (severity tint), progress (progress bar), and duration (milliseconds;
+ * 0 falls back to a readable default). The target field is ignored — this
+ * function only drives the OSD; callers wanting the log should TraceLog too.
+ *
+ * @param message The message descriptor.
+ */
+static void SetLibretroMessageEx(const struct retro_message_ext *message) {
+    if (message == NULL || message->msg == NULL || message->msg[0] == '\0') {
+        return;
+    }
+
+    // Don't let a lower-priority message stomp one that's still on-screen; an
+    // expired message imposes no such constraint.
+    bool active = GetTime() <= LIBRETRO.osdEndTime;
+    if (active && message->priority < LIBRETRO.osd.priority) {
+        return;
+    }
+
+    // A non-positive duration means "use the frontend default" rather than
+    // "show for zero milliseconds", so clamp it to a readable default.
+    double duration = (double)message->duration / 1000.0;
+    if (duration <= 0.0) {
+        duration = 3.0;
+    }
+
+    // Capture the full descriptor, then fix up the fields we can't take
+    // verbatim: msg must point at our owned buffer.
+    LIBRETRO.osd = *message;
+    TextCopy(LIBRETRO.osdMessage, message->msg);
+    LIBRETRO.osd.msg = LIBRETRO.osdMessage;
+    LIBRETRO.osdEndTime = GetTime() + duration;
+
+    // progress is only meaningful for progress-type messages; 0-100 is a real
+    // percentage and -1 means indefinite.
+    if (message->type != RETRO_MESSAGE_TYPE_PROGRESS || message->progress < 0) {
+        LIBRETRO.osd.progress = -1;
+    }
+}
+
+/**
  * Displays an on-screen display (OSD) message.
- * @param msg      Message text to display.
+ * @param msg      Message text to display, or NULL to clear the current message.
  * @param duration How long to show the message, in seconds. */
-static void SetLibretroMessage(const char* msg, float duration) {
+static void SetLibretroMessage(const char* msg, double duration) {
     if (msg == NULL) {
-        LIBRETRO.core.osdMessage[0] = '\0';
-        LIBRETRO.core.osdEndTime = 0;
+        // Clear: reset to the lowest-priority notification defaults so the next
+        // message of any priority can take over.
+        LIBRETRO.osd = (struct retro_message_ext){0};
+        LIBRETRO.osd.msg = LIBRETRO.osdMessage;
+        LIBRETRO.osd.type = RETRO_MESSAGE_TYPE_NOTIFICATION;
+        LIBRETRO.osd.progress = -1;
+        LIBRETRO.osdMessage[0] = '\0';
+        LIBRETRO.osdEndTime = 0;
+        return;
     }
-    else {
-        TextCopy(LIBRETRO.core.osdMessage, msg);
-        LIBRETRO.core.osdEndTime = GetTime() + (double)duration;
-    }
+    // A transient notification at the lowest priority. SetLibretroMessageEx
+    // clamps a non-positive duration to a readable default.
+    struct retro_message_ext message = {0};
+    message.msg = msg;
+    message.duration = (unsigned)(duration * 1000.0 + 0.5);
+    message.level = RETRO_LOG_INFO;
+    message.target = RETRO_MESSAGE_TARGET_OSD;
+    message.type = RETRO_MESSAGE_TYPE_NOTIFICATION;
+    message.progress = -1;
+    SetLibretroMessageEx(&message);
 }
 
 /**
@@ -2896,11 +3861,6 @@ static float GetLibretroVolume(void) {
 static void SetLibretroSpeed(float speed) {
     if (speed <= 0.0f) speed = 0.1f;
     LIBRETRO.speed = speed;
-    if (speed > 1.0f) {
-        SetTargetFPS(0);
-    } else {
-        SetTargetFPS((int)(LIBRETRO.core.fps * speed));
-    }
 }
 
 /**
@@ -2941,10 +3901,169 @@ static bool IsLibretroDynamicRateControlEnabled(void) {
 }
 
 /**
+ * Set the input device type for a controller port and notify the core.
+ * Use RETRO_DEVICE_JOYPAD_MULTITAP to enable multitap on a port; the input_state
+ * index then selects the sub-controller (0-3), mapping to physical gamepad port*4+index.
+ * @param port Controller port (0-15).
+ * @param device Device type (e.g. RETRO_DEVICE_JOYPAD, RETRO_DEVICE_JOYPAD_MULTITAP).
+ * @return true on success, false if port is out of range.
+ */
+static bool SetLibretroPortDevice(unsigned port, unsigned device) {
+    if (port >= 16) {
+        return false;
+    }
+    LIBRETRO.core.portDeviceMap[port] = device;
+    if (IsLibretroReady() && LIBRETRO.core.symbols.retro_set_controller_port_device != NULL) {
+        LIBRETRO.core.symbols.retro_set_controller_port_device(port, device);
+    }
+    return true;
+}
+
+/**
+ * Get the input device type currently assigned to a controller port.
+ * @param port Controller port (0-15).
+ * @return Device type, or RETRO_DEVICE_NONE if port is out of range.
+ */
+static unsigned GetLibretroPortDevice(unsigned port) {
+    if (port >= 16) {
+        return RETRO_DEVICE_NONE;
+    }
+    return LIBRETRO.core.portDeviceMap[port];
+}
+
+/**
+ * Determine whether the loaded core registered a disk control interface.
+ *
+ * Multi-disc cores (PlayStation, SegaCD, etc.) register this via
+ * RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE / _EXT so the frontend can eject and
+ * swap disk images at runtime.
+ * @return true if a disk control interface is available.
+ */
+static bool IsLibretroDiskControlActive(void) {
+    return LIBRETRO.core.diskControlActive;
+}
+
+/**
+ * Get the number of disk images the core has available to swap between.
+ * @return The image count, or 0 if no disk control interface is active.
+ */
+static unsigned GetLibretroDiskImageCount(void) {
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.get_num_images == NULL) {
+        return 0;
+    }
+    return LIBRETRO.core.disk_control.get_num_images();
+}
+
+/**
+ * Get the index of the disk image currently inserted in the emulated drive.
+ * @return The current image index, or 0 if no disk control interface is active.
+ */
+static unsigned GetLibretroDiskImageIndex(void) {
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.get_image_index == NULL) {
+        return 0;
+    }
+    return LIBRETRO.core.disk_control.get_image_index();
+}
+
+/**
+ * Get the current ejected state of the emulated disk drive.
+ * @return true if the virtual disk tray is open (ejected), false otherwise.
+ */
+static bool GetLibretroDiskEjectState(void) {
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.get_eject_state == NULL) {
+        return false;
+    }
+    return LIBRETRO.core.disk_control.get_eject_state();
+}
+
+/**
+ * Open or close the emulated disk drive's virtual tray.
+ *
+ * The image index may only be changed while the tray is ejected. Most callers should
+ * prefer SwapLibretroDisk(), which performs the full eject/insert/close sequence.
+ * @param ejected true to open the tray, false to close it.
+ * @return true on success, false if the interface is inactive or the core refused.
+ */
+static bool SetLibretroDiskEjectState(bool ejected) {
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.set_eject_state == NULL) {
+        return false;
+    }
+    return LIBRETRO.core.disk_control.set_eject_state(ejected);
+}
+
+/**
+ * Insert the disk image at the given index. The tray must be ejected first.
+ * @param index Image index to insert (0-based).
+ * @return true on success, false if the interface is inactive or the core refused.
+ */
+static bool SetLibretroDiskImageIndex(unsigned index) {
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.set_image_index == NULL) {
+        return false;
+    }
+    return LIBRETRO.core.disk_control.set_image_index(index);
+}
+
+/**
+ * Get a friendly label for a disk image (e.g. "Disc 1"), when the core provides one.
+ *
+ * Only available with the extended disk control interface; the buffer is always
+ * null-terminated, even on failure.
+ * @param index Image index to label (0-based).
+ * @param label Buffer to receive the null-terminated label.
+ * @param len   Size of the label buffer in bytes.
+ * @return true if a label was written, false otherwise.
+ */
+static bool GetLibretroDiskImageLabel(unsigned index, char* label, size_t len) {
+    if (label == NULL || len == 0) {
+        return false;
+    }
+    label[0] = '\0';
+    if (!LIBRETRO.core.diskControlActive || LIBRETRO.core.disk_control.get_image_label == NULL) {
+        return false;
+    }
+    return LIBRETRO.core.disk_control.get_image_label(index, label, len);
+}
+
+/**
+ * Swap the inserted disk to the image at the given index.
+ *
+ * Performs the standard libretro swap sequence: eject the tray, set the new image
+ * index, then close the tray. This is the simplest way for a frontend to change
+ * discs on a multi-disc game.
+ * @param index Image index to insert (0-based, must be < GetLibretroDiskImageCount()).
+ * @return true if the disk was swapped, false on any failure.
+ */
+static bool SwapLibretroDisk(unsigned index) {
+    if (!LIBRETRO.core.diskControlActive) {
+        TraceLog(LOG_WARNING, "LIBRETRO: SwapLibretroDisk: no disk control interface active");
+        return false;
+    }
+    if (index >= GetLibretroDiskImageCount()) {
+        TraceLog(LOG_WARNING, "LIBRETRO: SwapLibretroDisk: index %u out of range", index);
+        return false;
+    }
+    if (!SetLibretroDiskEjectState(true)) {
+        TraceLog(LOG_WARNING, "LIBRETRO: SwapLibretroDisk: failed to eject disk tray");
+        return false;
+    }
+    if (!SetLibretroDiskImageIndex(index)) {
+        TraceLog(LOG_WARNING, "LIBRETRO: SwapLibretroDisk: failed to set image index %u", index);
+        SetLibretroDiskEjectState(false);
+        return false;
+    }
+    if (!SetLibretroDiskEjectState(false)) {
+        TraceLog(LOG_WARNING, "LIBRETRO: SwapLibretroDisk: failed to close disk tray");
+        return false;
+    }
+    TraceLog(LOG_INFO, "LIBRETRO: Swapped to disk image %u of %u", index, GetLibretroDiskImageCount());
+    return true;
+}
+
+/**
  * Get the current display rotation index (0=0°, 1=90°, 2=180°, 3=270°).
  * @return Rotation index.
  */
-static unsigned GetLibretroRotation(void) {
+static int GetLibretroRotation(void) {
     return LIBRETRO.core.rotation;
 }
 
@@ -2953,6 +4072,10 @@ static unsigned GetLibretroRotation(void) {
  * @return Width in pixels
  */
 static unsigned GetLibretroWidth(void) {
+    if (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3) {
+        return LIBRETRO.core.height;
+    }
+
     return LIBRETRO.core.width;
 }
 
@@ -2961,11 +4084,14 @@ static unsigned GetLibretroWidth(void) {
  * @return Height in pixels.
  */
 static unsigned GetLibretroHeight(void) {
+    if (LIBRETRO.core.rotation == 1 || LIBRETRO.core.rotation == 3) {
+        return LIBRETRO.core.width;
+    }
     return LIBRETRO.core.height;
 }
 
 static double GetLibretroFPS(void) {
-    return LIBRETRO.core.fps > 0 ? (double)LIBRETRO.core.fps : 60.0;
+    return LIBRETRO.core.fps > 0 ? LIBRETRO.core.fps : 60.0;
 }
 
 static float GetLibretroAspectRatio(void) {
@@ -2978,6 +4104,76 @@ static float GetLibretroAspectRatio(void) {
  */
 static Texture2D GetLibretroTexture(void) {
     return LIBRETRO.core.texture;
+}
+
+/**
+ * Load an image of the current screen of the core framebuffer.
+ *
+ * The image must be called with UnloadImage() to clear the memory.
+ *
+ * @return Essentially a screenshot of the libretro game. Empty image otherwise.
+ */
+static Image LoadImageFromLibretro() {
+    Image image = {0};
+    if (!IsLibretroGameReady()) {
+        return image;
+    }
+
+    // Determine the width/height of the final image.
+    int height = (int)LIBRETRO.core.height;
+    float aspect = GetLibretroAspectRatio();
+    int width = (aspect > 0.0f) ? (int)((float)height * aspect + 0.5f) : (int)LIBRETRO.core.width;
+    if (width <= 0) width = (int)LIBRETRO.core.width;
+
+    // Hardware Rendering
+    if (LIBRETRO.core.hwRender.active) {
+        // Redraw onto a render texture, to correct the source size and scale to the aspect-corrected width in one pass.
+        RenderTexture2D rt = LoadRenderTexture(width, height);
+        if (!IsRenderTextureValid(rt)) {
+            return image;
+        }
+        SetTextureFilter(rt.texture, TEXTURE_FILTER_ANISOTROPIC_4X);
+        Rectangle source = LibretroSourceRect();
+        source.height = -source.height; // FBO renders from bottom-left.
+        BeginTextureMode(rt);
+            ClearBackground(BLANK);
+            DrawTexturePro(LIBRETRO.core.texture, source,
+                           (Rectangle){0, 0, (float)width, (float)height},
+                           (Vector2){0, 0}, 0.0f, WHITE);
+        EndTextureMode();
+        image = LoadImageFromTexture(rt.texture);
+        UnloadRenderTexture(rt);
+    }
+
+    // Software Rendering
+    else {
+        if (LIBRETRO.core.frameBuffer == NULL || LIBRETRO.core.frameBufferSize == 0) {
+            return image;
+        }
+        image.data = MemAlloc((unsigned int)LIBRETRO.core.frameBufferSize);
+        if (image.data == NULL) {
+            return image;
+        }
+        image.width = (int)LIBRETRO.core.width;
+        image.height = (int)LIBRETRO.core.height;
+        image.mipmaps = 1;
+        image.format = LibretroRetroPixelFormatToPixelFormat(LIBRETRO.core.pixelFormat);
+        memcpy(image.data, LIBRETRO.core.frameBuffer, LIBRETRO.core.frameBufferSize);
+
+        // Ensure the display aspect ratio is retained.
+        if (width != image.width) {
+            ImageResize(&image, width, height);
+        }
+    }
+
+    switch (LIBRETRO.core.rotation) {
+        case 1: ImageRotateCW(&image);        break;
+        case 2: ImageRotate(&image, 180);     break;
+        case 3: ImageRotateCCW(&image);       break;
+        default: break;
+    }
+
+    return image;
 }
 
 /**
@@ -3070,6 +4266,13 @@ static bool SetLibretroSRAMData(const void* data, size_t size) {
  * Unload the currently loaded content without closing the core.
  */
 static void UnloadLibretroGame(void) {
+    hw_FireContextDestroy();
+    if (LIBRETRO.core.hwRender.enabled) {
+        CloseLibretroVideo();
+        LIBRETRO.core.hwRender.enabled = false;
+        memset(&LIBRETRO.core.hwRender.cb, 0, sizeof(LIBRETRO.core.hwRender.cb));
+    }
+
     if (LIBRETRO.core.symbols.retro_unload_game != NULL) {
         LIBRETRO.core.symbols.retro_unload_game();
         LIBRETRO.core.symbols.retro_unload_game = NULL;
@@ -3081,14 +4284,18 @@ static void UnloadLibretroGame(void) {
     LIBRETRO.core.contentDir[0]  = '\0';
     LIBRETRO.core.contentName[0] = '\0';
     LIBRETRO.core.contentExt[0]  = '\0';
+    if (LIBRETRO.core.tempGamePath[0] != '\0') {
+        FileRemove(LIBRETRO.core.tempGamePath);
+        LIBRETRO.core.tempGamePath[0] = '\0';
+    }
     LIBRETRO.core.gameInfoExtValid = false;
     memset(&LIBRETRO.core.gameInfoExt, 0, sizeof(LIBRETRO.core.gameInfoExt));
 
     // Per-game runtime state that must not leak into the next game.
     LIBRETRO.core.rotation         = 0;
     LIBRETRO.core.gameTimeNSEC     = 0;
-    LIBRETRO.core.osdMessage[0]    = '\0';
-    LIBRETRO.core.osdEndTime       = 0.0;
+    // Note: the OSD message intentionally survives unload (it lives in LIBRETRO,
+    // not LIBRETRO.core) so a core's exit/error message stays on-screen.
     LIBRETRO.core.singleSampleCount = 0;
     LIBRETRO.core.audioDropWarnCount = 0;
 
@@ -3113,21 +4320,6 @@ static void UnloadLibretroGame(void) {
     // Free memory map descriptors — these are game-specific and must not
     // outlive the game that provided them.
     UnloadLibretroMemoryMaps();
-}
-
-/**
- * Reset all per-core data fields so that a subsequent InitLibretro() starts
- * with a clean slate. Must be called after the dylib is closed.
- */
-static void ResetLibretroCoreState(void) {
-    // Release owned pointers before the memset wipes them.
-    UnloadLibretroMemoryMaps();
-
-    memset(&LIBRETRO.core, 0, sizeof(LIBRETRO.core));
-
-    // Non-zero defaults.
-    LIBRETRO.core.drcAdjustment = 1.0f;
-    LIBRETRO.core.drcEnabled = true;
 }
 
 /**
@@ -3164,6 +4356,8 @@ static void CloseLibretro(void) {
 
     if (LIBRETRO.core.subsystemInfo != NULL) {
         MemFree(LIBRETRO.core.subsystemInfo);
+        LIBRETRO.core.subsystemInfo = NULL;
+        LIBRETRO.core.subsystemCount = 0;
     }
 
     // Close the dynamically loaded handle.
@@ -3171,10 +4365,22 @@ static void CloseLibretro(void) {
         dylib_close(LIBRETRO.core.symbols.handle);
     }
 
-    // ResetLibretroCoreState() memsets LIBRETRO.core, which zeroes every
-    // field above — function pointers into the now-closed dylib, descriptor
-    // pointers and counts, audio/keyboard callbacks, etc.
-    ResetLibretroCoreState();
+    if (LIBRETRO.core.perf_counters != NULL) {
+        MemFree(LIBRETRO.core.perf_counters);
+    }
+
+    // Release owned pointers before the memset wipes them.
+    UnloadLibretroMemoryMaps();
+
+    // Clear the data.
+    memset(&LIBRETRO.core, 0, sizeof(LIBRETRO.core));
+
+    // Non-zero defaults.
+    LIBRETRO.core.drcAdjustment = 1.0f;
+    LIBRETRO.core.drcEnabled = true;
+    for (int i = 0; i < 16; i++) {
+        LIBRETRO.core.portDeviceMap[i] = RETRO_DEVICE_JOYPAD;
+    }
 }
 
 /**
@@ -3570,6 +4776,21 @@ static int LibretroRetroJoypadButtonToGamepadButton(int button) {
     return GAMEPAD_BUTTON_UNKNOWN;
 }
 
+static bool LibretroAnalogToDpadPressed(int port, int btn) {
+    if (LIBRETRO.analogToDpadIndex == 0 || !IsGamepadAvailable(port)) return false;
+    float axisX = GetGamepadAxisMovement(port,
+        LIBRETRO.analogToDpadIndex == 2 ? GAMEPAD_AXIS_RIGHT_X : GAMEPAD_AXIS_LEFT_X);
+    float axisY = GetGamepadAxisMovement(port,
+        LIBRETRO.analogToDpadIndex == 2 ? GAMEPAD_AXIS_RIGHT_Y : GAMEPAD_AXIS_LEFT_Y);
+    switch (btn) {
+        case RETRO_DEVICE_ID_JOYPAD_UP:    return axisY < -0.5f;
+        case RETRO_DEVICE_ID_JOYPAD_DOWN:  return axisY >  0.5f;
+        case RETRO_DEVICE_ID_JOYPAD_LEFT:  return axisX < -0.5f;
+        case RETRO_DEVICE_ID_JOYPAD_RIGHT: return axisX >  0.5f;
+        default: return false;
+    }
+}
+
 /**
  * Maps a libretro pixel format to a raylib PixelFormat.
  */
@@ -3614,6 +4835,18 @@ static void LibretroPixelFormatARGB1555ToRGB565(void *output_, const void *input
 }
 
 /**
+ * Size in bytes of the loaded core's serialized state, or 0 if no game is
+ * ready. Useful for validating that a buffered state (e.g. a rewind snapshot)
+ * still matches the currently loaded content before restoring it.
+ */
+static unsigned int GetLibretroSerializedSize(void) {
+    if (!IsLibretroGameReady() || LIBRETRO.core.symbols.retro_serialize_size == NULL) {
+        return 0;
+    }
+    return (unsigned int)LIBRETRO.core.symbols.retro_serialize_size();
+}
+
+/**
  * Serialize the current emulator state into a new buffer.
  * @param size Output parameter filled with the size of the returned buffer in bytes.
  * @return Newly allocated buffer containing the serialized state, or NULL on failure.
@@ -3631,6 +4864,12 @@ static void* GetLibretroSerializedData(unsigned int* size) {
     if (finalSize == 0) {
         return NULL;
     }
+
+    // For variable-size cores, re-query the size each call.
+    if (LIBRETRO.core.serializationQuirks & RETRO_SERIALIZATION_QUIRK_CORE_VARIABLE_SIZE) {
+        finalSize = LIBRETRO.core.symbols.retro_serialize_size();
+    }
+
     if (size != NULL) {
         *size = (unsigned int)finalSize;
     }
@@ -3638,6 +4877,11 @@ static void* GetLibretroSerializedData(unsigned int* size) {
     void* saveData = MemAlloc((unsigned int)finalSize);
     if (saveData == NULL) {
         return NULL;
+    }
+
+    // MUST_INITIALIZE: zero the buffer before serializing.
+    if (LIBRETRO.core.serializationQuirks & RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE) {
+        memset(saveData, 0, finalSize);
     }
 
     if (LIBRETRO.core.symbols.retro_serialize(saveData, finalSize)) {
@@ -3662,6 +4906,10 @@ static bool SetLibretroSerializedData(void* data, unsigned int size) {
         return false;
     }
 
+    // NOTE: callers that restore state every frame (rewind) must NOT reset the
+    // time accumulator here — doing so would zero it each frame and starve
+    // retro_run() of ticks. One-shot loaders (save-state) call
+    // ResetLibretroTiming() themselves.
     return LIBRETRO.core.symbols.retro_unserialize(data, (size_t)size);
 }
 

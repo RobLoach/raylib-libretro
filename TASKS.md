@@ -3,8 +3,8 @@
 A roadmap of some interesting features to consider.
 
 ## Quick Fixes
-- [ ] Within raylib-libretro-touch.h, within LibretroTouchJoypadKeyboard(), if the menu is available, then get the menu setting for the related keyboard controls instead of hardcoding the keys.
-- [ ] Within raylib-libretro-touch.h, there is a LibretroTouchJoypadGamepad() function. Isn't there a function like this directly withing raylib-libretro.h we could use instead? Would save some function definitions.
+- [x] Within raylib-libretro-touch.h, within LibretroTouchJoypadKeyboard(), if the menu is available, then get the menu setting for the related keyboard controls instead of hardcoding the keys.
+- [x] Within raylib-libretro-touch.h, there is a LibretroTouchJoypadGamepad() function. Isn't there a function like this directly withing raylib-libretro.h we could use instead? Would save some function definitions.
 - [ ] Within raylib-libretro-touch.h, there's a LibretroTouchFadeColor() function. Isn't there a raylib function we could use for this instead?
 - [x] Is there a way to have the Emscripten Fullscreen capabilities be handled through the Settings>Graphics>Fullscreen toggle widget?
 - [x] Anything that should be persistent across LibretroCore loading, move to a Libretro structure instead. Split into `LibretroData` (persistent: directories, volume, speed) and `LibretroCoreData` (per-load state, reset with `memset(0)`). Global renamed to `LIBRETRO`.
@@ -97,10 +97,10 @@ A roadmap of some interesting features to consider.
 - [ ] Per-core / per-game input remap files (`.rmp` compatible)
 - [ ] Mouse (`RETRO_DEVICE_MOUSE`) fully wired through
 - [ ] Light gun (`RETRO_DEVICE_LIGHTGUN`) with cursor capture
-- [ ] Multitap (`RETRO_DEVICE_JOYPAD_MULTITAP`)
+- [x] Multitap (`RETRO_DEVICE_JOYPAD_MULTITAP`)
 - [ ] On-screen overlay touch layouts (PNG, auto-scale, snap-to-edges)
 - [ ] Analog stick deadzone + sensitivity per port
-- [ ] Game-Focus mode (pass all keys through, ignore hotkeys)
+- [x] Game-Focus mode (pass all keys through, ignore hotkeys)
 
 ## Performance / Latency
 
@@ -140,7 +140,7 @@ A roadmap of some interesting features to consider.
 
 ## libretro API Coverage
 
-- [ ] OpenGL cores / hardware rendering context (`SET_HW_RENDER`)
+- [x] OpenGL cores / hardware rendering context (`SET_HW_RENDER`)
 - [ ] Sensor interface (accelerometer / gyro) for mobile / handheld
 - [ ] LED interface for RGB keyboards / DualSense
 

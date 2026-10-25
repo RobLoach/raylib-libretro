@@ -1,0 +1,11 @@
+# Android / Gradle build artifacts
+.gradle/
+build/
+.cxx/
+
+# Local machine config (absolute SDK/NDK paths) — never commit
+local.properties
+
+# IDE
+*.iml
+.idea/
