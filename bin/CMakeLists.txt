@@ -21,7 +21,6 @@ target_include_directories(raylib-libretro PUBLIC
     ../vendor/raylib-app
     ../vendor/raylib-physfs
     ../vendor/physfs/src
-    ../vendor/sqlite3
 )
 target_compile_definitions(raylib-libretro PRIVATE
     RAYLIB_LIBRETRO_VERSION="${PROJECT_VERSION}"

@@ -51,3 +51,8 @@
 	url = https://github.com/libretro/libretro-core-info
 	ignore = dirty
 	branch = master
+[submodule "vendor/sqlite-amalgamation"]
+	path = vendor/sqlite-amalgamation
+	url = https://github.com/rhuijben/sqlite-amalgamation
+	ignore = dirty
+	branch = master

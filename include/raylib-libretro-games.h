@@ -7,7 +7,7 @@
 *   LAYER
 *
 *       Opt-in, core-agnostic frontend layer. Depends on raylib-libretro.h (paths) and the
-*       vendored SQLite amalgamation (vendor/sqlite3); it does NOT depend on the menu or on
+*       SQLite amalgamation (vendor/sqlite-amalgamation); it does NOT depend on the menu or on
 *       any libretro core. The menu layer renders the data this layer indexes and owns the
 *       system->core launch decision (it has the core list). Define
 *       RAYLIB_LIBRETRO_GAMES_IMPLEMENTATION in exactly one translation unit (the menu's

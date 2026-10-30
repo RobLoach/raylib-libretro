@@ -53,7 +53,7 @@ The core VFS layer (`raylib-libretro-vfs.h`) exposes three nullable global funct
 
 ### Games database
 
-`raylib-libretro-games.h` is an opt-in, **core-agnostic** layer that scans the content directory, infers each game's system from its folder name (or extension for root files), and indexes everything into a persistent **sqlite3** DB (`vendor/sqlite3`, a vendored amalgamation — not a submodule). The in-memory entry list is **both** the source of truth the UI reads **and** the incremental-scan cache: relpath is the sole cache key (no per-file stat), and the DB is loaded once at startup and rewritten only when the index actually changes, so an unchanged rescan does zero file opens and zero DB writes. Stored paths are relative to the content dir and `/`-normalized. `PRAGMA user_version` (+ `LIBRETRO_GAMES_SCHEMA_VERSION`) gates a drop-and-rebuild migration; a corrupt file is detected at init (`quick_check`) and rebuilt.
+`raylib-libretro-games.h` is an opt-in, **core-agnostic** layer that scans the content directory, infers each game's system from its folder name (or extension for root files), and indexes everything into a persistent **sqlite3** DB (`vendor/sqlite-amalgamation` submodule). The in-memory entry list is **both** the source of truth the UI reads **and** the incremental-scan cache: relpath is the sole cache key (no per-file stat), and the DB is loaded once at startup and rewritten only when the index actually changes, so an unchanged rescan does zero file opens and zero DB writes. Stored paths are relative to the content dir and `/`-normalized. `PRAGMA user_version` (+ `LIBRETRO_GAMES_SCHEMA_VERSION`) gates a drop-and-rebuild migration; a corrupt file is detected at init (`quick_check`) and rebuilt.
 
 Like the VFS bridge, the layer stays free of menu/core knowledge and takes it via two nullable hooks set with `LibretroGamesSetCallbacks()`: `coreAvailable` (the menu answers from the loaded core list — games with no runnable core are not indexed) and `zipInnerExt` (peek an archive's inner extension). Dependency points one way (frontend → games globals).
 
@@ -64,7 +64,7 @@ git submodule update --init    # submodules are required
 mkdir build && cd build && cmake .. && cmake --build .
 ```
 
-Submodules pull raylib, libretro-common, the Nuklear UI stack (nuklear_console, nuklear_gamepad, raylib-nuklear), PhysFS + raylib-physfs, c-vector, raylib-app, and `vendor/libretro-core-info`. `vendor/sqlite3` is a **vendored amalgamation** (committed source, not a submodule), built as its own static lib (`add_subdirectory(vendor/sqlite3)` at the project root). A bundled core whose `.info` is missing from that submodule is a **hard CMake error** (`bin/CMakeLists.txt` → `copy_core_info`), since a core with no `.info` would silently never appear in the menu.
+Submodules pull raylib, libretro-common, the Nuklear UI stack (nuklear_console, nuklear_gamepad, raylib-nuklear), PhysFS + raylib-physfs, c-vector, raylib-app, `vendor/libretro-core-info`, and the sqlite3 amalgamation (`vendor/sqlite-amalgamation`). sqlite3 is built as its own trimmed static lib by a custom target in the root `CMakeLists.txt` (the submodule's own CMakeLists.txt is not used). A bundled core whose `.info` is missing from that submodule is a **hard CMake error** (`bin/CMakeLists.txt` → `copy_core_info`), since a core with no `.info` would silently never appear in the menu.
 
 Linux deps: `xorg-dev`, `libglu1-mesa-dev`. CMake 3.11+. CMake first tries `find_package(raylib QUIET)`, then falls back to building `vendor/raylib` with a trimmed feature set.
 
@@ -114,7 +114,7 @@ Apps & data:
 - `example/raylib-libretro-basic.c` — canonical minimal usage; reference for the expected API flow
 - `bin/raylib-libretro.c` — full app using `raylib-app` lifecycle callbacks
 - `test/raylib-libretro-games-test.c` — headless games-database tests (run via CTest)
-- `vendor/sqlite3/` — vendored sqlite3 amalgamation (public domain) backing the games database
+- `vendor/sqlite-amalgamation/` — sqlite3 amalgamation submodule (public domain) backing the games database
 - `tests/test_opengl/test_opengl_libretro.c` — minimal GL 3.3 core that draws a spinning triangle; smoke-tests the HW render path end-to-end
 - `vendor/libretro-core-info/` — submodule of `.info` core metadata; CMake copies the relevant ones next to built cores
 - `TASKS.md` — planned features; check here before implementing new work

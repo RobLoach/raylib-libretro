@@ -9,7 +9,6 @@ target_link_libraries(raylib-libretro-test PRIVATE
 )
 target_include_directories(raylib-libretro-test PRIVATE
     ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/vendor/sqlite3
 )
 
 add_test(NAME games COMMAND raylib-libretro-test)
