@@ -35,7 +35,7 @@ A roadmap of some interesting features to consider.
 ## Content Management
 
 - [ ] RetroArch-compatible playlist (`.lpl`) load + save
-- [ ] Recursive ROM directory scanner with progress UI
+- [x] Recursive ROM directory scanner with progress UI (sqlite3 games database; system inferred from folder name)
 - [ ] Soft-patching at load time: IPS / UPS / BPS / Xdelta
 - [ ] Subsystem content support (multi-cart cores)
 - [ ] Online core downloader / repo browser
